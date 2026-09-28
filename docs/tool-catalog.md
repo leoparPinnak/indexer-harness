@@ -41,7 +41,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-cdp` | `cdp_captcha`, `cdp_click`, `cdp_contexts`, `cdp_dialog`, `cdp_download`, `cdp_endpoints`, `cdp_eval`, `cdp_exec`, `cdp_expect`, `cdp_extract`, `cdp_files`, `cdp_fill`, `cdp_find`, `cdp_fingerprint`, `cdp_locate`, `cdp_navigate`, `cdp_open`, `cdp_pdftotext`, `cdp_printpdf`, `cdp_readpdf`, `cdp_screenshot`, `cdp_scroll`, `cdp_snapshot`, `cdp_status`, `cdp_stealth`, `cdp_tab_close`, `cdp_tab_focus`, `cdp_tab_new`, `cdp_tabs`, `cdp_text`, `cdp_type`, `cdp_upload`, `cdp_viewport`, `cdp_wait`, `net_capture`, `net_export` | `ctx.tools`, `ctx.webServer (route registration seam)`, `ctx.systemPrompt (prompt section, opportunistic)`, `ctx.skills (skill provider, opportunistic)` | `tool/call`, `tool/result` | - | The CDP bundle ships 36 model-facing tools (34 `cdp_*` plus `net_capture`/`net_export`) under a `bundle/cdp` leaf (outside the `tool-*` completeness glob) and mounts on the webServer surface alone; skills and systemPrompt registration are opportunistic injects, so a bare-context boot still harvests every schema. `cdp_status` reflects installed version/targets/proxy and the active browser profile; `cdp_open` discovers existing endpoints and asks which profile to use before attaching or launching. `cdp_exec` prefers a guaranteed error envelope over `cdp_eval`; `cdp_captcha` detects, drives and verifies first-party challenges without ever crossing a third-party provider; stealth tools harden the client (detection posture) and do not bypass third-party CAPTCHA providers. |
+| `@deepseek-ai/dsh-cdp` | `cdp_captcha`, `cdp_click`, `cdp_contexts`, `cdp_dialog`, `cdp_download`, `cdp_endpoints`, `cdp_eval`, `cdp_exec`, `cdp_expect`, `cdp_extract`, `cdp_files`, `cdp_fill`, `cdp_find`, `cdp_fingerprint`, `cdp_locate`, `cdp_lock`, `cdp_navigate`, `cdp_open`, `cdp_pdftotext`, `cdp_printpdf`, `cdp_readpdf`, `cdp_screenshot`, `cdp_scroll`, `cdp_snapshot`, `cdp_status`, `cdp_stealth`, `cdp_tab_close`, `cdp_tab_focus`, `cdp_tab_new`, `cdp_tabs`, `cdp_text`, `cdp_type`, `cdp_unlock`, `cdp_upload`, `cdp_viewport`, `cdp_wait`, `net_capture`, `net_export` | `ctx.tools`, `ctx.webServer (route registration seam)`, `ctx.systemPrompt (prompt section, opportunistic)`, `ctx.skills (skill provider, opportunistic)` | `tool/call`, `tool/result` | - | The CDP bundle ships 36 model-facing tools (34 `cdp_*` plus `net_capture`/`net_export`) under a `bundle/cdp` leaf (outside the `tool-*` completeness glob) and mounts on the webServer surface alone; skills and systemPrompt registration are opportunistic injects, so a bare-context boot still harvests every schema. `cdp_status` reflects installed version/targets/proxy and the active browser profile; `cdp_open` discovers existing endpoints and asks which profile to use before attaching or launching. `cdp_exec` prefers a guaranteed error envelope over `cdp_eval`; `cdp_captcha` detects, drives and verifies first-party challenges without ever crossing a third-party provider; stealth tools harden the client (detection posture) and do not bypass third-party CAPTCHA providers. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2947,6 +2947,32 @@ Ask "what is AT this point?" — document.elementFromPoint(x,y) identified and d
 
 Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
 
+### `cdp_lock`
+
+Take a TTL lease on one tab so parallel automations queue instead of interleaving input on the same page. The lease dies at `lockedUntil` without any timer — a forgotten lock never sticks past its TTL. lock-held answers in-band with the holder and expiry (data, not an error).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab to lease (defaults to the active tab)."
+    },
+    "holder": {
+      "type": "string",
+      "description": "Who is taking the lease (e.g. the subagent id); echoed in lock-held answers. Defaults to \"session\"."
+    },
+    "ttlMs": {
+      "type": "number",
+      "description": "Lease lifetime in ms, clamped to 1000..300000 (default 60000)."
+    }
+  }
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
 ### `cdp_navigate`
 
 Navigate the active or specified browser tab to a URL.
@@ -3284,6 +3310,18 @@ Capture a woven DOM snapshot of the current page with stable element references 
     "ref": {
       "type": "string",
       "description": "Snapshot ref to verify in this call; adds ref/staleRef/refRect to the answer."
+    },
+    "interactive": {
+      "type": "boolean",
+      "description": "Keep only interactive entries (buttons, links, fields…); nodeCount stays the woven total."
+    },
+    "compact": {
+      "type": "boolean",
+      "description": "Clip names/values to 80 chars — smaller payload, identical refs."
+    },
+    "includeDiff": {
+      "type": "boolean",
+      "description": "Diff against the previous cdp_snapshot of the same target key: the nodes list narrows to what changed and a diff block carries the full delta (a rename shows as removed+added since the ref carries the name)."
     }
   }
 }
@@ -3524,6 +3562,28 @@ Type text into the focused page element with human-like cadence and character de
   "required": [
     "text"
   ]
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_unlock`
+
+Give back a cdp_lock lease. The holder must match when `holder` is passed; an unknown or already-released id answers in-band (double unlock is data, not an error).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "lockId": {
+      "type": "string",
+      "description": "Lease id returned by cdp_lock."
+    },
+    "holder": {
+      "type": "string",
+      "description": "Unlocking owner; must match the lease holder when given."
+    }
+  }
 }
 ```
 

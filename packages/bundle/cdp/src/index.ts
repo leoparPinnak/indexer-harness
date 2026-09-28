@@ -108,10 +108,10 @@ export const Config: z<Config> = z.object({
 function cdpStatusPrompt(): string {
   return 'DSH CDP Guidance:\n'
     // plan09-fix: this read "the `cdp_*` tools (36 in total, plus `net_capture`/`net_export`)"
-    // and counted the net tools twice — tools.ts registers 36 tools in all, of
-    // which 34 are `cdp_*` and 2 are the net pair. Naming a count that drifts
-    // out of date is worse than naming none, so the sentence states the split.
-    + '- The CDP extension drives Chromium-based browsers over the Chrome DevTools Protocol: 36 tools in all — 34 `cdp_*` plus `net_capture` and `net_export`.\n'
+    // and counted the net tools twice — plan16-lock brings the totals to 38
+    // tools in all, of which 36 are `cdp_*` and 2 are the net pair. Naming a
+    // count that drifts out of date is worse than naming none, so the sentence states the split.
+    + '- The CDP extension drives Chromium-based browsers over the Chrome DevTools Protocol: 38 tools in all — 36 `cdp_*` plus `net_capture` and `net_export`.\n'
     + '- Call `cdp_status` for the installed version, the live target count, and the proxy state; the CDP tab in the right sidebar shows the same state.\n'
     + '- `cdp_exec` runs page code with a guaranteed error envelope and optional post-condition; prefer it over `cdp_eval` when the outcome must be verified.\n'
     + '- A browser endpoint is only reachable while it was launched with remote debugging enabled; `cdp_endpoints` discovers loopback debugging ports and `cdp_contexts` lists targets.\n'

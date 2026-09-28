@@ -218,8 +218,9 @@ describe('cdp status surface', () => {
       downloadsDir: '',
       maxPdfBytes: 67108864,
       // plan05's upload path policy rows, asserted for the same reason.
+      // K2-15: the root check is opt-OUT now (allowAnyPath defaults to true).
       uploadRoots: [],
-      allowAnyPath: false,
+      allowAnyPath: true,
       // plan04's endpoint discovery probe ports (cdp_endpoints default set).
       discoveryPorts: [9222, 9225, 9333, 9444],
     })

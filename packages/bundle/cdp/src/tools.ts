@@ -36,6 +36,9 @@ import { WAIT_STRATEGIES, renderWait, runWait, validateWaitArgs, waitPlan, type 
 /* plan08-fix-ref-rename: `renameNote` is what a ref that resolved by NODE
    identity reports, so the model is told "renamed", never "re-rendered". */
 import { RefStaleError, centerOf, isStaleRefReason, renameNote, type RefEvidence } from './refs.ts' /* plan08 */
+import { compactNode, diffSnapshots, filterInteractive } from './snapshot-view.ts' /* plan16-view */
+import { TabLockRegistry, clampLockTtl } from './tab-lock.ts' /* plan16-lock */
+import type { CdpWovenNode } from './snapshot.ts'
 /* plan11: cdp_captcha — the detect/drive/read tool. The LOCATOR DSL is
    imported from plan02 (`locatorSpecFromArgs`), never re-implemented: one
    ladder, one spec builder, one set of validation rules. */
@@ -386,6 +389,13 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
       },
     })), 'cdp: cdp_navigate tool')
 
+    // plan16-view: one remembered woven model per target key so `includeDiff`
+    // has a base; best-effort state that never widens an answer.
+    const lastSnapshotNodes = new Map<string, CdpWovenNode[]>()
+    // plan16-lock: one TTL lease desk per registration — parallel writers on a
+    // tab queue instead of interleaving input garble (cursor browser_lock).
+    const tabLocks = new TabLockRegistry()
+
     // 5. cdp_snapshot
     toolCtx.effect(() => toolCtx.tools.register(defineTool({
       name: 'cdp_snapshot',
@@ -396,6 +406,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         targetId: { type: 'string', description: 'Target id of the tab (defaults to active tab).' },
         // plan08: optional ref verification — checked against the same fresh document.
         ref: { type: 'string', description: 'Snapshot ref to verify in this call; adds ref/staleRef/refRect to the answer.' },
+        // plan16-view: payload lenses over the same woven model.
+        interactive: { type: 'boolean', description: 'Keep only interactive entries (buttons, links, fields…); nodeCount stays the woven total.' },
+        compact: { type: 'boolean', description: `Clip names/values to 80 chars — smaller payload, identical refs.` },
+        includeDiff: { type: 'boolean', description: 'Diff against the previous cdp_snapshot of the same target key: the nodes list narrows to what changed and a diff block carries the full delta (a rename shows as removed+added since the ref carries the name).' },
       },
       output: {
         schema: {
@@ -433,6 +447,57 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
                 },
               },
             },
+            // plan16-view: lens note (present when interactive/compact/includeDiff narrowed the list).
+            filtered: { type: 'string', description: 'What the lenses kept/dropped; present when interactive, compact, or includeDiff was used.' },
+            // plan16-view: delta vs the previous snapshot; present only with includeDiff.
+            diff: {
+              type: 'object',
+              description: 'Delta vs the previous cdp_snapshot of the same target key (includeDiff).',
+              additionalProperties: false,
+              properties: {
+                base: { type: 'string', description: "'previous' when diffed against a remembered model, 'none' on the first call." },
+                added: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      ref: { type: 'string', required: true },
+                      role: { type: 'string', required: true },
+                      name: { type: 'string', required: true },
+                      value: { type: 'string' },
+                    },
+                  },
+                },
+                removed: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      ref: { type: 'string', required: true },
+                      role: { type: 'string', required: true },
+                      name: { type: 'string', required: true },
+                      value: { type: 'string' },
+                    },
+                  },
+                },
+                changed: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      ref: { type: 'string', required: true },
+                      role: { type: 'string', required: true },
+                      name: { type: 'string', required: true },
+                      was: { type: 'string', required: true },
+                    },
+                  },
+                },
+                unchangedCount: { type: 'integer', required: true },
+              },
+            },
             // plan08: ref verification echo (all four present only when args.ref was passed).
             ref: { type: 'string', description: 'The ref verified against this fresh document.' },
             staleRef: { type: 'boolean', description: 'True when the ref no longer resolves (stale-ref).' },
@@ -457,10 +522,20 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           type: 'text',
           // plan06: the model sees the measured viewport next to the node count.
           text: `Snapshot of "${val.title}" (${val.url}) - ${String(val.nodeCount)} nodes @ ${String(val.viewport.width)}x${String(val.viewport.height)} css px:\n`
+            // plan16-view: when lenses narrowed the list, say so before the rows.
+            + (typeof val.filtered === 'string' ? `FILTERED: ${val.filtered}\n` : '')
             // plan08-fix (T3 F2): refs print RAW in quotes — never decorated.
             // A model copies this string verbatim, so `@ref` here meant every
             // consumer answered stale-ref on a healthy page.
             + val.nodes.map(n => `"${n.ref}" [${n.role}] ${n.name}${n.value ? ` = "${n.value}"` : ''}`).join('\n')
+            // plan16-view: the delta prints after the rows so a widened walk reads top-down.
+            + (val.diff !== undefined
+              ? `\nDIFF vs ${String(val.diff.base)}: +${String(val.diff.added.length)} -${String(val.diff.removed.length)} ~${String(val.diff.changed.length)}, ${String(val.diff.unchangedCount)} unchanged`
+                + val.diff.added.map(n => `\n+ "${n.ref}" [${n.role}] ${n.name}`).join('')
+                + val.diff.removed.map(n => `\n- "${n.ref}" [${n.role}] ${n.name}`).join('')
+                + val.diff.changed.map(n => `\n~ "${n.ref}" [${n.role}] ${n.name} (was: ${n.was})`).join('')
+                + (val.diff.added.length === 0 && val.diff.removed.length === 0 && val.diff.changed.length === 0 ? ' (no changes)' : '')
+              : '')
             // plan08: a stale ref must be visible in the rendered line too.
             + (val.staleRef === true && typeof val.refReason === 'string' ? `\nREF STALE: ${val.refReason}` : '')
             // plan08-fix: an unresolved FORMAT error is not staleness — label it honestly.
@@ -478,22 +553,62 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         )
         // plan06: the cache was refreshed by snapshot() just above.
         const observedSource = service.status().viewport?.source
+        // plan16-view: the lenses narrow the ROWS only — nodeCount stays the
+        // woven total and the ref path below still verifies the full model (a
+        // filtered-out element must not go stale by request).
+        const fullNodes = snap.nodes
+        const interactiveOnly = args.interactive === true
+        const targetKey = typeof targetId === 'string' && targetId.length > 0 ? targetId : '<active>'
+        const previous = args.includeDiff === true ? lastSnapshotNodes.get(targetKey) : undefined
+        const delta = args.includeDiff === true && previous !== undefined ? diffSnapshots(previous, fullNodes) : undefined
+        // plan16-view: with includeDiff the list narrows to what MOVED — the
+        // full delta rides in `diff`, so the steady-state page costs ~nothing.
+        const narrowedRefs = new Set<string>([
+          ...(delta?.added.map(n => n.ref) ?? []),
+          ...(delta?.changed.map(ch => ch.ref) ?? []),
+        ])
+        const rows = args.includeDiff === true && previous !== undefined
+          ? fullNodes.filter(n => narrowedRefs.has(n.ref))
+          : (interactiveOnly ? filterInteractive(fullNodes) : [...fullNodes])
+        const viewNodes = args.compact === true ? rows.map(n => compactNode(n)) : rows
+        // plan16-view: remember this model as the NEXT call's base (always — a
+        // skipped includeDiff must not freeze the base forever).
+        lastSnapshotNodes.set(targetKey, [...fullNodes])
+        const lensNote = [
+          args.includeDiff === true && previous !== undefined
+            ? `includeDiff: ${String(rows.length)} moved of ${String(fullNodes.length)} woven`
+            : (args.includeDiff === true ? 'includeDiff: no previous snapshot for this target key — full list, base none' : ''),
+          interactiveOnly && args.includeDiff !== true ? `interactive only: ${String(rows.length)} of ${String(fullNodes.length)} woven` : '',
+          args.compact === true ? 'names/values clipped to 80 chars' : '',
+        ].filter(part => part.length > 0).join('; ')
         const base = {
           ok: true,
           title: snap.title,
           url: snap.url,
-          nodeCount: snap.nodes.length,
+          nodeCount: fullNodes.length,
           viewport: {
             width: snap.viewport.width,
             height: snap.viewport.height,
             ...(observedSource !== undefined ? { source: observedSource } : {}),
           },
-          nodes: snap.nodes.map(n => ({
+          nodes: viewNodes.map(n => ({
             ref: n.ref,
             role: n.role,
             name: n.name,
             ...(n.value !== undefined ? { value: n.value } : {}),
           })),
+          ...(lensNote.length > 0 ? { filtered: lensNote } : {}),
+          ...(args.includeDiff === true
+            ? {
+              diff: {
+                base: previous !== undefined ? 'previous' : 'none',
+                added: (delta?.added ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
+                removed: (delta?.removed ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
+                changed: delta?.changed ?? [],
+                unchangedCount: delta?.unchangedCount ?? 0,
+              },
+            }
+            : {}),
         }
         // plan08: when a ref was passed, verify it against a FRESH document so
         // a re-render answers stale-ref inside the same call as the snapshot.
@@ -516,6 +631,86 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         }
       },
     })), 'cdp: cdp_snapshot tool')
+
+    // plan16-lock: cursor browser_lock muadili TTL lease — iki paralel yazarın
+    // aynı sekmeye girdiğini sıraya sokar; TTL'siz kilit kalamaz.
+    // 37. cdp_lock
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_lock',
+      description: 'Take a TTL lease on one tab so parallel automations queue instead of interleaving input on the same page. '
+        + 'The lease dies at `lockedUntil` without any timer — a forgotten lock never sticks past its TTL. '
+        + 'lock-held answers in-band with the holder and expiry (data, not an error).',
+      parameters: {
+        targetId: { type: 'string', description: 'Target id of the tab to lease (defaults to the active tab).' },
+        holder: { type: 'string', description: 'Who is taking the lease (e.g. the subagent id); echoed in lock-held answers. Defaults to "session".' },
+        ttlMs: { type: 'number', description: 'Lease lifetime in ms, clamped to 1000..300000 (default 60000).' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            lockId: { type: 'string', description: 'The lease id; pass it to cdp_unlock. Present when acquired.' },
+            targetKey: { type: 'string', required: true },
+            holder: { type: 'string', required: true },
+            lockedUntil: { type: 'string', required: true },
+            reason: { type: 'string', description: "In-band refusal: 'lock-held'." },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.ok === true
+            ? `Locked ${val.targetKey} for ${val.holder} until ${val.lockedUntil} (${String(val.lockId)})`
+            : `LOCK HELD: ${val.targetKey} is leased by ${val.holder} until ${val.lockedUntil}`,
+        }],
+      },
+      execute: async (args) => {
+        const now = Date.now()
+        const targetKey = typeof args.targetId === 'string' && args.targetId.length > 0 ? args.targetId : '<active>'
+        const holder = typeof args.holder === 'string' && args.holder.length > 0 ? args.holder : 'session'
+        const outcome = tabLocks.acquire(targetKey, holder, typeof args.ttlMs === 'number' ? args.ttlMs : 60_000, now)
+        const iso = new Date(outcome.ok ? outcome.lease.lockedUntil : outcome.lockedUntil).toISOString()
+        if (!outcome.ok) {
+          return { ok: false, targetKey, holder: outcome.holder, lockedUntil: iso, reason: 'lock-held' }
+        }
+        return { ok: true, lockId: outcome.lease.lockId, targetKey, holder, lockedUntil: iso }
+      },
+    })), 'cdp: cdp_lock tool')
+
+    // 38. cdp_unlock
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_unlock',
+      description: 'Give back a cdp_lock lease. The holder must match when `holder` is passed; an unknown or already-released id answers in-band (double unlock is data, not an error).',
+      parameters: {
+        lockId: { type: 'string', description: 'Lease id returned by cdp_lock.' },
+        holder: { type: 'string', description: 'Unlocking owner; must match the lease holder when given.' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            targetKey: { type: 'string', description: 'The freed key. Present when released.' },
+            reason: { type: 'string', description: "In-band refusal: 'unknown-lock' or 'not-holder'." },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.ok === true
+            ? `Released ${String(val.targetKey)}`
+            : `UNLOCK REFUSED: ${String(val.reason)}`,
+        }],
+      },
+      execute: async (args) => {
+        const lockId = typeof args.lockId === 'string' ? args.lockId : ''
+        const holder = typeof args.holder === 'string' && args.holder.length > 0 ? args.holder : undefined
+        const outcome = tabLocks.release(lockId, holder, Date.now())
+        if (!outcome.ok) return { ok: false, reason: outcome.reason }
+        return { ok: true, targetKey: outcome.released.targetKey }
+      },
+    })), 'cdp: cdp_unlock tool')
 
     // 6. cdp_eval
     toolCtx.effect(() => toolCtx.tools.register(defineTool({
