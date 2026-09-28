@@ -30,7 +30,7 @@
  * @module @deepseek-ai/dsh-cdp/profiles
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -193,6 +193,61 @@ export interface ProfileLockReport {
   readonly artifacts: readonly string[]
   /** Owning process id when the artifact carried one; `''` when unknown. */
   readonly pid: string
+}
+
+/** One named profile row of {@link listProfileDirs}. */
+export interface ProfileDirRow {
+  /** The directory's name — the profile name (already name-validated). */
+  readonly name: string
+  /** Absolute path of the user-data directory. */
+  readonly dir: string
+  /** Honest lock report straight from the disk artifacts; never guessed. */
+  readonly lock: ProfileLockReport
+}
+
+/**
+ * The absolute profiles root: an explicit `profilesRoot` override, else
+ * `$DSH_HOME/profiles` (falling back to `~/.dsh/profiles`).
+ * @param options - injection seams for the harness home and profiles root.
+ * @returns the absolute profiles root directory.
+ */
+export function resolveProfilesRoot(
+  options: { env?: Record<string, string | undefined> | undefined, home?: string | undefined, profilesRoot?: string | undefined } = {},
+): string {
+  return options.profilesRoot !== undefined && options.profilesRoot !== ''
+    ? resolve(options.profilesRoot)
+    : resolve(join(resolveDshHomeDir(options.env ?? process.env, options.home ?? homedir()), PROFILES_DIR_NAME))
+}
+
+/**
+ * plan16-profile-list: enumerate the named profiles under `root`, sorted by
+ * name. Only subdirectories whose name passes {@link profileNameRefusal} are
+ * reported — stray files and traversal-shaped entries are ignored rather than
+ * laundered through the inventory. Lock state comes from
+ * {@link readProfileLock} and reports ONLY what the disk proves.
+ * @param root - the resolved profiles root directory.
+ * @param readdir - directory-name source (tests inject); defaults to `readdirSync` over subdirectories.
+ * @returns one row per named profile.
+ */
+export function listProfileDirs(
+  root: string,
+  readdir: (dir: string) => string[] = defaultDirNames,
+): ProfileDirRow[] {
+  return readdir(root)
+    .filter(name => profileNameRefusal(name) === undefined)
+    .sort()
+    .map(name => {
+      const dir = join(root, name)
+      return { name, dir, lock: readProfileLock(dir) }
+    })
+}
+
+/** Default {@link listProfileDirs} source: the subdirectory names of `dir`. */
+function defaultDirNames(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
 }
 
 /**

@@ -30,19 +30,20 @@ diagnostic turns).
   `cdp_scroll`, `cdp_dialog`, `cdp_upload`, `cdp_text`, `cdp_expect`,
   `cdp_endpoints`, `cdp_contexts`, `cdp_fill`, `cdp_find`, `cdp_extract`,
   `cdp_locate`, `cdp_stealth`, `cdp_fingerprint`, `cdp_captcha`, `cdp_lock`,
-  `cdp_unlock` — prefer them over hand-rolled
+  `cdp_unlock`, `cdp_profiles` — prefer them over hand-rolled
   `cdp_eval` equivalents; the bundle's tool catalog carries their parameters and
   contracts. `cdp_captcha` is the one for a **verification challenge**: it
   detects, drives, and reads one instead of you hand-writing `cdp_exec` scripts
   (see the three `cdp_captcha` rows in §3). `cdp_locate` is the one for a
   **point read off a screenshot** (see the visual loop below).
 - Read-only intent: `cdp_status`, `cdp_tabs`, `cdp_snapshot`, `cdp_eval` (reading),
-  `cdp_find`, `cdp_extract`, `cdp_locate`, `cdp_fingerprint`, `net_capture`, `net_export`, and
+  `cdp_find`, `cdp_extract`, `cdp_locate`, `cdp_fingerprint`, `net_capture`, `net_export`,
+  `cdp_profiles` with `action: 'list'`, and
   `cdp_captcha` with `action: 'scan'` or `action: 'verify'`.
 - Coordination intent (no page change): `cdp_lock`, `cdp_unlock` — lease bookkeeping,
   safe to run without §2 target confirmation.
 - Mutating intent: `cdp_navigate`, `cdp_click`, `cdp_type`, `cdp_eval` (writing),
-  `cdp_fill`, `cdp_stealth`, `cdp_open`, and `cdp_captcha` with `action: 'drag'`.
+  `cdp_fill`, `cdp_stealth`, `cdp_open`, `cdp_profiles` with `action: 'stop'`, and `cdp_captcha` with `action: 'drag'`.
   **Every mutation requires §2 target confirmation + §4 verification.**
 - Not CDP: desktop (Shellbox) mouse/keyboard → the `shellbox` skill; file editing →
   shell/tools. CDP coordinates are **viewport CSS pixels**, not desktop pixels.
@@ -119,6 +120,7 @@ Skipping step 2 or 6 is the documented cause of every incident in
 | List tabs, pick a target | `cdp_tabs` | connected | targetId/title/url list | empty list → no browser pages; `cdp_open` or ask before spawning |
 | Go to a URL | `cdp_navigate` | **targetId chosen in step 2** | new URL | wrong page loaded → you navigated the wrong target; re-run §2 |
 | Read page structure / find element | `cdp_snapshot` | targetId | `@ref [role] name` nodes | 0 nodes / target missing → page not loaded or target died; `cdp_status`, `cdp_tabs`. Narrow the payload with `interactive` (operable entries only), `compact` (80-char names), or `includeDiff` (delta vs the previous snapshot of the same target key — the list then holds only what MOVED and `diff` carries `+`/`-`/`~` plus `unchangedCount`; a rename shows as removed+added since the ref carries the name). |
+| Named-profile inventory / lifecycle | `cdp_profiles` | `action:'list'` (default) reads; `action:'stop'` needs the profile ACTIVE (defaults to it) | `root` + `active` + `profiles[]` with `locked`/`artifacts`/`pid`; stop → `stopped` + `note` | in-band `ok:false` + `reason` ('is not the active profile', 'no live session to stop') — never a throw. A stopped profile is NEVER deleted (the session is the point); `note` distinguishes 'browser process terminated' from 'connection closed only'. Lock state is read from disk artifacts, never guessed. |
 | Lease a tab before parallel work | `cdp_lock` / `cdp_unlock` | `holder` (e.g. subagent id); `ttlMs` clamped 1s..300s (default 60s) | `lockId` + `lockedUntil` / `Released …` | `LOCK HELD` (in-band) names the holder and expiry — queue, don't interleave. The lease dies at `lockedUntil` without any timer (a forgotten lock never sticks past its TTL); `cdp_unlock` by a bystander answers `not-holder`, a double unlock answers `unknown-lock` (data, not error). |
 | Read or compute page state (`location.href`, form values, `textContent`, counts) | `cdp_eval` (read) | targetId; expression must RETURN a value, not mutate | `Eval result: …` (+ `truncated`) | empty result → expression threw (wrap in `try{…}catch(e){return 'ERR:'+e.message}` — today's channel can swallow throws) or result exceeded the 16 KiB budget (`truncated: true`) → narrow the expression |
 | **Hold on — prefer `cdp_eval` over `cdp_click`/`cdp_type` when:** the target is hidden/`display:none`, covered, coordinate-ambiguous, or you only need a value | `cdp_eval` | — | — | if you chose eval to "click" something, you are about to hand-roll click logic: instead take a snapshot and reconsider §3 rows below |
@@ -165,7 +167,7 @@ pick the one whose failure you can verify (§4).
 > **Extracting data, not driving one control?** The rows above choose a tool for a
 > single interaction. For scraping — a repeated structure, a table, a multi-page
 > loop, a "did I get it all?" check — load `guides/09-scraping-master.md`: it
-> carries the full 38-tool inventory, the measured `cdp_extract` spec contract
+> carries the full 39-tool inventory, the measured `cdp_extract` spec contract
 > (`count` / `complete` / `missing` / `truncatedFields`), and proven recipes. The
 > two non-negotiables it adds: **always project a `count` field** so you know the
 > real total behind a `limit`, and **stop a pagination loop on identity change**,
@@ -245,7 +247,7 @@ Relative to this skill's base directory (`<base>/…`):
 - `guides/06-adapters.md` — site adapter profiles.
 - `guides/07-human-interaction.md` — aiming, measuring, sliders, and the
   verification-challenge boundary.
-- `guides/09-scraping-master.md` — the full 38-tool parameter/output/error
+- `guides/09-scraping-master.md` — the full 39-tool parameter/output/error
   inventory plus the evidence-learned rules, when one job needs many tools.
 - `guides/10-skill-mimarisi.md` — **the network itself**: a per-tool "what next"
   table, 14 named end-to-end flows (F1–F14), and the polymorphism clusters that

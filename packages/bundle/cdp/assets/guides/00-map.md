@@ -20,4 +20,4 @@ The extension source is located in `packages/bundle/cdp`.
 - [Protocol Core](01-protocol-core.md#protocol-core-architecture) — low-level transport and session details.
 - [Site Adapters](06-adapters.md#polymorphic-site-adapters) — specialized automation profiles.
 - [Human Interaction](07-human-interaction.md#layer-c-verification-challenge-roles) — how to aim, approach, and report honestly.
-- [Skill Architecture](10-skill-mimarisi.md#1-araç--sonraki-araç-3838) — start here when you know *what* to do but not *which chain* of tools gets you there.
+- [Skill Architecture](10-skill-mimarisi.md#1-araç--sonraki-araç-3939) — start here when you know *what* to do but not *which chain* of tools gets you there.

@@ -68,13 +68,13 @@ const TOOL_NAME = /\b((?:cdp|net)_[a-z_]+)\b/g
 describe('plan17-skillweb — skill network contract', () => {
   // ---- KAPSAM ------------------------------------------------------------
 
-  it('registers exactly 38 tools and the guides say so', async () => {
+  it('registers exactly 39 tools and the guides say so', async () => {
     const tools = await registeredTools()
-    expect(tools).toHaveLength(38)
-    expect(tools.filter(t => t.name.startsWith('cdp_'))).toHaveLength(36)
+    expect(tools).toHaveLength(39)
+    expect(tools.filter(t => t.name.startsWith('cdp_'))).toHaveLength(37)
     expect(tools.filter(t => t.name.startsWith('net_'))).toHaveLength(2)
     const body = await skillBody()
-    expect(body, 'the tool count in the body is a claim that must match tools.ts').toMatch(/\b38\b/)
+    expect(body, 'the tool count in the body is a claim that must match tools.ts').toMatch(/\b39\b/)
   })
 
   it('names every registered tool in the injected skill body (1-hop access)', async () => {

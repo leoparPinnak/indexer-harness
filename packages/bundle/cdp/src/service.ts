@@ -42,10 +42,12 @@ import { launchBrowser, type LaunchedBrowser, type BrowserLaunchOptions } from '
    plus the honest lock report a second browser on the same profile must get. */
 import {
   EXTERNAL_PROFILE_NAME,
+  listProfileDirs,
   profileIdentity,
   profileLockedMessage,
   readProfileLock,
   resolveProfileDir,
+  resolveProfilesRoot,
   CdpProfileError,
 } from './profiles.ts'
 import { HumanInput, type Point, type ClickOptions, type TextEntryOutcome } from './input.ts'
@@ -1135,6 +1137,41 @@ export class CdpService {
    * for a browser DSH attached to but did not launch, or `''` when no browser
    * is attached at all.
    */
+  /**
+   * plan16-profile-list: the named-profile inventory behind `cdp_profiles`.
+   * Rows come from the disk (name-validated subdirectories, honest lock
+   * reports); `active` is this session's profile identity.
+   * @returns the inventory the model sees: root, active identity, one row per named profile.
+   */
+  profileInventory(): {
+    root: string
+    active: string
+    profiles: { name: string; dir: string; locked: boolean; artifacts: string[]; pid: string }[]
+  } {
+    const root = resolveProfilesRoot({ profilesRoot: this.serviceOptions.profilesRoot })
+    return {
+      root,
+      active: this.activeProfileName(),
+      profiles: listProfileDirs(root).map(row => ({
+        name: row.name,
+        dir: row.dir,
+        locked: row.lock.locked,
+        artifacts: [...row.lock.artifacts],
+        pid: row.lock.pid,
+      })),
+    }
+  }
+
+  /**
+   * plan16-profile-list: true only when THIS service owns the live browser
+   * process (a `cdp_open` launch, not a mere attachment) — the honest basis
+   * for saying "stop terminated the process" vs "only the connection closed".
+   * @returns whether the active browser was launched by this service.
+   */
+  launchedBrowserOwned(): boolean {
+    return this.launched !== undefined
+  }
+
   activeProfileName(): string {
     const connection = this.connection
     // A stand-in service surface may carry a connection without an endpoint;

@@ -37,7 +37,7 @@ import { WAIT_STRATEGIES, renderWait, runWait, validateWaitArgs, waitPlan, type 
    identity reports, so the model is told "renamed", never "re-rendered". */
 import { RefStaleError, centerOf, isStaleRefReason, renameNote, type RefEvidence } from './refs.ts' /* plan08 */
 import { compactNode, diffSnapshots, filterInteractive } from './snapshot-view.ts' /* plan16-view */
-import { TabLockRegistry, clampLockTtl } from './tab-lock.ts' /* plan16-lock */
+import { TabLockRegistry } from './tab-lock.ts' /* plan16-lock */
 import type { CdpWovenNode } from './snapshot.ts'
 /* plan11: cdp_captcha — the detect/drive/read tool. The LOCATOR DSL is
    imported from plan02 (`locatorSpecFromArgs`), never re-implemented: one
@@ -518,31 +518,40 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             },
           },
         },
-        render: (_args, val) => [{
-          type: 'text',
-          // plan06: the model sees the measured viewport next to the node count.
-          text: `Snapshot of "${val.title}" (${val.url}) - ${String(val.nodeCount)} nodes @ ${String(val.viewport.width)}x${String(val.viewport.height)} css px:\n`
-            // plan16-view: when lenses narrowed the list, say so before the rows.
-            + (typeof val.filtered === 'string' ? `FILTERED: ${val.filtered}\n` : '')
-            // plan08-fix (T3 F2): refs print RAW in quotes — never decorated.
-            // A model copies this string verbatim, so `@ref` here meant every
-            // consumer answered stale-ref on a healthy page.
-            + val.nodes.map(n => `"${n.ref}" [${n.role}] ${n.name}${n.value ? ` = "${n.value}"` : ''}`).join('\n')
-            // plan16-view: the delta prints after the rows so a widened walk reads top-down.
-            + (val.diff !== undefined
-              ? `\nDIFF vs ${String(val.diff.base)}: +${String(val.diff.added.length)} -${String(val.diff.removed.length)} ~${String(val.diff.changed.length)}, ${String(val.diff.unchangedCount)} unchanged`
-                + val.diff.added.map(n => `\n+ "${n.ref}" [${n.role}] ${n.name}`).join('')
-                + val.diff.removed.map(n => `\n- "${n.ref}" [${n.role}] ${n.name}`).join('')
-                + val.diff.changed.map(n => `\n~ "${n.ref}" [${n.role}] ${n.name} (was: ${n.was})`).join('')
-                + (val.diff.added.length === 0 && val.diff.removed.length === 0 && val.diff.changed.length === 0 ? ' (no changes)' : '')
-              : '')
-            // plan08: a stale ref must be visible in the rendered line too.
-            + (val.staleRef === true && typeof val.refReason === 'string' ? `\nREF STALE: ${val.refReason}` : '')
-            // plan08-fix: an unresolved FORMAT error is not staleness — label it honestly.
-            + (val.staleRef === false && typeof val.refReason === 'string' ? `\nREF UNRESOLVED: ${val.refReason}` : '')
-            // plan08-fix-ref-rename: a rename is neither stale nor unresolved.
-            + (typeof val.refNote === 'string' ? `\nREF RENAMED: ${val.refNote}` : ''),
-        }],
+        render: (_args, val) => {
+          // plan16-view: the diff block guards its optional arrays — the schema
+          // marks them optional so an unmarked custom producer cannot crash render.
+          const d = val.diff
+          const added = d?.added ?? []
+          const removed = d?.removed ?? []
+          const changed = d?.changed ?? []
+          const diffText = d === undefined
+            ? ''
+            : `\nDIFF vs ${String(d.base)}: +${String(added.length)} -${String(removed.length)} ~${String(changed.length)}, ${String(d.unchangedCount)} unchanged`
+              + added.map(n => `\n+ "${n.ref}" [${n.role}] ${n.name}`).join('')
+              + removed.map(n => `\n- "${n.ref}" [${n.role}] ${n.name}`).join('')
+              + changed.map(n => `\n~ "${n.ref}" [${n.role}] ${n.name} (was: ${n.was})`).join('')
+              + (added.length === 0 && removed.length === 0 && changed.length === 0 ? ' (no changes)' : '')
+          return [{
+            type: 'text',
+            // plan06: the model sees the measured viewport next to the node count.
+            text: `Snapshot of "${val.title}" (${val.url}) - ${String(val.nodeCount)} nodes @ ${String(val.viewport.width)}x${String(val.viewport.height)} css px:\n`
+              // plan16-view: when lenses narrowed the list, say so before the rows.
+              + (typeof val.filtered === 'string' ? `FILTERED: ${val.filtered}\n` : '')
+              // plan08-fix (T3 F2): refs print RAW in quotes — never decorated.
+              // A model copies this string verbatim, so `@ref` here meant every
+              // consumer answered stale-ref on a healthy page.
+              + val.nodes.map(n => `"${n.ref}" [${n.role}] ${n.name}${n.value ? ` = "${n.value}"` : ''}`).join('\n')
+              // plan16-view: the delta prints after the rows so a widened walk reads top-down.
+              + diffText
+              // plan08: a stale ref must be visible in the rendered line too.
+              + (val.staleRef === true && typeof val.refReason === 'string' ? `\nREF STALE: ${val.refReason}` : '')
+              // plan08-fix: an unresolved FORMAT error is not staleness — label it honestly.
+              + (val.staleRef === false && typeof val.refReason === 'string' ? `\nREF UNRESOLVED: ${val.refReason}` : '')
+              // plan08-fix-ref-rename: a rename is neither stale nor unresolved.
+              + (typeof val.refNote === 'string' ? `\nREF RENAMED: ${val.refNote}` : ''),
+          }]
+        },
       },
       execute: async (args) => {
         const targetId = typeof args.targetId === 'string' ? args.targetId : undefined
@@ -604,7 +613,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
                 base: previous !== undefined ? 'previous' : 'none',
                 added: (delta?.added ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
                 removed: (delta?.removed ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
-                changed: delta?.changed ?? [],
+                changed: (delta?.changed ?? []).map(ch => ({ ref: ch.ref, role: ch.role, name: ch.name, was: ch.was })),
                 unchangedCount: delta?.unchangedCount ?? 0,
               },
             }
@@ -711,6 +720,94 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         return { ok: true, targetKey: outcome.released.targetKey }
       },
     })), 'cdp: cdp_unlock tool')
+
+    // 39. cdp_profiles
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_profiles',
+      description: 'Named-profile inventory and lifecycle for the persistent signed-in browser profiles under '
+        + '$DSH_HOME/profiles. action:"list" (default) reports every profile with its honest lock report '
+        + '(locked, artifacts, pid) plus the ACTIVE profile identity; action:"stop" ends the live session — '
+        + 'it terminates the browser process only when THIS service launched it, and never deletes the profile '
+        + '(the session is the whole point; lock state is read from disk, never guessed).',
+      parameters: {
+        action: { type: 'string', description: "'list' (default) or 'stop'." },
+        profile: { type: 'string', description: 'stop: the profile to stop; defaults to the active one. Refused in-band when it is not the active profile.' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            action: { type: 'string', description: "The action performed: 'list' or 'stop'." },
+            root: { type: 'string', description: 'Absolute profiles root the rows were read from.' },
+            active: { type: 'string', description: "The active profile identity ('', 'ephemeral', 'external', or a name)." },
+            profiles: {
+              type: 'array',
+              description: 'Named profile rows (name-validated subdirectories), sorted by name.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  name: { type: 'string', required: true },
+                  dir: { type: 'string', required: true },
+                  locked: { type: 'boolean', required: true },
+                  artifacts: { type: 'array', items: { type: 'string' } },
+                  pid: { type: 'string' },
+                },
+              },
+            },
+            stopped: { type: 'boolean', description: 'stop: true when the live session was ended.' },
+            note: { type: 'string', description: 'stop: what actually ended — process terminated vs connection only.' },
+            reason: { type: 'string', description: "In-band refusal (stop): e.g. 'not the active profile'." },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.action === 'stop'
+            ? (val.ok === true
+              ? `Stopped ${String(val.active)}: ${String(val.note)}`
+              : `STOP REFUSED: ${String(val.reason)}`)
+            : `Profiles at ${String(val.root)} (active: "${String(val.active)}"):\n`
+              + (val.profiles ?? []).map(p =>
+                `- ${p.name} [${p.locked === true ? `locked${p.pid !== undefined && p.pid !== '' ? ` pid:${p.pid}` : ''}` : 'free'}] ${p.dir}`,
+              ).join('\n')
+              + ((val.profiles ?? []).length === 0 ? '(no named profiles)' : ''),
+        }],
+      },
+      execute: async (args) => {
+        const inventory = service.profileInventory()
+        const action = args.action === 'stop' ? 'stop' : 'list'
+        if (action === 'list') return { ok: true, action: 'list', root: inventory.root, active: inventory.active, profiles: inventory.profiles }
+        const wanted = typeof args.profile === 'string' && args.profile.length > 0 ? args.profile : inventory.active
+        if (wanted === '') {
+          return { ok: false, action: 'stop', root: inventory.root, active: inventory.active, profiles: inventory.profiles, reason: 'no live session to stop' }
+        }
+        if (wanted !== inventory.active) {
+          return {
+            ok: false,
+            action: 'stop',
+            root: inventory.root,
+            active: inventory.active,
+            profiles: inventory.profiles,
+            reason: `"${wanted}" is not the active profile (active: "${inventory.active}") — stop acts on the live session only`,
+          }
+        }
+        const owned = service.launchedBrowserOwned()
+        await service.stop()
+        return {
+          ok: true,
+          action: 'stop',
+          root: inventory.root,
+          active: inventory.active,
+          profiles: inventory.profiles,
+          stopped: true,
+          note: owned
+            ? 'browser process terminated; the profile session stays on disk'
+            : 'connection closed only — the browser was not launched by this service and keeps running',
+        }
+      },
+    })), 'cdp: cdp_profiles tool')
 
     // 6. cdp_eval
     toolCtx.effect(() => toolCtx.tools.register(defineTool({

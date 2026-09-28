@@ -1,6 +1,6 @@
 # Web Kazıma Ustalığı — Mevcut Araç Setinin Tam Kullanım Kılavuzu
 
-Bu rehber, `packages/bundle/cdp/src/tools.ts` içinde kayıtlı **38 aracın tamamını**
+Bu rehber, `packages/bundle/cdp/src/tools.ts` içinde kayıtlı **39 aracın tamamını**
 (%100) bir veri kazıma işinde nasıl kullanacağını anlatır. Her bölüm **ölçülmüş**
 bir kanıta dayanır: kılavuzdaki sayıların, hata metinlerinin ve reçetelerin
 tamamı canlı `cdp_*` çağrılarıyla doğrulanmıştır — kanıt kaydı ve
@@ -59,19 +59,19 @@ taramaya devam et. Sonucu SKILL.md §2.7 adımıyla kullanıcıya ilet.
 
 ## 2. ARAÇ ENVANTERİ — 38 aracın tamamı
 
-`tools.ts` içinde kayıtlı toplam **38** araç vardır: **36 `cdp_*` + 2 `net_*`**
+`tools.ts` içinde kayıtlı toplam **39** araç vardır: **37 `cdp_*` + 2 `net_*`**
 (`net_capture` #10, `net_export` #11). Kaynak sıra numaraları aşağıda verilmiştir.
 
 > **Sayım denetimi (plan17-skillweb ile yeniden ölçüldü).** Bu bölümdeki
-> envanter, `tools.ts` içindeki `// 1.` … `// 38.` kayıt satırlarından **programatik
-> olarak** türetildi ve `docs/tool-catalog.md` ile çapraz doğrulandı: 38 kaydın
-> **38'i de** katalogda bir şema bölümü olarak duruyor. `cdp_locate` **#36**'dır ve
-> **kayıtlıdır**; canlı oturumda 38 aracın tamamı görünür.
+> envanter, `tools.ts` içindeki `// 1.` … `// 39.` kayıt satırlarından **programatik
+> olarak** türetildi ve `docs/tool-catalog.md` ile çapraz doğrulandı: 39 kaydın
+> **39'u da** katalogda bir şema bölümü olarak duruyor. `cdp_locate` **#36**'dır ve
+> **kayıtlıdır**; canlı oturumda 39 aracın tamamı görünür.
 >
 > Bu not, daha önce burada yazan iki bayat iddiayı **düzeltir**: (a) "`cdp_locate`
 > çalışan derlemede kayıtlı değil" — **yanlış**, kayıtlı; (b) "`src/index.ts:110`
 > sayım hatası" — o satır **plan09-fix ile zaten düzeltilmiş**, bugün
-> *"38 tools in all — 36 `cdp_*` plus `net_capture` and `net_export`"* diyor
+> *"39 tools in all — 37 `cdp_*` plus `net_capture` and `net_export`"* diyor
 > ([§4.10](#410-kanıt-kaydı-ve-doğrulanmayan-iddialar)).
 >
 > **Kural:** bu envanterdeki hiçbir sayıya güvenme — `tools.ts`'i oku ya da
@@ -162,6 +162,20 @@ taramaya devam et. Sonucu SKILL.md §2.7 adımıyla kullanıcıya ilet.
   (kilit hatası değil, bant içi veri): `holder` ve `lockedUntil` sahibi bildirir,
   sıraya gir. `cdp_unlock` yanlış sahipte `not-holder`, bilinmeyen/çift açılışta
   `unknown-lock` — **her ikisi de veri, hata değil.**
+
+#### `cdp_profiles` (#39) — Profil envanteri ve yaşam döngüsü
+
+- **Parametreler:** `{ action, profile }` — `action: 'list'` (varsayılan) her
+  adlandırılmış profili dürüst kilit raporuyla (`locked`, `artifacts`, `pid`) ve
+  aktif profil kimliğiyle listeler; `action: 'stop'` canlı oturumu bitirir
+  (`profile` verilmezse aktif olan durdurulur).
+- Profil **asla silinmez** — kalıcı oturum budur. `stop` yalnızca bu servisin
+  başlattığı tarayıcı process'ini öldürür; dışarıdan bağlanılan bir tarayıcıda
+  yalnızca bağlantıyı kapatır ve farkı `note`'da söyler. Kilit durumu diskteki
+  kanıt artıklarından okunur, **asla tahmin edilmez**.
+- **Hata imzası:** `stop` aktif olmayan bir profilde `ok:false` + `reason` ile
+  reddedilir ("is not the active profile"); canlı oturum yoksa `no live session
+  to stop`. İkisi de **bant içi veri**, throw değil.
 
 #### `cdp_navigate` (#4) — URL'ye git
 - **Parametreler:** `url` (zorunlu), `targetId`, `timeoutMs`.
@@ -1030,7 +1044,7 @@ hata görürsen **önce kendi ölç**, rapora olduğu gibi yazma.
 ### Kaynakta bulunan, bu rehberde düzeltilmiş tutarsızlıklar
 | Bulgu | Nerede | Durum |
 |---|---|---|
-| "36 `cdp_*` + net_capture/net_export" (net araçları iki kez sayıyordu) | `src/index.ts:110` | **Düzeltildi (plan09-fix)** → "38 tools in all — 36 `cdp_*` plus `net_capture` and `net_export`" |
+| "36 `cdp_*` + net_capture/net_export" (net araçları iki kez sayıyordu) | `src/index.ts:110` | **Düzeltildi (plan09-fix)** → "39 tools in all — 37 `cdp_*` plus `net_capture` and `net_export`" |
 | "`cdp_read` ile taze tut" — böyle bir araç yok | `src/index.ts:124` | **Düzeltildi (plan09-fix)** → `cdp_snapshot`/`cdp_click`/`cdp_type` |
 | `cdp_extract` `kind:'page'` alan yokken `""` + `COMPLETE` | `src/extract.ts` | **Düzeltildi (plan09-fix)** — Kural 11 |
 | `cdp_extract` `value` uyumsuz düğümde sessiz `null` | `src/extract.ts` | **Düzeltildi (plan09-fix)** — Kural 12 |
@@ -1179,7 +1193,7 @@ kancası, son sayfada bilinçli no-op "Sonraki sayfa").
 
 - [Guide Map](00-map.md#cdp-guide-map) — tüm rehberlerin indeksi.
 - [Skill Architecture](10-skill-mimarisi.md#skill-mimarisi--ağ-haritası-akışlar-ve-polimorfizm) —
-  **38 aracın "sonrasında ne yapılır" tablosu**, 14 uçtan uca akış (F1–F14) ve
+  **39 aracın "sonrasında ne yapılır" tablosu**, 14 uçtan uca akış (F1–F14) ve
   9 polimorfizm kümesi. Bu rehber *ne* kullanacağını anlatır; o rehber *hangi
   sırayla* kullanacağını.
 - [Human Interaction](07-human-interaction.md#layer-c-verification-challenge-roles) — ölçme disiplini ve **Layer C** araç rolleri.

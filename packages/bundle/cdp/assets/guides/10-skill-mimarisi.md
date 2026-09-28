@@ -1,7 +1,7 @@
 # Skill Mimarisi — Ağ Haritası, Akışlar ve Polimorfizm
 
 Bu rehber **katalog değildir**. Katalog zaten var: `09-scraping-master.md` §2
-38 aracın tamamını parametreleri, çıktıları ve hata sinyalleriyle anlatır;
+39 aracın tamamını parametreleri, çıktıları ve hata sinyalleriyle anlatır;
 SKILL.md §3 ise her araç için tek satırlık bir karar satırı taşır.
 
 Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
@@ -11,7 +11,7 @@ Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
 
 Üç bölüm:
 
-- **§1 Araç → sonraki araç tablosu** — 38 aracın her biri için *öncesi* ve
+- **§1 Araç → sonraki araç tablosu** — 39 aracın her biri için *öncesi* ve
   *sonrası*. Spiderweb'in kenarıdır: model nereye çıktığını bilir.
 - **§2 Akış haritası (14 iş akışı)** — hangi araçlar **birlikte** bir iş yapar,
   sırayla ve hangi rehberde. Spiderweb'in örgüsüdür.
@@ -21,7 +21,7 @@ Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
 
 ---
 
-## 1. ARAÇ → SONRAKİ ARAÇ (38/38)
+## 1. ARAÇ → SONRAKİ ARAÇ (39/39)
 
 **`öncesi`** = o aracı besleyen araç. **`sonrası`** = çağrıdan sonra mantıklı olan
 tek adım. **`◦`** = zorunlu, **`·`** = olası.
@@ -66,6 +66,7 @@ tek adım. **`◦`** = zorunlu, **`·`** = olası.
 | 36 | `cdp_locate` | `cdp_screenshot` | `cdp_click` |
 | 37 | `cdp_lock` | `cdp_tabs` (hedef seç) | yazma sırası → `cdp_unlock` |
 | 38 | `cdp_unlock` | `cdp_lock` (iş bitti) | serbest oturum |
+| 39 | `cdp_profiles` | `cdp_status` (envanter) | `cdp_open` (profile:…) ◦ · `cdp_status` |
 
 > **Kural:** Tablodaki `sonrası` sütunu **isteğe bağlı bir öneridir**, zorunlu bir
 > adım değil — ama "şimdi ne yapacağım" sorusunun cevabıdır. Boş bırakılan tek
@@ -423,7 +424,7 @@ Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** �
 
 - [Guide Map](00-map.md#cdp-guide-map) — tüm rehberlerin indeksi.
 - [Scraping Master](09-scraping-master.md#web-kazıma-ustalığı--mevcut-araç-setinin-tam-kullanım-kılavuzu)
-  — 38 aracın tam parametre/çıktı/hata envanteri ve kanıtla öğrenilmiş 17 kural.
+  — 39 aracın tam parametre/çıktı/hata envanteri ve kanıtla öğrenilmiş 17 kural.
 - [Human Interaction](07-human-interaction.md#human-interaction-and-verification-challenges)
   — ölçme disiplini, görsel döngü, slider protokolü ve **Layer C** araç rolleri.
 - [DOM and Evaluation](03-dom-and-eval.md#dom-weaving-and-script-evaluation) —
