@@ -1,0 +1,22 @@
+# The dsh-cdp bundle patch: the CDP browser-control extension as its own
+# layer. Apply it after dsh-base and dsh-web-app (the profile's
+# cordis.patch.yml and any --patch overlays still come later); the host row
+# injects the `webServer` service the web-app layer provides.
+#
+# A patch replaces the targeted row's whole `config`, so each row below
+# restates every key it owns.
+
+- insert:
+    # The host bridge: the `/api/server/cdp/status` route, the `cdp_status`
+    # tool, and the `app:cdp-status` prompt section.
+    - id: cdp
+      name: '@deepseek-ai/dsh-cdp'
+      config:
+        remoteDebuggingPort: 9222
+        proxyListenPort: 9333
+        guideAssetsDir: ''
+
+    # The right Sidebar's CDP tab: live browser targets, the last snapshot,
+    # and the request log, served by the routes in src/status.ts.
+    - id: ui-cdp-view
+      name: '@deepseek-ai/dsh-client-ui-cdp-view'

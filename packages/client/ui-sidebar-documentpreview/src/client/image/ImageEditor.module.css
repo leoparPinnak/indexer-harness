@@ -1,0 +1,156 @@
+/* The annotation surface: tools on one row, the picture under them, and the
+   save line at the bottom. */
+.editor {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  font-family: var(--dsw-font-family, sans-serif);
+  overflow-x: auto;
+}
+
+.tool,
+.toolActive {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toolActive {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(255 255 255 / 12%));
+}
+
+.tool:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(255 255 255 / 8%));
+}
+
+.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.swatch,
+.swatchActive {
+  flex: none;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l4);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.swatchActive {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: 1px;
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.save,
+.savePrimary {
+  flex: none;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 6px;
+  font-family: var(--dsw-font-family, sans-serif);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.save {
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.savePrimary {
+  border-color: transparent;
+  background: var(--dsw-alias-brand-primary, #0a84ff);
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+}
+
+.save:disabled,
+.savePrimary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.surface {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.canvas {
+  display: block;
+  flex: none;
+  user-select: none;
+}
+
+.hidden {
+  display: none;
+}
+
+.saveLine,
+.saveFailed {
+  flex: none;
+  margin: 0;
+  padding: 4px 10px 6px;
+  font-family: var(--dsw-font-family, sans-serif);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.saveLine {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.saveFailed {
+  color: var(--dsw-alias-danger, #ff3b30);
+}

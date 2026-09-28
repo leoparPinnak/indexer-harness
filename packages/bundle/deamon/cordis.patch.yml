@@ -1,0 +1,21 @@
+# The dsh-deamon bundle patch: the Shellbox desktop feature as its own
+# layer. Apply it after dsh-base and dsh-web-app (the profile's
+# cordis.patch.yml and any --patch overlays still come later); the host row
+# injects the `webServer` service the web-app layer provides.
+#
+# A patch replaces the targeted row's whole `config`, so each row below
+# restates every key it owns.
+
+- insert:
+    # The host bridge: sandbox routes, the WebSocket frame feed, the shared
+    # helper daemon, the `shellbox_launch` tool, the bundled `shellbox` skill,
+    # and the `app:shellbox-surface` prompt section.
+    - id: deamon
+      name: '@deepseek-ai/dsh-deamon'
+      config:
+        surfaceContext: true
+
+    # The right Sidebar's Shellbox tab: a live frame view of the private
+    # Windows desktop, served by the routes in src/sandbox.ts.
+    - id: ui-sandbox-view
+      name: '@deepseek-ai/dsh-client-ui-sandbox-view'

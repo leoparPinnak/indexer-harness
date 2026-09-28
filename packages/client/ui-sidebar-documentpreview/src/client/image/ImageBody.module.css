@@ -1,0 +1,77 @@
+/* The pane's own view fits the whole picture: both maxima bound the intrinsic
+   size, so an image larger than the pane scales down on whichever axis runs out
+   first and neither scrollbar ever appears. Zooming scales the fitted picture
+   about its centre, so the frame clips whatever the zoom pushes outside it. */
+.frame {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  overflow: hidden;
+  font-family: var(--dsw-font, sans-serif);
+  white-space: normal;
+}
+
+.image {
+  display: block;
+  flex: none;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  touch-action: none;
+}
+
+.image[hidden] {
+  display: none;
+}
+
+/* The one control this body owns: open the picture in its own window. */
+.openButton {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, rgb(255 255 255 / 6%));
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family, sans-serif);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.openButton:hover {
+  opacity: 1;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+}

@@ -1,0 +1,429 @@
+/* Context ring, compaction action, and the settings/panel menu surface
+   (menu surface: r12, elevation-prominent) in the composer tool row. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Same 28px circular hit target family as the composer's attach button. */
+.trigger {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.textButton {
+  flex: none;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.textButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.textButton:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+  background: transparent;
+}
+
+.track {
+  fill: none;
+  stroke: var(--dsw-alias-border-l3);
+  stroke-width: 2;
+}
+
+.fill {
+  fill: none;
+  stroke: var(--dsw-alias-label-tertiary);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  box-sizing: border-box;
+  width: 264px;
+  padding: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--dsw-specific-menu);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: default;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.figures {
+  margin-left: auto;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.percent {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.headline {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The headline brackets the reading, so the side a locale leaves empty must
+   drop out of the flex row rather than spend a gap. */
+.headline:empty {
+  display: none;
+}
+
+.bar {
+  display: flex;
+  gap: 1px;
+  margin: 10px 0 12px;
+  height: 4px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
+  overflow: hidden;
+}
+
+.segment {
+  flex: none;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+}
+
+.swatch {
+  display: inline-block;
+  margin-right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--meter-tint);
+  vertical-align: baseline;
+}
+
+.colorSystem {
+  --meter-tint: var(--dsw-static-neutral-bluish-400);
+}
+
+.colorTools {
+  /* The design platform ships no purple static token; violet-400 literal. */
+  --meter-tint: rgb(167, 139, 250);
+}
+
+.colorMessages {
+  --meter-tint: var(--dsw-static-blue-450);
+}
+
+.rows {
+  margin: 6px 0 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.row dt {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 0;
+}
+
+.slider {
+  flex: 1;
+  accent-color: var(--dsw-alias-label-tertiary);
+}
+
+.autoToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.autoToggle input {
+  accent-color: var(--dsw-alias-label-tertiary);
+}
+
+.sliderFigures {
+  padding: 0 0 2px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.figure {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.footerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.scopeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-left: 6px;
+  padding: 0 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  corner-shape: round;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.scopeBadge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: currentcolor;
+}
+
+.scopeGlobal {
+  color: var(--dsw-static-blue-450);
+}
+
+/* The design platform ships no green status token here; a 400-level literal,
+   matching the violet swatch precedent in this file. */
+.scopeSession {
+  color: rgb(74, 222, 128);
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.radioRow > span {
+  flex: 1;
+}
+
+.radioRow .scopeBadge {
+  margin-left: auto;
+}
+
+.form {
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+}
+
+.form legend {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.form legend .scopeBadge {
+  margin-left: auto;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 92px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Liquid refractive glassmorphic compact button (ışığı kıran sıvı cam) */
+.liquidGlassButton {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1;
+  padding: 6px 16px;
+  min-height: 32px;
+  border-radius: 999px;
+  corner-shape: round;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.5);
+  border-left-color: rgba(255, 255, 255, 0.4);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+  border-right-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(96, 165, 250, 0.12) 75%,
+    rgba(192, 132, 252, 0.12) 100%
+  );
+  backdrop-filter: blur(12px) saturate(190%);
+  -webkit-backdrop-filter: blur(12px) saturate(190%);
+  box-shadow:
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.35),
+    inset 1.5px 0 2px 0 rgba(56, 189, 248, 0.35),
+    inset -1.5px 0 2px 0 rgba(244, 114, 182, 0.28),
+    0 4px 14px 0 rgba(0, 0, 0, 0.3),
+    0 0 14px 0 rgba(96, 165, 250, 0.25);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquidGlassButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48%;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.38) 0%,
+    rgba(255, 255, 255, 0.05) 60%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.liquidGlassButton::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(147, 197, 253, 0.2) 30%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.4s ease;
+  pointer-events: none;
+}
+
+.liquidGlassButton:hover:not(:disabled) {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.07) 40%,
+    rgba(96, 165, 250, 0.22) 75%,
+    rgba(192, 132, 252, 0.2) 100%
+  );
+  border-top-color: rgba(255, 255, 255, 0.75);
+  border-left-color: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 2px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1.5px 3px 0 rgba(0, 0, 0, 0.45),
+    inset 2px 0 4px 0 rgba(56, 189, 248, 0.5),
+    inset -2px 0 4px 0 rgba(244, 114, 182, 0.4),
+    0 6px 22px 0 rgba(0, 0, 0, 0.4),
+    0 0 18px 2px rgba(96, 165, 250, 0.45);
+  transform: translateY(-0.5px);
+}
+
+.liquidGlassButton:hover:not(:disabled)::after {
+  opacity: 1;
+}
+
+.liquidGlassButton:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.98);
+  box-shadow:
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.45),
+    inset 0 -1px 1px 0 rgba(255, 255, 255, 0.3),
+    0 2px 6px 0 rgba(0, 0, 0, 0.3);
+}
+
+.liquidGlassButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: grayscale(60%);
+  box-shadow: none;
+}
+
+.glassIcon {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  filter: drop-shadow(0 0 4px rgba(147, 197, 253, 0.6));
+}
+
+.glassLabel {
+  position: relative;
+  z-index: 1;
+}

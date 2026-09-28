@@ -1,0 +1,185 @@
+/* The pane body is the stream's frame: the image fills it, and the failure
+   notice centres in the space the image would have taken. */
+.body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* Positioned against the pane rather than sized from it: a percentage height
+   resolves against an indefinite parent height and lets the image grow past the
+   frame, while an inset box can never exceed the pane. `contain` letterboxes the
+   helper's own viewport ratio instead of cropping it. */
+.stream {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.failure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.failureNotice {
+  margin: 0;
+}
+
+.retryButton {
+  padding: 6px 14px;
+  border-radius: var(--dsw-radius-default, 6px);
+  border: 1px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.retryButton:hover {
+  background: var(--dsw-alias-bg-layer-3);
+  border-color: var(--dsw-alias-border-hover);
+}
+
+.toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+  opacity: 0.35;
+  transition: opacity 0.2s ease;
+}
+
+.body:hover .toolbar {
+  opacity: 1;
+}
+
+.toolButton {
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 1px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolButton:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+  border-color: var(--dsw-alias-border-hover);
+}
+
+.toolButtonActive {
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  background: var(--dsw-alias-brand-primary, #0a84ff);
+  border-color: var(--dsw-alias-brand-primary, #0a84ff);
+}
+
+.changeBadge {
+  padding: 4px 8px;
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  font-size: 11px;
+  background: var(--dsw-alias-brand-primary, #0a84ff);
+  border: 0;
+  border-radius: 9999px;
+  corner-shape: round;
+  cursor: pointer;
+}
+
+.streamCapturing {
+  cursor: crosshair;
+  outline: 2px solid var(--dsw-alias-brand-primary, #0a84ff);
+  outline-offset: -2px;
+}
+
+.statusLine {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--dsw-alias-label-secondary, #999);
+  font-size: 11px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2, #252525) 68%, transparent);
+  border-radius: 9999px;
+  corner-shape: round;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.targetSelect {
+  padding: 3px 6px;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 1px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+.targetSelect:hover {
+  background: var(--dsw-alias-bg-layer-3);
+  border-color: var(--dsw-alias-border-hover);
+}
+
+.fpsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 1px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.fpsDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex: none;
+}
+
+.fpsDotWarn {
+  background: #eab308;
+}
+
+.fpsDotSlow {
+  background: #ef4444;
+}
+
+/* The monitor glyph before the chip's text; the chip's title row centres it on
+   the text's line and spaces it. */
+.titleIcon {
+  flex: none;
+}

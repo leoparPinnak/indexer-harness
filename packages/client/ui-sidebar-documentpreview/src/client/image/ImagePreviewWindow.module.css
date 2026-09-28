@@ -1,0 +1,146 @@
+/* The floating preview: a fixed window over the app, portalled to the document
+   so no pane ancestor can clip it. */
+.window {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-elevation-panel, 0 12px 32px rgb(0 0 0 / 35%));
+  overflow: hidden;
+}
+
+.titleBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family, sans-serif);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picture's own facts, beside its name: pixel size, file size, and format.
+   Flex-none so the name takes the squeeze and truncates instead of these. */
+.info {
+  display: flex;
+  flex: none;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.info > span + span::before {
+  content: '·';
+  margin: 0 5px;
+  opacity: 0.55;
+}
+
+.controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.control,
+.controlWide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family, sans-serif);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.control {
+  width: 24px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.control:hover,
+.controlWide:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(255 255 255 / 8%));
+}
+
+.percent {
+  min-width: 46px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  text-align: center;
+  cursor: default;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 8px;
+  /* The picture is panned by dragging, never scrolled: the window keeps one
+     frame and the reader moves the picture inside it. */
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* A source for the picture's own size only: the editor draws the visible canvas. */
+.hidden {
+  display: none;
+}
+
+/* The resize grip in the bottom-right corner. */
+.grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.grip::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--dsw-alias-label-secondary);
+  border-bottom: 2px solid var(--dsw-alias-label-secondary);
+  opacity: 0.6;
+}

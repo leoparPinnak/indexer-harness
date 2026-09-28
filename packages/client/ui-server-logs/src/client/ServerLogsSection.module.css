@@ -1,0 +1,88 @@
+/* The Server Logs section: a toolbar over a newest-first mono pane. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 16px;
+}
+
+.description {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: 1.6;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 0.5px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toolButton {
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 0.5px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolButton:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+  border-color: var(--dsw-alias-border-hover);
+}
+
+.error {
+  margin: 0;
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.note {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.pane {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 420px;
+  overflow: auto;
+  border-radius: var(--dsw-radius-small, 4px);
+  border: 0.5px solid var(--dsw-alias-border-default);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

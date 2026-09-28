@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-09-24-deamon-rename-and-persistent-desktop.md
+2026-09-24-deamon-rename-and-persistent-desktop.md: 5730a74095a9e30476e740846b3f2b6eb5c58e42
+2026-09-24-deamon-rename-and-persistent-desktop.zh.md: dd2b418c2c1d3897ecf720ac97b3d2241ad1ee69

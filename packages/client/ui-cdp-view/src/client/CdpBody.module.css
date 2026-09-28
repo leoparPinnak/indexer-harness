@@ -1,0 +1,94 @@
+/* The pane body fills the tab frame and sits on the base layer, so its own
+   scroll skin keeps the default l1 thumb pair. Only the status panel scrolls. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+  padding: 12px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: 1.6;
+}
+
+/* Loading and failure lines share the quiet secondary ink and centre in the
+   space the status fields would have taken. */
+.notice {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  text-align: center;
+}
+
+/* Flat control: the neutral stroke is the 0.5px hairline, never a layout 1px. */
+.retry {
+  align-self: center;
+  padding: 6px 14px;
+  border: 0.5px solid var(--dsw-alias-border-default);
+  border-radius: var(--dsw-radius-default, 6px);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: var(--dsw-alias-bg-layer-3);
+  border-color: var(--dsw-alias-border-hover);
+}
+
+/* Availability line: the dot carries the state for sighted readers and the
+   label repeats it, so colour is never the only channel. */
+.availability {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-state-error-primary);
+}
+
+.dotUp {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+/* One label/value pair per row; the label column sizes to the longest term.
+   This is the pane's elevated surface: the 0.5px stroke rides inside
+   --dsw-elevation-panel rather than a border, and its scroll thumb takes the l2
+   elevation pair (ui-theme styles/scrollbar.css rebinding contract). */
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  max-height: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 0;
+  border-radius: var(--dsw-radius-default, 6px);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-panel);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.term {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.value {
+  margin: 0;
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,554 @@
+{
+  "title": "Checkout — Fixture Shop",
+  "url": "https://fixture.shop/checkout",
+  "viewport": { "width": 1280, "height": 800 },
+  "boxes": {
+    "2": { "x": 0, "y": 0, "width": 1280, "height": 800 },
+    "6": { "x": 0, "y": 0, "width": 1280, "height": 800 },
+    "7": { "x": 0, "y": 0, "width": 1280, "height": 80 },
+    "8": { "x": 24, "y": 24, "width": 300, "height": 32 },
+    "10": { "x": 800, "y": 24, "width": 456, "height": 32 },
+    "11": { "x": 800, "y": 24, "width": 72, "height": 24 },
+    "13": { "x": 884, "y": 24, "width": 64, "height": 24 },
+    "15": { "x": 960, "y": 24, "width": 104, "height": 24 },
+    "17": { "x": 0, "y": 80, "width": 1280, "height": 640 },
+    "18": { "x": 24, "y": 104, "width": 600, "height": 220 },
+    "19": { "x": 24, "y": 104, "width": 240, "height": 28 },
+    "21": { "x": 24, "y": 140, "width": 160, "height": 20 },
+    "23": { "x": 24, "y": 168, "width": 80, "height": 20 },
+    "25": { "x": 24, "y": 348, "width": 600, "height": 408 },
+    "26": { "x": 24, "y": 348, "width": 600, "height": 408 },
+    "31": { "x": 24, "y": 392, "width": 552, "height": 32 },
+    "34": { "x": 24, "y": 456, "width": 552, "height": 32 },
+    "35": { "x": 24, "y": 520, "width": 552, "height": 32 },
+    "36": { "x": 26, "y": 522, "width": 548, "height": 28 },
+    "38": { "x": 26, "y": 522, "width": 548, "height": 28 },
+    "40": { "x": 26, "y": 522, "width": 548, "height": 28 },
+    "42": { "x": 24, "y": 584, "width": 80, "height": 20 },
+    "44": { "x": 0, "y": 0, "width": 0, "height": 0 },
+    "45": { "x": 24, "y": 616, "width": 120, "height": 20 },
+    "47": { "x": 24, "y": 640, "width": 552, "height": 32 },
+    "48": { "x": 24, "y": 684, "width": 20, "height": 20 },
+    "49": { "x": 24, "y": 716, "width": 160, "height": 40 },
+    "51": { "x": 660, "y": 104, "width": 596, "height": 300 },
+    "52": { "x": 660, "y": 104, "width": 596, "height": 24 },
+    "55": { "x": 660, "y": 132, "width": 596, "height": 28 },
+    "56": { "x": 660, "y": 132, "width": 300, "height": 28 },
+    "58": { "x": 960, "y": 132, "width": 148, "height": 28 },
+    "60": { "x": 1108, "y": 132, "width": 148, "height": 28 },
+    "63": { "x": 660, "y": 168, "width": 596, "height": 28 },
+    "64": { "x": 660, "y": 168, "width": 300, "height": 28 },
+    "66": { "x": 960, "y": 168, "width": 148, "height": 28 },
+    "68": { "x": 1108, "y": 168, "width": 148, "height": 28 },
+    "71": { "x": 660, "y": 204, "width": 596, "height": 28 },
+    "72": { "x": 660, "y": 204, "width": 448, "height": 28 },
+    "74": { "x": 1108, "y": 204, "width": 148, "height": 28 }
+  },
+  "accessibility": [
+    { "nodeId": "ax2", "documentNodeId": 2, "role": "RootWebArea", "name": "Checkout — Fixture Shop", "ignored": false, "childIds": ["ax6"] },
+    { "nodeId": "ax6", "documentNodeId": 6, "role": "generic", "name": "", "ignored": false, "childIds": ["ax7", "ax17", "ax77", "ax79"] },
+    { "nodeId": "ax7", "documentNodeId": 7, "role": "banner", "name": "", "ignored": false, "childIds": ["ax8", "ax10"] },
+    { "nodeId": "ax8", "documentNodeId": 8, "role": "heading", "name": "Fixture Shop", "ignored": false, "childIds": [] },
+    { "nodeId": "ax10", "documentNodeId": 10, "role": "navigation", "name": "Main", "ignored": false, "childIds": ["ax11", "ax13", "ax15"] },
+    { "nodeId": "ax11", "documentNodeId": 11, "role": "link", "name": "Home", "ignored": false, "childIds": [] },
+    { "nodeId": "ax13", "documentNodeId": 13, "role": "link", "name": "Cart", "ignored": false, "childIds": [] },
+    { "nodeId": "ax15", "documentNodeId": 15, "role": "link", "name": "Account", "ignored": false, "childIds": [] },
+    { "nodeId": "ax17", "documentNodeId": 17, "role": "main", "name": "", "ignored": false, "childIds": ["ax18", "ax25", "ax51"] },
+    { "nodeId": "ax18", "documentNodeId": 18, "role": "region", "name": "Order summary", "ignored": false, "childIds": ["ax19", "ax21"] },
+    { "nodeId": "ax19", "documentNodeId": 19, "role": "heading", "name": "Order summary", "ignored": false, "childIds": [] },
+    { "nodeId": "ax21", "documentNodeId": 21, "role": "paragraph", "name": "Two items", "ignored": false, "childIds": [] },
+    { "nodeId": "ax25", "documentNodeId": 25, "role": "form", "name": "Checkout", "ignored": false, "childIds": ["ax26"] },
+    { "nodeId": "ax26", "documentNodeId": 26, "role": "group", "name": "Contact", "ignored": false, "childIds": ["ax27", "ax29", "ax32", "ax35", "ax42", "ax44", "ax45", "ax47", "ax49"] },
+    { "nodeId": "ax27", "documentNodeId": 27, "role": "legend", "name": "", "ignored": true, "childIds": [] },
+    { "nodeId": "ax29", "documentNodeId": 29, "role": "label", "name": "", "ignored": true, "childIds": [] },
+    { "nodeId": "ax32", "documentNodeId": 32, "role": "label", "name": "", "ignored": true, "childIds": [] },
+    { "nodeId": "ax35", "documentNodeId": 35, "role": "combobox", "name": "Country", "value": "Türkiye", "ignored": false, "childIds": ["ax36", "ax40"] },
+    { "nodeId": "ax36", "documentNodeId": 36, "role": "option", "name": "Türkiye", "ignored": false, "childIds": [] },
+    { "nodeId": "ax40", "documentNodeId": 40, "role": "option", "name": "United States", "ignored": false, "childIds": [] },
+    { "nodeId": "ax42", "documentNodeId": 42, "role": "label", "name": "", "ignored": true, "childIds": [] },
+    { "nodeId": "ax44", "documentNodeId": 44, "role": "textbox", "name": "Address", "ignored": false, "childIds": [] },
+    { "nodeId": "ax45", "documentNodeId": 45, "role": "label", "name": "", "ignored": true, "childIds": [] },
+    { "nodeId": "ax47", "documentNodeId": 47, "role": "textbox", "name": "Postal code", "ignored": false, "childIds": [] },
+    { "nodeId": "ax49", "documentNodeId": 49, "role": "button", "name": "Place order", "ignored": false, "childIds": [] },
+    { "nodeId": "ax51", "documentNodeId": 51, "role": "table", "name": "Items", "ignored": false, "childIds": ["ax52", "ax54", "ax62", "ax70"] },
+    { "nodeId": "ax52", "documentNodeId": 52, "role": "caption", "name": "Items", "ignored": false, "childIds": [] },
+    { "nodeId": "ax54", "documentNodeId": 54, "role": "rowgroup", "name": "", "ignored": true, "childIds": ["ax55"] },
+    { "nodeId": "ax55", "documentNodeId": 55, "role": "row", "name": "", "ignored": false, "childIds": ["ax56", "ax58", "ax60"] },
+    { "nodeId": "ax56", "documentNodeId": 56, "role": "columnheader", "name": "Item", "ignored": false, "childIds": [] },
+    { "nodeId": "ax58", "documentNodeId": 58, "role": "columnheader", "name": "Quantity", "ignored": false, "childIds": [] },
+    { "nodeId": "ax60", "documentNodeId": 60, "role": "columnheader", "name": "Price", "ignored": false, "childIds": [] },
+    { "nodeId": "ax62", "documentNodeId": 62, "role": "rowgroup", "name": "", "ignored": true, "childIds": ["ax63"] },
+    { "nodeId": "ax63", "documentNodeId": 63, "role": "row", "name": "", "ignored": false, "childIds": ["ax64", "ax66", "ax68"] },
+    { "nodeId": "ax64", "documentNodeId": 64, "role": "cell", "name": "Desk lamp", "ignored": false, "childIds": [] },
+    { "nodeId": "ax66", "documentNodeId": 66, "role": "cell", "name": "1", "ignored": false, "childIds": [] },
+    { "nodeId": "ax68", "documentNodeId": 68, "role": "cell", "name": "₺1.299", "ignored": false, "childIds": [] },
+    { "nodeId": "ax70", "documentNodeId": 70, "role": "rowgroup", "name": "", "ignored": true, "childIds": ["ax71"] },
+    { "nodeId": "ax71", "documentNodeId": 71, "role": "row", "name": "", "ignored": false, "childIds": ["ax72", "ax74"] },
+    { "nodeId": "ax72", "documentNodeId": 72, "role": "cell", "name": "Total", "ignored": false, "childIds": [] },
+    { "nodeId": "ax74", "documentNodeId": 74, "role": "cell", "name": "₺1.539", "ignored": false, "childIds": [] },
+    { "nodeId": "ax77", "documentNodeId": 77, "role": "paragraph", "name": "Delete this order?", "ignored": false, "childIds": [] },
+    { "nodeId": "ax79", "documentNodeId": 79, "role": "button", "name": "Cancel", "ignored": false, "childIds": [] }
+  ],
+  "document": {
+    "nodeId": 1,
+    "nodeType": 9,
+    "nodeName": "#document",
+    "children": [
+      {
+        "nodeId": 2,
+        "parentId": 1,
+        "nodeType": 1,
+        "nodeName": "HTML",
+        "attributes": ["lang", "en"],
+        "children": [
+          {
+            "nodeId": 3,
+            "parentId": 2,
+            "nodeType": 1,
+            "nodeName": "HEAD",
+            "children": [
+              {
+                "nodeId": 4,
+                "parentId": 3,
+                "nodeType": 1,
+                "nodeName": "TITLE",
+                "children": [
+                  { "nodeId": 5, "parentId": 4, "nodeType": 3, "nodeName": "#text", "nodeValue": "Checkout — Fixture Shop" }
+                ]
+              }
+            ]
+          },
+          {
+            "nodeId": 6,
+            "parentId": 2,
+            "nodeType": 1,
+            "nodeName": "BODY",
+            "children": [
+              {
+                "nodeId": 7,
+                "parentId": 6,
+                "nodeType": 1,
+                "nodeName": "HEADER",
+                "children": [
+                  {
+                    "nodeId": 8,
+                    "parentId": 7,
+                    "nodeType": 1,
+                    "nodeName": "H1",
+                    "children": [
+                      { "nodeId": 9, "parentId": 8, "nodeType": 3, "nodeName": "#text", "nodeValue": "Fixture Shop" }
+                    ]
+                  },
+                  {
+                    "nodeId": 10,
+                    "parentId": 7,
+                    "nodeType": 1,
+                    "nodeName": "NAV",
+                    "attributes": ["aria-label", "Main"],
+                    "children": [
+                      {
+                        "nodeId": 11,
+                        "parentId": 10,
+                        "nodeType": 1,
+                        "nodeName": "A",
+                        "attributes": ["href", "/"],
+                        "children": [
+                          { "nodeId": 12, "parentId": 11, "nodeType": 3, "nodeName": "#text", "nodeValue": "Home" }
+                        ]
+                      },
+                      {
+                        "nodeId": 13,
+                        "parentId": 10,
+                        "nodeType": 1,
+                        "nodeName": "A",
+                        "attributes": ["href", "/cart"],
+                        "children": [
+                          { "nodeId": 14, "parentId": 13, "nodeType": 3, "nodeName": "#text", "nodeValue": "Cart" }
+                        ]
+                      },
+                      {
+                        "nodeId": 15,
+                        "parentId": 10,
+                        "nodeType": 1,
+                        "nodeName": "A",
+                        "attributes": ["href", "/account"],
+                        "children": [
+                          { "nodeId": 16, "parentId": 15, "nodeType": 3, "nodeName": "#text", "nodeValue": "Account" }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "nodeId": 17,
+                "parentId": 6,
+                "nodeType": 1,
+                "nodeName": "MAIN",
+                "children": [
+                  {
+                    "nodeId": 18,
+                    "parentId": 17,
+                    "nodeType": 1,
+                    "nodeName": "SECTION",
+                    "attributes": ["id", "order-summary"],
+                    "children": [
+                      {
+                        "nodeId": 19,
+                        "parentId": 18,
+                        "nodeType": 1,
+                        "nodeName": "H2",
+                        "children": [
+                          { "nodeId": 20, "parentId": 19, "nodeType": 3, "nodeName": "#text", "nodeValue": "Order summary" }
+                        ]
+                      },
+                      {
+                        "nodeId": 21,
+                        "parentId": 18,
+                        "nodeType": 1,
+                        "nodeName": "P",
+                        "children": [
+                          { "nodeId": 22, "parentId": 21, "nodeType": 3, "nodeName": "#text", "nodeValue": "Two items" }
+                        ]
+                      },
+                      {
+                        "nodeId": 23,
+                        "parentId": 18,
+                        "nodeType": 1,
+                        "nodeName": "A",
+                        "attributes": ["href", "/cart/edit"],
+                        "children": [
+                          { "nodeId": 24, "parentId": 23, "nodeType": 3, "nodeName": "#text", "nodeValue": "Edit cart" }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "nodeId": 25,
+                    "parentId": 17,
+                    "nodeType": 1,
+                    "nodeName": "FORM",
+                    "attributes": ["id", "checkout", "action", "/checkout", "method", "post"],
+                    "children": [
+                      {
+                        "nodeId": 26,
+                        "parentId": 25,
+                        "nodeType": 1,
+                        "nodeName": "FIELDSET",
+                        "children": [
+                          {
+                            "nodeId": 27,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "LEGEND",
+                            "children": [
+                              { "nodeId": 28, "parentId": 27, "nodeType": 3, "nodeName": "#text", "nodeValue": "Contact" }
+                            ]
+                          },
+                          {
+                            "nodeId": 29,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "LABEL",
+                            "attributes": ["for", "email"],
+                            "children": [
+                              { "nodeId": 30, "parentId": 29, "nodeType": 3, "nodeName": "#text", "nodeValue": "Email" }
+                            ]
+                          },
+                          {
+                            "nodeId": 31,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "INPUT",
+                            "attributes": ["id", "email", "type", "email", "name", "email", "placeholder", "you@example.com"]
+                          },
+                          {
+                            "nodeId": 32,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "LABEL",
+                            "attributes": ["for", "full-name"],
+                            "children": [
+                              { "nodeId": 33, "parentId": 32, "nodeType": 3, "nodeName": "#text", "nodeValue": "Full name" }
+                            ]
+                          },
+                          {
+                            "nodeId": 34,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "INPUT",
+                            "attributes": ["id", "full-name", "type", "text", "name", "fullName", "aria-label", "Full name"]
+                          },
+                          {
+                            "nodeId": 35,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "SELECT",
+                            "attributes": ["id", "country", "name", "country"],
+                            "children": [
+                              {
+                                "nodeId": 36,
+                                "parentId": 35,
+                                "nodeType": 1,
+                                "nodeName": "OPTION",
+                                "attributes": ["value", "tr"],
+                                "children": [
+                                  { "nodeId": 37, "parentId": 36, "nodeType": 3, "nodeName": "#text", "nodeValue": "Türkiye" }
+                                ]
+                              },
+                              {
+                                "nodeId": 38,
+                                "parentId": 35,
+                                "nodeType": 1,
+                                "nodeName": "OPTION",
+                                "attributes": ["value", "de"],
+                                "children": [
+                                  { "nodeId": 39, "parentId": 38, "nodeType": 3, "nodeName": "#text", "nodeValue": "Germany" }
+                                ]
+                              },
+                              {
+                                "nodeId": 40,
+                                "parentId": 35,
+                                "nodeType": 1,
+                                "nodeName": "OPTION",
+                                "attributes": ["value", "us"],
+                                "children": [
+                                  { "nodeId": 41, "parentId": 40, "nodeType": 3, "nodeName": "#text", "nodeValue": "United States" }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "nodeId": 42,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "LABEL",
+                            "attributes": ["for", "address"],
+                            "children": [
+                              { "nodeId": 43, "parentId": 42, "nodeType": 3, "nodeName": "#text", "nodeValue": "Address" }
+                            ]
+                          },
+                          {
+                            "nodeId": 44,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "INPUT",
+                            "attributes": ["id", "address", "type", "text", "name", "address"]
+                          },
+                          {
+                            "nodeId": 45,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "LABEL",
+                            "attributes": ["for", "postal-code"],
+                            "children": [
+                              { "nodeId": 46, "parentId": 45, "nodeType": 3, "nodeName": "#text", "nodeValue": "Postal code" }
+                            ]
+                          },
+                          {
+                            "nodeId": 47,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "INPUT",
+                            "attributes": ["id", "postal-code", "type", "text", "name", "postalCode"]
+                          },
+                          {
+                            "nodeId": 48,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "INPUT",
+                            "attributes": ["id", "terms", "type", "checkbox", "name", "terms", "aria-label", "Accept terms"]
+                          },
+                          {
+                            "nodeId": 49,
+                            "parentId": 26,
+                            "nodeType": 1,
+                            "nodeName": "BUTTON",
+                            "attributes": ["type", "submit"],
+                            "children": [
+                              { "nodeId": 50, "parentId": 49, "nodeType": 3, "nodeName": "#text", "nodeValue": "Place order" }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "nodeId": 51,
+                    "parentId": 17,
+                    "nodeType": 1,
+                    "nodeName": "TABLE",
+                    "attributes": ["id", "items"],
+                    "children": [
+                      {
+                        "nodeId": 52,
+                        "parentId": 51,
+                        "nodeType": 1,
+                        "nodeName": "CAPTION",
+                        "children": [
+                          { "nodeId": 53, "parentId": 52, "nodeType": 3, "nodeName": "#text", "nodeValue": "Items" }
+                        ]
+                      },
+                      {
+                        "nodeId": 54,
+                        "parentId": 51,
+                        "nodeType": 1,
+                        "nodeName": "THEAD",
+                        "children": [
+                          {
+                            "nodeId": 55,
+                            "parentId": 54,
+                            "nodeType": 1,
+                            "nodeName": "TR",
+                            "children": [
+                              {
+                                "nodeId": 56,
+                                "parentId": 55,
+                                "nodeType": 1,
+                                "nodeName": "TH",
+                                "attributes": ["scope", "col"],
+                                "children": [
+                                  { "nodeId": 57, "parentId": 56, "nodeType": 3, "nodeName": "#text", "nodeValue": "Item" }
+                                ]
+                              },
+                              {
+                                "nodeId": 58,
+                                "parentId": 55,
+                                "nodeType": 1,
+                                "nodeName": "TH",
+                                "attributes": ["scope", "col"],
+                                "children": [
+                                  { "nodeId": 59, "parentId": 58, "nodeType": 3, "nodeName": "#text", "nodeValue": "Quantity" }
+                                ]
+                              },
+                              {
+                                "nodeId": 60,
+                                "parentId": 55,
+                                "nodeType": 1,
+                                "nodeName": "TH",
+                                "attributes": ["scope", "col"],
+                                "children": [
+                                  { "nodeId": 61, "parentId": 60, "nodeType": 3, "nodeName": "#text", "nodeValue": "Price" }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "nodeId": 62,
+                        "parentId": 51,
+                        "nodeType": 1,
+                        "nodeName": "TBODY",
+                        "children": [
+                          {
+                            "nodeId": 63,
+                            "parentId": 62,
+                            "nodeType": 1,
+                            "nodeName": "TR",
+                            "children": [
+                              {
+                                "nodeId": 64,
+                                "parentId": 63,
+                                "nodeType": 1,
+                                "nodeName": "TD",
+                                "children": [
+                                  { "nodeId": 65, "parentId": 64, "nodeType": 3, "nodeName": "#text", "nodeValue": "Desk lamp" }
+                                ]
+                              },
+                              {
+                                "nodeId": 66,
+                                "parentId": 63,
+                                "nodeType": 1,
+                                "nodeName": "TD",
+                                "children": [
+                                  { "nodeId": 67, "parentId": 66, "nodeType": 3, "nodeName": "#text", "nodeValue": "1" }
+                                ]
+                              },
+                              {
+                                "nodeId": 68,
+                                "parentId": 63,
+                                "nodeType": 1,
+                                "nodeName": "TD",
+                                "children": [
+                                  { "nodeId": 69, "parentId": 68, "nodeType": 3, "nodeName": "#text", "nodeValue": "₺1.299" }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "nodeId": 70,
+                        "parentId": 51,
+                        "nodeType": 1,
+                        "nodeName": "TFOOT",
+                        "children": [
+                          {
+                            "nodeId": 71,
+                            "parentId": 70,
+                            "nodeType": 1,
+                            "nodeName": "TR",
+                            "children": [
+                              {
+                                "nodeId": 72,
+                                "parentId": 71,
+                                "nodeType": 1,
+                                "nodeName": "TD",
+                                "attributes": ["colspan", "2"],
+                                "children": [
+                                  { "nodeId": 73, "parentId": 72, "nodeType": 3, "nodeName": "#text", "nodeValue": "Total" }
+                                ]
+                              },
+                              {
+                                "nodeId": 74,
+                                "parentId": 71,
+                                "nodeType": 1,
+                                "nodeName": "TD",
+                                "children": [
+                                  { "nodeId": 75, "parentId": 74, "nodeType": 3, "nodeName": "#text", "nodeValue": "₺1.539" }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "nodeId": 76,
+                "parentId": 6,
+                "nodeType": 1,
+                "nodeName": "DIV",
+                "attributes": ["id", "confirm", "role", "dialog", "aria-modal", "true"],
+                "children": [
+                  {
+                    "nodeId": 77,
+                    "parentId": 76,
+                    "nodeType": 1,
+                    "nodeName": "P",
+                    "children": [
+                      { "nodeId": 78, "parentId": 77, "nodeType": 3, "nodeName": "#text", "nodeValue": "Delete this order?" }
+                    ]
+                  },
+                  {
+                    "nodeId": 79,
+                    "parentId": 76,
+                    "nodeType": 1,
+                    "nodeName": "BUTTON",
+                    "attributes": ["type", "button"],
+                    "children": [
+                      { "nodeId": 80, "parentId": 79, "nodeType": 3, "nodeName": "#text", "nodeValue": "Cancel" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
