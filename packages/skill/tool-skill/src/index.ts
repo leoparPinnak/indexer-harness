@@ -47,14 +47,20 @@ declare module '@deepseek-ai/dsh-llm' {
 }
 
 /** Durable entry list mirroring the rendered catalog lines, for non-model consumers. */
-function catalogSourceEntries(
+export function catalogSourceEntries(
   skills: SkillSummary[],
   descriptionMaxLength: number,
 ): SkillCatalogSource['entries'] {
-  return skills.map(skill => ({
-    name: skill.name,
-    description: catalogDescription(skill.description, descriptionMaxLength),
-  }))
+  return skills
+    .map(skill => ({
+      name: skill.name,
+      description: catalogDescription(skill.description, descriptionMaxLength),
+    }))
+    // plan16-cache: code-unit name order, always. The digest below decides
+    // whether the catalog is re-published, so entry order must not ride on
+    // provider discovery order — and never on the host locale the way
+    // `localeCompare` would. Same tree, same bytes, on every machine.
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 /** Model-facing skill catalog configuration. */
@@ -324,11 +330,18 @@ function renderCatalogEntries(entries: SkillCatalogSource['entries']): string[] 
  * Catalog identity over the durable entry list rather than the rendered prose.
  * The entries are what changes; the surrounding `<system-reminder>` framing is
  * written for the model and must not decide whether a republish is needed.
+ *
+ * plan16-cache: the digest is SET identity — entries are canonicalized by
+ * code-unit name order before hashing, so a permuted catalog never forces a
+ * republish (and a pre-order-fix legacy catalog does not thrash on upgrade).
  */
-function digestCatalogEntries(entries: SkillCatalogSource['entries']): string {
+export function digestCatalogEntries(entries: SkillCatalogSource['entries']): string {
   // JSON per entry rather than a separator character: every separator is itself
   // a legal description character, so only quoting makes the boundary exact.
-  const canonical = entries.map(entry => JSON.stringify([entry.name, entry.description])).join('\n')
+  const canonical = [...entries]
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map(entry => JSON.stringify([entry.name, entry.description]))
+    .join('\n')
   return createHash('sha256')
     .update(canonical)
     .digest('hex')

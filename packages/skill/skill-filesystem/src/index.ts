@@ -720,10 +720,24 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code
 }
 
+/**
+ * plan16-cache: deterministic code-unit name order — the house tie-break (the
+ * system-prompt assembler states "equal orders use code-unit name order").
+ * `localeCompare` is locale-SENSITIVE: the same tree catalogs in a different
+ * order on a machine with a different ICU default, which busts every prompt
+ * cache and churns the catalog digest. Code units never disagree.
+ * @param a - first name.
+ * @param b - second name.
+ * @returns negative/zero/positive by code-unit order.
+ */
+export function compareSkillNames(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
 async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Promise<SkillCandidate[]> {
   const skills: SkillCandidate[] = []
   const entries = await listSkillRootEntries(root, ctx)
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.sort((a, b) => compareSkillNames(a.name, b.name))) {
     if (root.skipSystem && entry.name === '.system') continue
     const locator = entry.type === 'directory'
       ? { path: join(entry.path, 'SKILL.md'), directory: entry.path }
