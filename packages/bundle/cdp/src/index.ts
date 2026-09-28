@@ -114,6 +114,7 @@ function cdpStatusPrompt(): string {
     + '- The CDP extension drives Chromium-based browsers over the Chrome DevTools Protocol: 39 tools in all — 37 `cdp_*` plus `net_capture` and `net_export`.\n'
     + '- Call `cdp_status` for the installed version, the live target count, and the proxy state; the CDP tab in the right sidebar shows the same state.\n'
     + '- `cdp_exec` runs page code with a guaranteed error envelope and optional post-condition; prefer it over `cdp_eval` when the outcome must be verified.\n'
+    + '- Large payloads spill to a file: when `cdp_text`/`cdp_exec`/`cdp_extract` overflow a 12k-char budget the answer carries `spill` with the path and a head+tail envelope — read focused sections with `cdp_files`.\n'
     + '- A browser endpoint is only reachable while it was launched with remote debugging enabled; `cdp_endpoints` discovers loopback debugging ports and `cdp_contexts` lists targets.\n'
     // plan13-profile: the choice gate is a NEW cdp_open return shape; a model
     // that ignores `needsChoice` would sit waiting for a browser that was

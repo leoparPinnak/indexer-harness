@@ -37,6 +37,7 @@ import { WAIT_STRATEGIES, renderWait, runWait, validateWaitArgs, waitPlan, type 
    identity reports, so the model is told "renamed", never "re-rendered". */
 import { RefStaleError, centerOf, isStaleRefReason, renameNote, type RefEvidence } from './refs.ts' /* plan08 */
 import { compactNode, diffSnapshots, filterInteractive } from './snapshot-view.ts' /* plan16-view */
+import { spillNote, spillRowsField, spillTextField } from './spill.ts' /* plan16-spill */
 import { TabLockRegistry } from './tab-lock.ts' /* plan16-lock */
 import type { CdpWovenNode } from './snapshot.ts'
 /* plan11: cdp_captcha — the detect/drive/read tool. The LOCATOR DSL is
@@ -2142,22 +2143,33 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
               type: 'number',
               description: 'plan15-hidden: the per-send bound actually used, present only when a corroborated hidden tab widened it (so the x2 is reported, never silent).',
             },
+            // plan16-spill: an oversized result spills to disk and keeps a head+tail envelope.
+            spill: {
+              type: 'object',
+              description: 'plan16-spill: present when the result payload blew the 12k-char budget — the FULL content spilled to the given path and `result` holds a head+tail envelope instead. Read focused sections with cdp_files.',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                chars: { type: 'integer', required: true },
+                rows: { type: 'integer' },
+              },
+            },
           },
         },
         render: (_args, val) => [{
           type: 'text',
-          text: renderExecText(val),
+          text: [renderExecText(val), spillNote(val.spill)].filter(part => part !== '').join('\n'),
         }],
       },
       // plan01 §5.5: service.exec envelopes every expected failure mode
       // (§3.5); only truly unexpected internal errors reach the pipeline.
-      execute: (args) => service.exec({
+      execute: async (args) => spillTextField('cdp_exec', 'result', await service.exec({
         expression: args.expression,
         ...(typeof args.targetId === 'string' ? { targetId: args.targetId } : {}),
         ...(args.awaitPromise === true ? { awaitPromise: true } : {}),
         ...(typeof args.postCondition === 'string' ? { postCondition: args.postCondition } : {}),
         ...(typeof args.timeoutMs === 'number' ? { timeoutMs: args.timeoutMs } : {}),
-      }),
+      })),
     })), 'cdp: cdp_exec tool')
 
     // 20. cdp_tab_new (plan03)
@@ -2551,19 +2563,30 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             // plan08: ref provenance on the ref path.
             ref: { type: 'string', description: 'The snapshot ref that was resolved.' },
             staleRef: { type: 'boolean', description: 'True when the failure was a stale-ref refusal.' },
+            // plan16-spill: an oversized text spills to disk and keeps a head+tail envelope.
+            spill: {
+              type: 'object',
+              description: 'plan16-spill: present when the text blew the 12k-char budget — the FULL text spilled to the given path and `text` holds a head+tail envelope instead. Read focused sections with cdp_files.',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                chars: { type: 'integer', required: true },
+                rows: { type: 'integer' },
+              },
+            },
           },
         },
-        render: (_args, val) => [{ type: 'text', text: renderCdpText(val) }],
+        render: (_args, val) => [{ type: 'text', text: [renderCdpText(val), spillNote(val.spill)].filter(part => part !== '').join('\n') }],
       },
       execute: async (args) => {
         // plan08: a snapshot ref replaces the ladder — host-side resolution
         // against a fresh document (strategy:'ref' in the answer below).
         if (typeof args.ref === 'string') {
-          return await service.readTextByRef(args.ref, {
+          return spillTextField('cdp_text', 'text', await service.readTextByRef(args.ref, {
             ...(typeof args.targetId === 'string' ? { targetId: args.targetId } : {}),
             ...(typeof args.timeoutMs === 'number' ? { timeoutMs: args.timeoutMs } : {}),
             ...(typeof args.maxChars === 'number' ? { maxChars: args.maxChars } : {}),
-          })
+          }))
         }
         const spec = locatorSpecFromArgs(args)
         const invalid = validateLocatorSpec(spec)
@@ -2571,11 +2594,11 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           // Structural failures never touch the page: reason in-band, no round trip.
           return { ok: false, matched: 0, strategy: 'none', candidates: [], waitedMs: 0, reason: invalid }
         }
-        return await service.readText(spec, {
+        return spillTextField('cdp_text', 'text', await service.readText(spec, {
           ...(typeof args.targetId === 'string' ? { targetId: args.targetId } : {}),
           ...(typeof args.timeoutMs === 'number' ? { timeoutMs: args.timeoutMs } : {}),
           ...(typeof args.maxChars === 'number' ? { maxChars: args.maxChars } : {}),
-        })
+        }))
       },
     })), 'cdp: cdp_text tool')
 
@@ -3108,6 +3131,17 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             },
             limitApplied: { type: 'boolean', description: 'True when spec.limit capped a larger match set.' },
             error: { type: 'string', description: 'Spec/validation failure detail when ok is false.' },
+            // plan16-spill: an oversized row set spills to disk (JSON) and keeps head+tail rows.
+            spill: {
+              type: 'object',
+              description: 'plan16-spill: present when the row set blew the 12k-char budget — the FULL rows spilled to the given path as JSON and `data` keeps the first 3 + last 1 rows for orientation. `rows` is the total before clipping.',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                chars: { type: 'integer', required: true },
+                rows: { type: 'integer' },
+              },
+            },
           },
         },
         render: (_args, val) => {
@@ -3124,15 +3158,17 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           for (const missing of val.missing ?? []) lines.push(`missing: ${missing}`)
           for (const warning of val.warnings ?? []) lines.push(`warning: ${warning}`)
           for (const field of val.truncatedFields ?? []) lines.push(`truncated: ${field}`)
+          const spilled = spillNote(val.spill)
+          if (spilled !== '') lines.push(spilled)
           return [{ type: 'text', text: lines.join('\n') }]
         },
       },
       execute: async (args) => {
-        return await service.extract({
+        return spillRowsField('cdp_extract', 'data', await service.extract({
           spec: typeof args.spec === 'string' ? args.spec : '',
           ...(typeof args.targetId === 'string' && args.targetId !== '' ? { targetId: args.targetId } : {}),
           ...(typeof args.timeoutMs === 'number' ? { timeoutMs: args.timeoutMs } : {}),
-        })
+        }))
       },
     })), 'cdp: cdp_extract tool')
 
