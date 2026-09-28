@@ -3033,6 +3033,10 @@ Open or attach to a Chromium browser instance via Chrome DevTools Protocol. Call
     "profile": {
       "type": "string",
       "description": "Named persistent profile under $DSH_HOME/profiles (e.g. 'assistant'); the signed-in session survives restarts."
+    },
+    "managed": {
+      "type": "boolean",
+      "description": "Launch on the DSH-owned pinned browser in $DSH_HOME/browser (strict: no system fall-back; a miss refuses honestly). Ignored when executablePath is given."
     }
   }
 }

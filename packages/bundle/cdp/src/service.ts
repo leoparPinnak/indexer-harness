@@ -380,6 +380,12 @@ export interface CdpOpenOptions {
   readonly port?: number | undefined
   /** Path to Chromium executable if launching. */
   readonly executablePath?: string | undefined
+  /**
+   * plan16-managed: launch on the DSH-owned pinned browser (`$DSH_HOME/browser`)
+   * — strict channel, no system fall-back (see launch.ts). Ignored when
+   * `executablePath` pins one directly.
+   */
+  readonly managed?: boolean | undefined
   /** Whether to run headlessly if launching. */
   readonly headless?: boolean | undefined
   /** Additional command-line flags if launching. */
@@ -445,6 +451,17 @@ export interface CdpOpenResult {
   connectionId: string
   /** True when an already-pooled endpoint was adopted instead of dialed. */
   reused: boolean
+  /**
+   * plan16-managed: the executable the launched browser runs, present exactly
+   * when THIS call launched one (a bare attach knows no executable and claims none).
+   */
+  executablePath?: string
+  /**
+   * plan16-managed: how the executable was chosen — `explicit` (caller-pinned),
+   * `managed` (the strict $DSH_HOME/browser pin), or `system` (documented
+   * locations + PATH). Absent together with {@link executablePath}.
+   */
+  browserKind?: string
   /** Why the live session was kept instead of the requested port. */
   note?: string
   /**
@@ -1101,6 +1118,10 @@ export class CdpService {
       const launchOpts: BrowserLaunchOptions = {
         userDataDir,
         ...(requested.executablePath !== undefined ? { executablePath: requested.executablePath } : {}),
+        // plan16-managed: strict pinned channel beside the profiles root.
+        ...(requested.managed === true && requested.executablePath === undefined
+          ? { managedDir: join(resolveProfilesRoot({ profilesRoot: this.serviceOptions.profilesRoot }), '..', 'browser') }
+          : {}),
         extraArgs,
       }
       launched = await launchBrowser(launchOpts)
@@ -1128,6 +1149,15 @@ export class CdpService {
       connectionId: this.pool.get(endpoint)?.connectionId ?? '',
       reused,
       profile: this.activeProfileName(),
+      // plan16-managed: report what actually ran — only when this call launched.
+      ...(launched !== undefined
+        ? {
+          executablePath: launched.executablePath,
+          browserKind: requested.executablePath !== undefined
+            ? 'explicit'
+            : (requested.managed === true ? 'managed' : 'system'),
+        }
+        : {}),
     }
   }
 

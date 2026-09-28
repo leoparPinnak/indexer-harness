@@ -87,6 +87,14 @@ export interface BrowserLaunchOptions {
    * of falling back to the platform search.
    */
   readonly executablePath?: string | undefined
+  /**
+   * plan16-managed: the DSH-owned pinned browser directory (`$DSH_HOME/browser`).
+   * When set the search is STRICT — only managed candidates are tried and a miss
+   * throws naming them; there is no silent fall-back to the system browsers,
+   * because a pin that can silently change is not a pin (same doctrine as the
+   * profile lock). An explicit `executablePath` still wins outright.
+   */
+  readonly managedDir?: string | undefined
   /** Extra command-line arguments appended after the built-in flags. */
   readonly extraArgs?: readonly string[] | undefined
   /**
@@ -360,11 +368,23 @@ function executableCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv)
 }
 
 /**
+ * plan16-managed: the executable names one managed directory may carry.
+ * @param managedDir - the DSH-owned browser directory.
+ * @param platform - platform selecting the executable names.
+ * @returns each managed candidate path, in name order.
+ */
+export function managedCandidates(managedDir: string, platform: NodeJS.Platform): string[] {
+  const names = platform === 'win32' ? ['chrome.exe', 'chromium.exe', 'msedge.exe'] : ['chrome', 'chromium', 'google-chrome']
+  return names.map(name => join(managedDir, name))
+}
+
+/**
  * Resolve the executable to start.
  *
  * A configured path is authoritative: it is checked and returned, and a path
  * that does not exist throws instead of silently falling back to the platform
- * search. Otherwise every documented location is tried in order.
+ * search. A managed directory is STRICT likewise — only its own candidates are
+ * tried. Otherwise every documented location is tried in order.
  *
  * @param options - the launch request, whose `executablePath` may be set.
  * @param internals - the resolved environment seams.
@@ -376,6 +396,14 @@ function resolveExecutable(options: BrowserLaunchOptions, internals: BrowserLaun
   if (configured !== undefined) {
     if (!internals.exists(configured)) throw new CdpBrowserNotFoundError([configured])
     return configured
+  }
+  // plan16-managed: strict pinned channel — no system fall-back, ever.
+  if (options.managedDir !== undefined) {
+    const managed = managedCandidates(options.managedDir, internals.platform)
+    for (const candidate of managed) {
+      if (internals.exists(candidate)) return candidate
+    }
+    throw new CdpBrowserNotFoundError(managed)
   }
   const candidates = executableCandidates(internals.platform, internals.env)
   const found = candidates.find(candidate => internals.exists(candidate))

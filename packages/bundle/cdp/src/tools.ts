@@ -147,6 +147,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         switchTo: { type: 'number', description: 'The chosen live port from a needsChoice table; switches to it explicitly.' },
         // plan13-profile: the durable session. Omit for a throwaway profile.
         profile: { type: 'string', description: "Named persistent profile under $DSH_HOME/profiles (e.g. 'assistant'); the signed-in session survives restarts." },
+        managed: { type: 'boolean', description: "Launch on the DSH-owned pinned browser in $DSH_HOME/browser (strict: no system fall-back; a miss refuses honestly). Ignored when executablePath is given." },
       },
       output: {
         schema: {
@@ -164,6 +165,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             note: { type: 'string', description: 'Why the live session was kept instead of the requested port.' },
             // plan13-profile: the active browser's profile identity.
             profile: { type: 'string', description: "Active profile identity: a named profile (e.g. 'assistant'), 'ephemeral', or 'external'." },
+            executablePath: { type: 'string', description: 'plan16-managed: the executable the launched browser runs; present only when this call launched one.' },
+            browserKind: { type: 'string', description: "plan16-managed: 'explicit' (caller-pinned), 'managed' (strict $DSH_HOME/browser pin), or 'system'; absent together with executablePath." },
             // plan13-profile: the choice table; the ONLY time anything is attached is when this is absent.
             needsChoice: { type: 'boolean', description: 'True when live endpoints were discovered and NOTHING was attached — ask the user, then call again with switchTo/endpoint/profile.' },
             discovered: {
@@ -219,6 +222,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
               + ` [${String(val.connectionId)}${val.reused ? ', reused' : ''}].`
               // plan13-profile: the profile is the first question a user asks.
               + (val.profile !== undefined ? ` profile=${val.profile}.` : '')
+              // plan16-managed: name what actually ran and how it was chosen.
+              + (typeof val.browserKind === 'string' ? ` [${val.browserKind}: ${String(val.executablePath ?? '?')}]` : '')
               // plan04-F6: surface the kept-session verdict when the request differed.
               + ('note' in val && val.note !== undefined ? ` ${String(val.note)}` : ''),
           }]
@@ -233,6 +238,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           // plan13-profile: the named answer and the durable profile.
           switchTo: typeof args.switchTo === 'number' ? args.switchTo : undefined,
           profile: typeof args.profile === 'string' && args.profile !== '' ? args.profile : undefined,
+          managed: args.managed === true,
         })
         return {
           // plan13-profile: `ok` is FALSE exactly when a `reason` explains why
@@ -253,6 +259,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           ...(res.reason !== undefined ? { reason: res.reason } : {}),
           ...(res.reasonCode !== undefined ? { reasonCode: res.reasonCode } : {}),
           ...(res.profileDir !== undefined ? { profileDir: res.profileDir } : {}),
+          // plan16-managed: what actually launched, when this call launched.
+          ...(res.executablePath !== undefined
+            ? { executablePath: res.executablePath, ...(res.browserKind !== undefined ? { browserKind: res.browserKind } : {}) }
+            : {}),
         }
       },
     })), 'cdp: cdp_open tool')
