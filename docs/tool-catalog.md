@@ -1626,7 +1626,7 @@ Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subag
 
 ### `subagent`
 
-Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
+Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. A delegation is complete only when the child reports a finished state with its result summary; a turn that ends without one is an incomplete delegation (ERROR_NO_COMPLETE_TASK_CALL) — chase it via send_message or mark the task failed. Concurrency mandate: never run two subagents in the same turn that write the same files; only independent reads/research parallelize. Computed jobs (diffs, scans, bulk extraction) belong in a subagent: the main loop takes only its summary, never its raw output. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
 
 ```json
 {
@@ -1638,7 +1638,7 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
     },
     "prompt": {
       "type": "string",
-      "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
+      "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs. Require a final summary report as the closing message — findings and outcome only, no step narration."
     },
     "run_in_background": {
       "type": "boolean",
