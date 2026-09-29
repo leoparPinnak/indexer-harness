@@ -180,6 +180,33 @@ describe('ContextControl', () => {
     })
   })
 
+  it('keeps an in-progress draft when a projection update carries the same durable facts', () => {
+    const values = withContext()
+    const build = (source: Record<string, unknown>) => (
+      <ContextControl
+        {...{
+          locked: false,
+          sessionId: 'session-1',
+          useSession: () => undefined,
+        } as unknown as ContextControlProps}
+        useProjection={(key: string) => source[key]}
+        t={t}
+        runCompact={() => Promise.resolve()}
+        saveCompactionMode={() => Promise.resolve()}
+        loadSummarizerModels={() => Promise.resolve([])}
+      />
+    )
+    const view = render(build(values))
+    fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
+    fireEvent.change(view.getByLabelText('上下文预算（tokens）'), { target: { value: '75' } })
+    // Our own save lands as a projection update carrying the same durable
+    // mode and capacity under a fresh identity: the live draft must survive
+    // it instead of snapping back or wiping the status.
+    view.rerender(build({ ...values, compactionPolicy: { ...POLICY } }))
+    expect((view.getByLabelText('上下文预算（tokens）') as HTMLInputElement).value).toBe('75')
+    expect(view.container.querySelector('[role="dialog"]')!.textContent).toContain('~96K')
+  })
+
   it('reads each field\'s scope from its default-follow state', () => {
     const { view } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
@@ -197,9 +224,9 @@ describe('ContextControl', () => {
     const { view, calls } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
     fireEvent.click(view.getByLabelText(/专用摘要模型/))
+    expect((view.getByLabelText(/专用摘要模型/) as HTMLInputElement).checked).toBe(true)
     // The empty pair is not a valid mode: nothing commits until both fields
     // are filled.
-    await waitFor(() => { expect(view.getAllByText('仅本会话')).toHaveLength(2) })
     await new Promise(resolve => setTimeout(resolve, 450))
     expect(calls.saved).toHaveLength(0)
     fireEvent.change(view.getByLabelText('提供商'), { target: { value: 'big' } })

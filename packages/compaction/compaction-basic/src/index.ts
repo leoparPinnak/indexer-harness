@@ -17,6 +17,8 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 // Type-only: makes the optional sibling service available to `ctx.get()`.
 import type {} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
+// Type-only: the optional settings service face used for the live section.
+import type {} from '@deepseek-ai/dsh-settings'
 import {
   resolveCompactSpec,
   resolveConfig,

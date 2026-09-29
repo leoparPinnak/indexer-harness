@@ -146,6 +146,12 @@ const coveragePartitionMode = coveragePartitionRaw === '1'
 // Keep the narrow exception in forks while the rest of the inventory avoids per-file processes.
 const processBoundTests = [
   'packages/session/session-persistence-jsonl/tests/jsonl.spec.ts',
+  // plan16-flaky-hunt: multi-edge-publication killed its worker under aggregate
+  // contention ("Worker forks emitted error — Worker exited unexpectedly",
+  // reproducible 3/3 beside the full inventory, 0/17 solo). Its machinery —
+  // process-global scheduler.yield spies plus several live migration contexts —
+  // is exactly the profile above; the narrow fork lane isolates it.
+  'packages/session/session-persistence-jsonl/tests/multi-edge-publication.spec.ts',
   'packages/subagent/subagent-acp/tests/subagent-acp.spec.ts',
   'packages/subprocess/subprocess-local/tests/process-exit.spec.ts',
   'packages/subprocess/subprocess-local/tests/spawn.spec.ts',

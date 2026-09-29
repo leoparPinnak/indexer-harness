@@ -64,7 +64,7 @@ async function bench(): Promise<Bench> {
     ok: true,
     value: { commandId: 'c1', result: { kind: 'success' } },
   }))
-  ctx.provide('remote', { session: sessionRemote, settings: settingsRemote, commands: execute })
+  ctx.provide('remote', { session: sessionRemote, settings: settingsRemote, commands: { execute } })
   ctx.provide('remote.session', sessionRemote)
   ctx.provide('remote.settings', settingsRemote)
   const locale = new LocaleRuntime(ctx)
