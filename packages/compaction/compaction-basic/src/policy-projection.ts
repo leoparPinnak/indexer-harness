@@ -107,11 +107,13 @@ function viewOf(config: ResolvedConfig, state: CompactionPolicyState): Compactio
  * Build the `compactionPolicy` projection unit: the pure fold over
  * `compaction/mode` and `request/context`, with the wire view resolving the
  * effective figures through the backend's per-route policy.
- * @param config - validated service configuration.
+ * @param configSource - reads the engine's current resolved configuration on
+ *   every view computation, so a committed settings write reaches the
+ *   displayed default without a restart.
  * @returns the unit definition to register on `ctx.sessionProjections`.
  */
 export function compactionPolicyProjection(
-  config: ResolvedConfig,
+  configSource: () => ResolvedConfig,
 ): Omit<ProjectionDefinition<'compactionPolicy', CompactionPolicyState>, 'wire'> & {
   wire: {
     viewSchema: ZodType<CompactionPolicyView>
@@ -126,7 +128,7 @@ export function compactionPolicyProjection(
     apply: applyCompactionPolicy,
     wire: {
       viewSchema,
-      view: state => viewOf(config, state),
+      view: state => viewOf(configSource(), state),
     },
   }
 }

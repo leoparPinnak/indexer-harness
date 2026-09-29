@@ -32,6 +32,10 @@ import {
 } from '@deepseek-ai/dsh-session-persistence'
 import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.ts'
 import { SessionWriteLease } from './lease.ts'
+import { checkpointRecorderAt } from './checkpoint-mount.ts'
+import type {
+  CheckpointCapturePlan, CheckpointRecorderOptions, CheckpointToolTaps,
+} from './checkpoint-recorder.ts'
 import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
@@ -869,6 +873,27 @@ class JsonlSessionPersistence extends SessionPersistence {
    * @param dir - the resolved directory of an existing artifact, when known.
    * @returns the held lock.
    */
+  /**
+   * plan16-checkpoint: the recorder factory for ONE session's journal, rooted
+   * beside that session's log (`<sessionDir>/checkpoints`). The returned
+   * closure crosses package lines as a FUNCTION: a lifecycle owner mounts the
+   * recorder without importing this package's types, and this package keeps
+   * its independence from the tool layer.
+   * @param sessionId - the session whose journal this binds.
+   * @param cwd - the workspace root (`agent.session.header.cwd`).
+   * @param plan - the capture policy (which paths a call touches, and their content).
+   * @param options - step kind and the isolated error sink.
+   * @returns the attach closure for the two lifecycle taps.
+   */
+  checkpointRecorderFor(
+    sessionId: SessionId,
+    cwd: string | undefined,
+    plan: CheckpointCapturePlan,
+    options: CheckpointRecorderOptions = {},
+  ): (taps: CheckpointToolTaps) => () => void {
+    return checkpointRecorderAt(join(sessionDir(this.root, cwd, sessionId), 'checkpoints'), plan, options)
+  }
+
   private acquireLease(id: SessionId, cwd: string | undefined, dir = sessionDir(this.root, cwd, id)): Promise<SessionWriteLease> {
     return SessionWriteLease.acquire(dir, id)
   }

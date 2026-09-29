@@ -36,8 +36,13 @@ export const apply = (ctx: Context): void => {
       locale: NS,
       inject: (sessionId: SessionId): ContextControlInjected => ({
         t,
-        runCompact: () => {
-          void ctx.remote.commands.execute(sessionId, '/compact', [])
+        runCompact: async () => {
+          // Failure strings stay English (error-surface policy: not localized).
+          const result = await ctx.remote.commands.execute(sessionId, '/compact', [])
+          if (!result.ok) {
+            throw new Error(`compact failed: ${result.error.message} (${result.error.code})`)
+          }
+          if (result.value === undefined) throw new Error('unknown command: /compact')
         },
         saveCompactionMode: async (mode: CompactionSessionMode) => {
           const result = await ctx.remote.session.setCompactionMode({ sessionId, mode })
@@ -71,12 +76,15 @@ export const apply = (ctx: Context): void => {
           const value = view?.value as { maxTokens?: unknown } | undefined
           return typeof value?.maxTokens === 'number' ? value.maxTokens : undefined
         },
-        writeCap: (value: number | undefined) => {
-          return value === undefined
-            ? ctx.remote.settings.mutate('compaction-basic', [{ op: 'unset', path: ['maxTokens'] }], undefined)
-              .then(() => undefined)
-            : ctx.remote.settings.update('compaction-basic', { maxTokens: value }, undefined)
-              .then(() => undefined)
+        writeCap: async (value) => {
+          // The remote answers through a result envelope; a rejected write
+          // must surface instead of reporting success.
+          const response = value === undefined
+            ? await ctx.remote.settings.mutate('compaction-basic', [{ op: 'unset', path: ['maxTokens'] }], undefined)
+            : await ctx.remote.settings.update('compaction-basic', { maxTokens: value }, undefined)
+          if (!response.ok) {
+            throw new Error(`settings write failed: ${response.error.message} (${response.error.code})`)
+          }
         },
       }),
     }, CompactionCap)),

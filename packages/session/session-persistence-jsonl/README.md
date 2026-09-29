@@ -108,6 +108,8 @@ The default artifact is a standard concatenation of independent [Zstandard frame
 | [`src/format.ts`](src/format.ts) | Log path derivation, header encoding, and current record scanning |
 | [`src/generation.ts`](src/generation.ts) | Single-pass historical restore, bounded stage encoding, source revision check, and exclusive successor publication |
 | [`src/checkpoint.ts`](src/checkpoint.ts) | File-level shadow journal: pre-image/creation recording and pure `rewindPlan` computation (blobs before journal lines) |
+| [`src/checkpoint-recorder.ts`](src/checkpoint-recorder.ts) | The tool-lifecycle bridge: duck-typed before/after taps, one journal step per writing call, failure-isolated |
+| [`src/checkpoint-mount.ts`](src/checkpoint-mount.ts) | The dir-bound recorder factory whose attach closure crosses package lines without dragging types along |
 | [`src/migration-verifier.ts`](src/migration-verifier.ts) | Worker lifecycle for staged and competing-generation verification |
 | [`src/zstd.ts`](src/zstd.ts) | Zstandard frame compression, decoding, and frame scanning |
 | [`src/win32.ts`](src/win32.ts) | Windows write-through publish and directory creation |

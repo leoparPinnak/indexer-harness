@@ -108,6 +108,8 @@ kind: "package-reference"
 | [`src/format.ts`](src/format.ts) | 日志路径派生、header 编码与当前记录扫描 |
 | [`src/generation.ts`](src/generation.ts) | 单遍历史还原、有界 stage 编码、源 revision 检查与排他后继发布 |
 | [`src/checkpoint.ts`](src/checkpoint.ts) | 文件级影子日志：变更前镜像/新建记录与纯 `rewindPlan` 计算（先 blob 后日志行） |
+| [`src/checkpoint-recorder.ts`](src/checkpoint-recorder.ts) | 工具生命周期桥：鸭子类型的 before/after 水龙头，每次写调用一条日志步骤，故障隔离 |
+| [`src/checkpoint-mount.ts`](src/checkpoint-mount.ts) | 目录绑定的记录器工厂：attach 闭包以函数形式跨包传递，不牵连类型依赖 |
 | [`src/migration-verifier.ts`](src/migration-verifier.ts) | stage 与竞争 generation 校验的 Worker 生命周期 |
 | [`src/zstd.ts`](src/zstd.ts) | Zstandard 帧压缩、解码与帧扫描 |
 | [`src/win32.ts`](src/win32.ts) | Windows write-through 发布与目录创建 |

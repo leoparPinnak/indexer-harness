@@ -19,12 +19,16 @@
  */
 import type { CheckpointInput, CheckpointJournal, CheckpointKind } from './checkpoint.ts'
 
-/** One tool call the taps describe; enough identity for journal labels. */
+/** One tool call the taps describe; enough identity for journal labels and capture. */
 export interface CheckpointToolCall {
   /** Runtime call id (stable within the session). */
   readonly callId: string
   /** Tool name (`write`, `edit`, `run_shell_command`, …). */
   readonly name: string
+  /** Parsed call arguments when the runtime exposes them; capture plans read paths from here. */
+  readonly args?: Record<string, unknown>
+  /** Opaque caller (the agent) when the runtime exposes it; plans may key on it. */
+  readonly agent?: unknown
 }
 
 /** The two lifecycle taps a recorder needs; unsubscribe with the returned disposer. */

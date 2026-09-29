@@ -69,7 +69,7 @@
   right: 0;
   z-index: 100;
   box-sizing: border-box;
-  width: 264px;
+  width: 252px;
   padding: 12px;
   border: 0;
   border-radius: 12px;
@@ -426,4 +426,52 @@
 .glassLabel {
   position: relative;
   z-index: 1;
+}
+
+/* Bottom band: the strategy block narrows and the summary cap sits beside it. */
+.bottomGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+.bottomGrid .form {
+  margin-top: 0;
+}
+
+/* Narrow columns stack the dedicated route fields and the cap controls. */
+.bottomGrid .row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.bottomGrid .input {
+  width: 100%;
+}
+
+.form legend {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.radioRow {
+  flex-wrap: wrap;
+}
+
+.capField .sliderRow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.capField .slider {
+  flex: none;
+  width: 100%;
+}
+
+.capField .autoToggle {
+  align-self: flex-start;
 }

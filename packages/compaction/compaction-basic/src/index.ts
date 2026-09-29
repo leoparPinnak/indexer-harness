@@ -77,6 +77,9 @@ function conversationTarget(
   return { provider: agent.options.provider, model: agent.options.model }
 }
 
+/** Settings namespace for the deployment compaction defaults (General settings). */
+const COMPACTION_SETTINGS_NAMESPACE = 'compaction-basic'
+
 const thresholdRatioSchema = z.number()
 const retainRatioSchema = z.number()
 const retainTokensSchema = z.number().step(1).min(0)
@@ -123,8 +126,26 @@ export class BasicCompactionEngine extends CompactionEngine {
     auto: z.boolean(),
   })
 
-  /** Resolved and validated compaction configuration. */
-  readonly config: ResolvedConfig
+  /**
+   * Effective configuration for policy resolution and display: the durable
+   * settings section layered over the composition entry, re-resolved when the
+   * section commits so a settings write reaches the next policy read without
+   * a restart. Defaults to the composition entry until `settings` is composed.
+   */
+  get config(): ResolvedConfig {
+    const raw = this.settingsSource()
+    if (raw !== this.settingsResolvedRaw || this.settingsResolved === undefined) {
+      this.settingsResolvedRaw = raw
+      this.settingsResolved = resolveConfig(raw)
+    }
+    return this.settingsResolved
+  }
+
+  /** Reads the durable settings section once its plugin is composed. */
+  private settingsSource: () => BasicCompactionConfig
+  /** Last raw config the getter saw, with its resolved cache. */
+  private settingsResolvedRaw: BasicCompactionConfig | undefined
+  private settingsResolved: ResolvedConfig | undefined
 
   private readonly warnedPressureConfigTargets = new Set<string>()
   private readonly overflowRetries = new WeakMap<Agent, number>()
@@ -132,11 +153,33 @@ export class BasicCompactionEngine extends CompactionEngine {
 
   constructor(ctx: Context, config: BasicCompactionConfig = {}) {
     super(ctx)
-    this.config = resolveConfig(config)
+    // Composition validation stays first so a bad cordis.yml fails at load
+    // before any registration runs.
+    const composition = resolveConfig(config)
+    this.settingsResolved = composition
+    this.settingsResolvedRaw = config
+    this.settingsSource = () => config
     ctx.effect(
-      () => ctx.sessionProjections.register(compactionPolicyProjection(this.config)),
+      () => ctx.sessionProjections.register(compactionPolicyProjection(() => this.config)),
       'compaction-basic: compactionPolicy projection',
     )
+    // The General-page "Sıkıştırma tavanı" row writes this namespace; the
+    // section is the live source behind the config getter above.
+    ctx.inject(['settings'], (settingsCtx) => {
+      settingsCtx.settings.installSection(ctx, COMPACTION_SETTINGS_NAMESPACE, BasicCompactionEngine.Config, config, {
+        validate: (value) => {
+          const resolved = resolveConfig(value)
+          if (resolved.auto !== composition.auto) {
+            throw new Error('BasicCompactionConfig: auto applies at plugin load; restart the host to change it')
+          }
+        },
+        setSource: (source) => {
+          this.settingsSource = source
+        },
+        // Every consumer reads through the config getter; no derived state.
+        onChange: () => {},
+      })
+    })
     if (this.config.auto) this._registerAutomaticCompaction()
   }
 

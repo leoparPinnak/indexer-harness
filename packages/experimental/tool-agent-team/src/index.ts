@@ -2,6 +2,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
@@ -387,6 +389,96 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
   }
 }
 
+/** Mount the file-level checkpoint recorder for one agent's session.
+ *
+ * plan16-checkpoint: the persistence side hands over an ATTACH CLOSURE
+ * (a function, not a type) so this experimental integration stays free of a
+ * persistence package dependency. The capture plan is the reference heuristic:
+ * `path`/`file`/`filePath`/`paths` arguments are the touched files, `write*`
+ * names mark births, and content is read under the agent's workspace. When the
+ * mounted persistence lacks the capability (or the session id is unresolvable)
+ * the call returns undefined — checkpoints are an enhancement, never a
+ * precondition for a team to work.
+ * @param ctx - the plugin context carrying `sessionPersistence` and the tool waterfalls.
+ * @param agent - the live agent (its `session` owns id + workspace).
+ * @returns the recorder disposer, or undefined when no capability mounted.
+ */
+export function attachSessionCheckpoints(ctx: Context, agent: Agent): (() => void) | undefined {
+  try {
+    type Mount = (
+      sessionId: string,
+      cwd: string | undefined,
+      plan: {
+        paths(call: { name: string; args?: Record<string, unknown> }): readonly string[] | null
+        creates(call: { name: string; args?: Record<string, unknown> }): readonly string[]
+        read(path: string): string | undefined
+      },
+      options?: { kind?: string; onError?: (error: unknown) => void },
+    ) => (taps: {
+      pre(listener: (call: { callId: string; name: string; args?: Record<string, unknown> }) => void): () => void
+      post(listener: (call: { callId: string; name: string }, ok: boolean) => void): () => void
+    }) => () => void
+    const persistence = ctx.get('sessionPersistence') as { checkpointRecorderFor?: Mount } | undefined
+    const mount = persistence?.checkpointRecorderFor
+    if (mount === undefined) return undefined
+    const session = agent.session as unknown as { id?: unknown }
+    const sid = typeof session.id === 'string' || typeof session.id === 'number' ? String(session.id) : undefined
+    if (sid === undefined) {
+      ctx.logger?.warn('tool-agent-team: checkpoint recorder skipped — session id unresolvable')
+      return undefined
+    }
+    const cwd = agent.session.header.cwd
+    const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter(each => typeof each === 'string') : typeof value === 'string' ? [value] : [])
+    const touched = (call: { args?: Record<string, unknown> }): string[] => {
+      const args = call.args ?? {}
+      return [...strings(args['path']), ...strings(args['file']), ...strings(args['filePath']), ...strings(args['paths'])]
+    }
+    const plan = {
+      paths: (call: { name: string; args?: Record<string, unknown> }) => {
+        const paths = touched(call)
+        return paths.length > 0 ? paths : null
+      },
+      creates: (call: { name: string; args?: Record<string, unknown> }) =>
+        (/^(write|create|mkdir)/i.test(call.name) ? touched(call) : []),
+      read: (path: string) => {
+        try {
+          return readFileSync(join(cwd ?? '.', path), 'utf8')
+        } catch {
+          return undefined // a missing pre-image is a birth, not an error
+        }
+      },
+    }
+    const attach = mount(sid, cwd, plan as Parameters<Mount>[2], {
+      kind: 'edit',
+      onError: error => { ctx.logger?.warn(`tool-agent-team: checkpoint recorder error: ${errorMessage(error)}`) },
+    })
+    return attach({
+      pre: listener => ctx.on('tools/pre-execute', async (exec, next) => {
+        try {
+          listener({ callId: String(exec.rootCallId), name: exec.name, args: exec.arguments as Record<string, unknown> })
+        } catch { /* isolated: never fail the call */ }
+        return next()
+      }),
+      post: listener => ctx.on('tools/post-execute', async (exec, result, next) => {
+        try {
+          listener({ callId: String(exec.rootCallId), name: exec.name }, result.isError === false)
+        } catch { /* isolated */ }
+        return next()
+      }),
+    } as Parameters<typeof attach>[0])
+  } catch (error) {
+    // The mount is an ENHANCEMENT: an absent capability, an unshaped fake
+    // context, or a broken seam must never block a team from installing.
+    try { ctx.logger?.warn(`tool-agent-team: checkpoint recorder skipped: ${errorMessage(error)}`) } catch { /* keep the promise */ }
+    return undefined
+  }
+}
+
+/** Error-message text for the isolated warn sink. */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /** Install Team tools in every live or subsequently published Team member scope. */
 export function apply(ctx: Context, config: Config = {}): void {
   const resolved: Required<Config> = {
@@ -396,7 +488,14 @@ export function apply(ctx: Context, config: Config = {}): void {
   const installed = new Map<Agent, () => void>()
   const maybeInstall = (agent: Agent): void => {
     if (installed.has(agent) || ctx.agentTeams.tryMembership(agent) === undefined) return
-    installed.set(agent, install(agent, ctx, resolved))
+    const uninstall = install(agent, ctx, resolved)
+    // plan16-checkpoint: an enhancement beside the team tools — disposed with
+    // them, and (per its own contract) never able to block installation.
+    const undoCheckpoints = attachSessionCheckpoints(ctx, agent)
+    installed.set(agent, () => {
+      undoCheckpoints?.()
+      uninstall()
+    })
   }
   for (const agent of ctx.agents.list()) maybeInstall(agent)
   ctx.on('agent/created', ({ agent }) => { maybeInstall(agent) })
