@@ -90,23 +90,27 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
   if (editing) {
     return (
       <div className={css.dock} data-goal-bar>
-        <div className={css.bar} style={{ cursor: 'default' }}>
-          <input
-            className={css.objectiveInput}
-            type="text"
+        <div className={`${css.bar} ${css.barEditing}`} style={{ cursor: 'default' }}>
+          <textarea
+            className={css.objectiveTextarea}
             aria-label={t('objective.aria')}
             value={draft}
             title={draft}
+            placeholder={t('objective.aria')}
             onChange={(e) => { setDraft(e.target.value) }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void handleEdit()
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void handleEdit()
+              }
               if (e.key === 'Escape') setEditing(false)
             }}
             autoFocus
             onFocus={e => e.target.select()}
+            rows={3}
           />
           {actionError !== null && <span className={css.error} role="alert">{actionError}</span>}
-          <div className={css.actions}>
+          <div className={css.actions} style={{ marginTop: 2 }}>
             <Tooltip label={t('action.save')} side="bottom" delayMs={500}>
               <button
                 type="button"
