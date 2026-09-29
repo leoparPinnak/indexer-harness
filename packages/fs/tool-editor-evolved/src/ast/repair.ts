@@ -70,7 +70,7 @@ function scan(text: string): ScanState {
       i = j + 1
       continue
     }
-    if (c in closer) open.push(c)
+    if (c !== undefined && c in closer) open.push(c)
     else if (c === ')' || c === ']' || c === '}') {
       const want = (Object.keys(closer) as string[]).find(k => closer[k] === c)
       if (want && open[open.length - 1] === want) open.pop()

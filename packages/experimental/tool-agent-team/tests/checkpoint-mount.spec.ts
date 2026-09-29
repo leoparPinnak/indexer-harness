@@ -18,7 +18,7 @@ function fakeRuntime(sessionId: unknown): {
     }) => {
       mounts.push({ id, cwd })
       return (taps: { pre: (l: (c: unknown) => void) => () => void }) => {
-        taps.pre(call => { void plan })
+        taps.pre(() => { void plan })
         return () => {}
       }
     },
@@ -35,7 +35,7 @@ function fakeRuntime(sessionId: unknown): {
     ctx,
     mounts,
     firePre: (name, args) => {
-      for (const each of pres) each({ rootCallId: '1', name, arguments: args, agent: { session: { id: sessionId, header: { cwd: 'C:\\ws' } } } }, async () => undefined)
+      for (const each of pres) (each as unknown as (c: unknown, n: () => Promise<unknown>) => Promise<unknown>)({ rootCallId: '1', name, arguments: args, agent: { session: { id: sessionId, header: { cwd: 'C:\\ws' } } } }, async () => undefined)
     },
   }
 }

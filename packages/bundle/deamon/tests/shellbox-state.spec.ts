@@ -158,7 +158,7 @@ async function setup(): Promise<Harness> {
     registerUpgrade: () => () => {},
   })
   ctx.reflect.provide('connection', { requestRejection: () => undefined })
-  const deamon = await ctx.plugin(Deamon, { surfaceContext: true })
+  const deamon = await ctx.plugin(Deamon, { surfaceContext: true, transport: 'pipe' })
   // Deferred inject callbacks settle one macrotask after their services resolve.
   await new Promise((resolve) => { setTimeout(resolve, 0) })
   const session = ctx.sessions.create(SessionId(`shellbox-state-${++sessionCounter}`))

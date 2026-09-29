@@ -706,7 +706,7 @@ function resolveModelReasoning(
     // sends, so a provider whose own default is to think would keep thinking
     // with `off` selected. Declaring the model non-reasoning leaves the seam
     // reporting the capability unavailable instead of selling that control.
-    if (base !== undefined) return { reasoning: base.reasoning, thinkingLevelMap: base.thinkingLevelMap }
+    if (base !== undefined) return { reasoning: base.reasoning, ...(base.thinkingLevelMap !== undefined ? { thinkingLevelMap: base.thinkingLevelMap } : {}) }
     return { reasoning: false }
   }
   // A YAML `reasoningEfforts:` left valueless arrives as null through the

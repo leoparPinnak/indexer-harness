@@ -37,6 +37,9 @@
     },
     {
       "path": "../../skill/skill"
+    },
+    {
+      "path": "../../ipc/ipc-pipe"
     }
   ]
 }

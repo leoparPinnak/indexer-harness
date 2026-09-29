@@ -8,7 +8,7 @@ import {
 import type { CdpWovenNode } from '../src/snapshot.ts'
 
 function node(ref: string, over: Partial<CdpWovenNode> = {}): CdpWovenNode {
-  return { ref, role: 'StaticText', name: ref, interactive: false, ...over }
+  return { ref, role: 'StaticText', name: ref, interactive: false, visible: true, ...over }
 }
 
 describe('snapshot-view: lenses', () => {
