@@ -306,7 +306,10 @@ export class ConnectionPool {
     this.hooks = options.hooks
   }
 
-  /** Every pooled endpoint, in attach order. */
+  /**
+   * Every pooled endpoint, in attach order.
+   * @returns a snapshot of the pooled entries, safe to iterate while the pool mutates.
+   */
   list(): PooledEndpoint[] {
     return [...this.entries.values()]
   }

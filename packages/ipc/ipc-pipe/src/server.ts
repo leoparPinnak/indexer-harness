@@ -73,7 +73,9 @@ export class GatewayRequest extends Readable {
     super()
     this.method = init.method
     this.url = init.url
-    this.headers = init.headers ?? {}
+    this.headers = Object.fromEntries(
+      Object.entries(init.headers ?? {}).map(([field, value]) => [field.toLowerCase(), value] as const),
+    )
     this.stream = init.stream === true
     if (init.body.length > 0) this.push(init.body)
     this.push(null)
@@ -181,11 +183,16 @@ export class GatewayResponse extends EventEmitter {
         ? chunk
         : Buffer.from(String(chunk), 'utf8')
     if (!this.#streaming) this.flushHeaders()
-    if (bytes.length > MAX_RESPONSE_BYTES) {
-      this.destroy(new GatewayPayloadTooLargeError(`a stream chunk of ${String(bytes.length)} bytes passes the ${String(MAX_RESPONSE_BYTES)} byte response cap`))
+    // The cap governs the wire frame (header plus body), not the body alone:
+    // an in-band body that fits by itself still overruns once its envelope
+    // rides along, and the peer's reader would kill the whole connection.
+    const frame = encodeFrame({ t: 'chunk', id: this.#id }, bytes)
+    const framed = frame.length - 4
+    if (framed > MAX_RESPONSE_BYTES) {
+      this.destroy(new GatewayPayloadTooLargeError(`a chunk frame of ${String(framed)} bytes passes the ${String(MAX_RESPONSE_BYTES)} byte response cap`))
       return false
     }
-    const backedUp = !this.#send({ t: 'chunk', id: this.#id }, bytes)
+    const backedUp = !this.#write(frame)
     if (backedUp && !this.#drainArmed) {
       this.#drainArmed = true
       this.#socket.once('drain', () => {
@@ -222,16 +229,20 @@ export class GatewayResponse extends EventEmitter {
       return
     }
     const body = Buffer.concat(this.#buffered)
-    if (body.length > MAX_RESPONSE_BYTES) {
-      // Checked before the response is committed: the refusal still reaches
-      // the peer as an `error` frame instead of a silently missing answer.
-      this.destroy(new GatewayPayloadTooLargeError(`a response of ${String(body.length)} bytes passes the ${String(MAX_RESPONSE_BYTES)} byte response cap`))
+    // Checked against the full frame — header plus body — before the response
+    // is committed: the refusal still reaches the peer as an `error` frame
+    // instead of a silently missing answer, and never as a frame the peer's
+    // reader rejects (which would kill the connection and every request on it).
+    const frame = encodeFrame({ t: 'res', id: this.#id, status: this.statusCode, headers: this.#headerRecord() }, body)
+    const framed = frame.length - 4
+    if (framed > MAX_RESPONSE_BYTES) {
+      this.destroy(new GatewayPayloadTooLargeError(`a response of ${String(framed)} bytes passes the ${String(MAX_RESPONSE_BYTES)} byte response cap`))
       return
     }
     this.writableEnded = true
     this.#clearTimer()
     this.headersSent = true
-    this.#send({ t: 'res', id: this.#id, status: this.statusCode, headers: this.#headerRecord() }, body)
+    this.#write(frame)
     this.#finish()
   }
 
@@ -276,8 +287,17 @@ export class GatewayResponse extends EventEmitter {
    * @returns false when the socket buffers the frame.
    */
   #send(message: GatewayMessage, body?: Buffer): boolean {
+    return this.#write(encodeFrame(message, body))
+  }
+
+  /**
+   * Write one already-encoded frame on the connection.
+   * @param frame - length-prefixed bytes ready for the socket.
+   * @returns false when the socket buffers the frame.
+   */
+  #write(frame: Buffer): boolean {
     if (this.#socket.destroyed || this.#socket.writableEnded) return false
-    return this.#socket.write(encodeFrame(message, body))
+    return this.#socket.write(frame)
   }
 
   /** Drop the pending timeout once a header is on the wire. */
@@ -475,9 +495,14 @@ export async function startPipeGateway(options: StartPipeGatewayOptions): Promis
             refuse(new GatewayProtocolError('first message must be hello'))
             return
           }
-          if (message.v !== PROTOCOL_VERSION || !digestMatches(coords.digest, message.digest)) {
+          if (!digestMatches(coords.digest, message.digest)) {
             log.warn(`ipc-pipe: ${coords.path} refused a connection with a mismatched key digest`)
             refuse(new GatewayAuthError('handshake digest does not match this gateway key'))
+            return
+          }
+          if (message.v !== PROTOCOL_VERSION) {
+            log.warn(`ipc-pipe: ${coords.path} refused a connection speaking protocol generation ${String(message.v)}`)
+            refuse(new GatewayAuthError(`protocol generation mismatch: the peer speaks ${String(message.v)}, this gateway speaks ${String(PROTOCOL_VERSION)}`))
             return
           }
           state.handshaken = true

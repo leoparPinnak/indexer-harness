@@ -19,7 +19,12 @@ import { lookupRefIndex, type RefIndexEntry } from './refs.ts'
 /** Bidi embedding/override marks (U+202A–U+202E, U+2066–U+2069) — display-only. */
 const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/g
 
-/** Whitespace-collapsed text; mirrors the weaver's `normalizeText`. */
+/**
+ * Whitespace-collapsed text; mirrors the weaver's `normalizeText` so a
+ * needle typed into `text` compares equal to the name in the weave.
+ * @param value - raw text, possibly with runs of whitespace.
+ * @returns the text with every whitespace run collapsed to one space, trimmed.
+ */
 export function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
@@ -51,7 +56,12 @@ export interface FindQuery {
   readonly scope?: string
 }
 
-/** True when the query carries at least one searchable key. */
+/**
+ * True when the query carries at least one searchable key — the guard the
+ * tool uses to reject an empty `cdp_find` call before matching runs.
+ * @param query - the parsed query; `scope` alone does not count as searchable.
+ * @returns whether any of ref/selector/ariaLabel/role/text is set.
+ */
 export function hasFindQuery(query: FindQuery): boolean {
   return query.ref !== undefined
     || query.selector !== undefined
@@ -60,7 +70,13 @@ export function hasFindQuery(query: FindQuery): boolean {
     || query.text !== undefined
 }
 
-/** plan08: human-readable query summary for `no element matched …` lines. */
+/**
+ * plan08: human-readable query summary for `no element matched …` lines —
+ * one `key=value` pair per set key, so the failure line echoes exactly what
+ * the caller asked for.
+ * @param query - the parsed query to summarize.
+ * @returns the space-joined pairs, or `(no query)` when nothing is set.
+ */
 export function querySummary(query: FindQuery): string {
   const parts: string[] = []
   if (query.ref !== undefined) parts.push(`ref=${JSON.stringify(query.ref)}`)

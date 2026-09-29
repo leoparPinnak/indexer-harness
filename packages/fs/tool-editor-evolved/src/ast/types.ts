@@ -112,7 +112,9 @@ export type AstRewriteErrorCode =
 
 /** Error type thrown by the AST layer; `code` is machine-readable. */
 export class AstRewriteError extends Error {
+  /** Stable machine-readable code classifying why the rewrite failed. */
   readonly code: AstRewriteErrorCode
+  /** Parser diagnostics captured at throw time; empty when none applied. */
   readonly diagnostics: readonly AstDiagnostic[]
 
   constructor(code: AstRewriteErrorCode, message: string, diagnostics: readonly AstDiagnostic[] = []) {

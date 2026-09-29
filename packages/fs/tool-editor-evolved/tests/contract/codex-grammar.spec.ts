@@ -8,6 +8,7 @@
  * become a silent success here: a patch that changes nothing is an error.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { writeFile } from 'node:fs/promises'
 import { parseHashlinePatch, runHashlineEdit } from '../../src/index.ts'
 import { fixture, headerFor, patch, rejectsPlain, throwsPlain, type EditorFixture } from './harness.ts'
 
@@ -101,5 +102,16 @@ describe('Codex grammar violations rejected at the hashline layer', () => {
     const result = await runHashlineEdit(x.io, crlf)
     expect(result.after).toBe(AFTER)
     expect(await x.disk()).toBe(AFTER)
+  })
+
+  it('preserves the source CRLF line endings through the patch (D5-1 regression)', async () => {
+    const crlf = 'export function main() {\r\n  run()\r\n}\r\n'
+    await writeFile(x.path, crlf) // re-seed the fixture as a CRLF file
+    await x.observe()
+    const src = patch(x.displayPath, crlf, '@@ 1', ' 1| export function main() {', '-2|   run()', '+2|   run({ strict: true })', ' 3| }')
+    const result = await runHashlineEdit(x.io, src)
+    // The edit lands, and the file keeps its CRLF style (never silently flattened to LF).
+    expect(result.after).toBe('export function main() {\r\n  run({ strict: true })\r\n}\r\n')
+    expect(await x.disk()).toBe('export function main() {\r\n  run({ strict: true })\r\n}\r\n')
   })
 })

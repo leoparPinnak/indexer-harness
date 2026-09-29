@@ -321,6 +321,9 @@ export function classifyCdpError(error: unknown): EvaluationError {
 }
 
 /**
+ * Whether a caught failure is an infrastructure failure the tool layer should
+ * report as a classified envelope; anything {@link classifyCdpError} rethrows
+ * (a bug or an unknown page error) is left for the pipeline to surface.
  * @param error - the caught failure.
  * @returns whether {@link classifyCdpError} can classify it; unknown errors are for the pipeline.
  */
@@ -477,6 +480,7 @@ export function buildExecOutcome(input: ExecBuildInput): ExecOutcome {
  * @param evaluation - the bounded evaluation result.
  * @param targetId - the resolved target, when one was resolved.
  * @param url - the page URL read before the evaluation.
+ * @param context - plan10-fix: termination + hidden-tab context, when known.
  * @returns the envelope both the tool and the REST route answer with.
  */
 export function buildEvalOutcome(evaluation: PageEvaluation, targetId?: string, url?: string, context?: EvalFixContext): EvalOutcome {

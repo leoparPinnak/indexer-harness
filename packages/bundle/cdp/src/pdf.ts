@@ -1762,6 +1762,9 @@ export function parsePrintToPdfReply(reply: unknown): Buffer {
 export type ViewerStrategy = 'network' | 'print' | 'axtree'
 
 /**
+ * Turn the `cdp_pdftotext` strategy pin into the attempt order the viewer
+ * extractor walks: an omitted pin or `auto` tries network, print, then axtree,
+ * while a named pin tries only that one strategy.
  * @param pin - optional strategy pin from tool input.
  * @returns the ordered strategies to attempt.
  * @throws Error on an unknown strategy name.

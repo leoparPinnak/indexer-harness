@@ -6,9 +6,11 @@
  *
  * Security has one home, here. Every route asks the composition's
  * `connection` service for a rejection first (`requestRejection`): its
- * Host/Origin fence defeats DNS rebinding and cross-site calls, and its
- * browser authentication (the login-token cookie) gates every caller before
- * any resolution result, icon, or launch is reachable. On top of that fence
+ * Host/Origin fence defeats DNS rebinding and cross-site calls before any
+ * resolution result, icon, or launch is reachable. Admission beyond that
+ * fence is unconditional today — no token or cookie is required — and a
+ * future login gate mounts at the admission seam in
+ * `@deepseek-ai/dsh-client-connection`. On top of that fence
  * the open route validates its body at the wire: an `application/json` media
  * type, a 64 KiB ceiling, string `app`/`path` fields, a resolved-available
  * catalog id, and an absolute path naming an existing directory.

@@ -126,7 +126,9 @@ export type ParsedLocateReply =
  * plan14: the readable name of one node — `tag#id.class1.class2`. The same
  * shape hosts the page-side probe, the `nearest` row and the ancestry chain,
  * so a model reading a failure line recognizes the same selector elsewhere.
- * @param evidence - measured node fields (tag/id/classes).
+ * @param tag - the element's tag name, or `''` for an anonymous node.
+ * @param id - the element's `id`, when it has one.
+ * @param classes - the element's classes, in document order, when any.
  * @returns the short selector.
  */
 export function locateLabel(tag: string, id: string, classes: readonly string[] = []): string {

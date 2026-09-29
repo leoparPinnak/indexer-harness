@@ -74,7 +74,7 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [dsh-deamon](../bundle/deamon/README.md) — the bridge and helper daemon that speak over this gateway
+- [dsh-deamon](../../bundle/deamon/README.md) — the bridge and helper daemon that speak over this gateway
 - [dsh-host-webserver](../../host/webserver/README.md) — the HTTP face that stays for the browser
 - [Development](../../../docs/development.md) — contributor workflow and the check lanes
 
@@ -88,6 +88,8 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 - Caps are hard failures by design: a request over 64 KiB or a response chunk over 512 KiB closes the connection, so a caller with a bigger payload must chunk it above this layer.
 - `deamon.transport: 'http'` still serves the legacy loopback path alongside the pipe until D9 removes it; a peer that cannot mount the gateway falls back to that path and logs the downgrade.
 - The key file is plaintext on disk (mode `0600`) beside the endpoint. A deployment wanting an externally managed secret sets `DSH_GATEWAY_KEY` instead.
+- On win32 a half-closed peer cannot receive the late answer: the write side gets `EPIPE` (libuv/OS semantics — reproduced in plain Node, not an ipc-pipe bug; the POSIX unix-socket behavior is not verified here), so peers should use the protocol's `bye` message rather than a raw FIN for a clean sign-off.
+- Once the handler flushes headers the body phase carries no request budget for callers that buffer the answer with `request()`: the header-scoped budget is deliberate (a live stream must keep running), so a body that stalls leaves the caller waiting on the connection closing — extending the budget across the body phase is deferred.
 
 <a id="dev-note"></a>
 ### Dev Note

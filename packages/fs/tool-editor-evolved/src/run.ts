@@ -50,8 +50,11 @@ export async function runHashlineEdit(io: HashlineEditIO, source: string): Promi
   const expected = await io.casBasis()
   const before = await io.read()
   const { content: after, replacements } = applyHashlinePatch(before, patch)
-  await io.write(after, expected)
+  // Re-surface CRLF when the source used it: the patch pipeline normalizes to LF, so a
+  // CRLF source must land on disk as CRLF (matching fs-local's literal-edit arm).
+  const normalized = before.includes('\r\n') && !after.includes('\r\n') ? after.replace(/\n/gu, '\r\n') : after
+  await io.write(normalized, expected)
   const persisted = await io.read()
-  verifyPatchedBytes(io.displayPath, after, persisted)
-  return { path: io.displayPath, before, after, replacements }
+  verifyPatchedBytes(io.displayPath, normalized, persisted)
+  return { path: io.displayPath, before, after: normalized, replacements }
 }

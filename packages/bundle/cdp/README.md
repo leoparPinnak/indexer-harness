@@ -46,7 +46,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md) is the ex
 
 ### What gets mounted
 
-- `GET /api/server/cdp/status`, behind Connection's Host/Origin + cookie fence.
+- `GET /api/server/cdp/status`, behind Connection's Host/Origin fence.
 - The model tool `cdp_status`, when the profile mounts the `tools` registry.
 - The `app:cdp-status` prompt section, when the profile mounts `systemPrompt`.
 - The `ui-cdp-view` browser row: the right-sidebar CDP tab.

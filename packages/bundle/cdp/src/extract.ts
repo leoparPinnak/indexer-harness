@@ -79,12 +79,20 @@ export interface ExtractSpec {
   readonly limit: number
 }
 
-/** True when `value` is a whitelisted page-level field. */
+/**
+ * True when `value` is a whitelisted page-level field.
+ * @param value - candidate field name from a parsed spec.
+ * @returns type guard narrowing to a member of {@link PAGE_FIELDS}.
+ */
 export function isPageField(value: string): value is typeof PAGE_FIELDS[number] {
   return (PAGE_FIELDS as readonly string[]).includes(value)
 }
 
-/** True when `value` is a whitelisted node-level source or `attr:<name>`. */
+/**
+ * True when `value` is a whitelisted node-level source or `attr:<name>`.
+ * @param value - candidate source name from a field map.
+ * @returns true for a {@link FIELD_SOURCES} member or a well-formed `attr:` reference.
+ */
 export function isFieldSource(value: string): boolean {
   return (FIELD_SOURCES as readonly string[]).includes(value) || /^attr:[A-Za-z_][\w-]*$/.test(value)
 }
@@ -259,7 +267,11 @@ function parseWhere(raw: unknown): { ok: true, where?: ExtractWhere } | { ok: fa
     : { ok: true }
 }
 
-/** `parseExtractSpec` returns error-line branches; merge them back for `ok:false`. */
+/**
+ * `parseExtractSpec` returns error-line branches; merge them back for `ok:false`.
+ * @param parsed - the `ok:false` branch of {@link parseExtractSpec}.
+ * @returns the error line carried by that branch.
+ */
 export function extractSpecError(parsed: ParsedExtractSpec & { ok: false }): string {
   return parsed.error
 }
@@ -342,6 +354,9 @@ export const PAGE_FIELDS_EXPRESSION =
   + '})'
 
 /**
+ * Resolve the row-key → source pairs a parsed spec projects: a `field` spec
+ * yields its single pair, an array `fields` maps each source onto itself as
+ * the key, and an object map (or the default list fields) supplies key → source.
  * @param spec - a parsed spec (kind list/field).
  * @returns the row-key → source pairs to project.
  */

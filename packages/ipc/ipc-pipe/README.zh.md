@@ -74,9 +74,9 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [dsh-deamon](../bundle/deamon/README.md)——经本网关对话的桥接与辅助守护进程
-- [dsh-host-webserver](../../host/webserver/README.md)——为浏览器保留的 HTTP 表面
-- [Development](../../../docs/development.md)——贡献者工作流与检查通道
+- [dsh-deamon](../../bundle/deamon/README.zh.md)——经本网关对话的桥接与辅助守护进程
+- [dsh-host-webserver](../../host/webserver/README.zh.md)——为浏览器保留的 HTTP 表面
+- [Development](../../../docs/development.zh.md)——贡献者工作流与检查通道
 
 -----
 
@@ -88,6 +88,8 @@ kind: "package-reference"
 - 上限按设计是硬失败：超过 64 KiB 的请求或超过 512 KiB 的响应块会关闭连接，因此更大的负载必须在本层之上自行分块。
 - `deamon.transport: 'http'` 在 D9 移除之前仍与管道并行服务旧的回环路径；无法挂载网关的对端会回落到该路径并记录降级。
 - 密钥文件在端点旁以明文落盘（权限 `0600`）。希望使用外部管理的密钥的部署应改设 `DSH_GATEWAY_KEY`。
+- 在 win32 上，已半关闭的对端收不到迟到的应答：写入侧得到 `EPIPE`（libuv/OS 语义——在纯 Node 中即可复现，并非 ipc-pipe 的缺陷；POSIX unix socket 行为在此未经验证），因此对端应使用协议的 `bye` 消息而非裸 FIN 来干净收尾。
+- 处理器 flush 响应头之后，正文阶段不再携带逐请求预算，只能由以 `request()` 缓冲完整应答的调用方承担：把预算限定在头部是有意为之（实时流必须继续运行），正文一旦停滞，调用方只能等待连接关闭——把预算扩展到整个正文阶段的契约变更已列入延期。
 
 <a id="dev-note"></a>
 ### 开发备注

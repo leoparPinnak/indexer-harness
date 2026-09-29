@@ -37,6 +37,8 @@ const FILL_FATAL = /^(file inputs|element cannot be filled|no option matches|fil
 /**
  * True when a failure reason can never improve with another attempt —
  * element-kind rejections and script/parse failures stop the poll loop.
+ * @param reason - the failure reason a fill reply carries.
+ * @returns whether the reason matches a fatal prefix, ending the poll loop.
  */
 export function isFillFatal(reason: string): boolean {
   return FILL_FATAL.test(reason)
@@ -126,13 +128,20 @@ export const FILL_POST_SCHEMA = {
  * Validate `cdp_fill` arguments in-band: a string `value` plus the shared
  * locator rules (at least one locator field, role/name pairing, textMatch,
  * nth).
+ * @param spec - the locator fields parsed from the tool arguments.
+ * @param value - the candidate fill value; must be a string.
+ * @returns the first validation error line, or undefined when both pass.
  */
 export function validateFillArgs(spec: LocatorSpec, value: unknown): string | undefined {
   if (typeof value !== 'string') return 'value must be a string'
   return validateLocatorSpec(spec)
 }
 
-/** Convenience over args → spec, mirroring the other locator tools. */
+/**
+ * Convenience over args → spec, mirroring the other locator tools.
+ * @param args - the raw `cdp_fill` argument record.
+ * @returns the locator spec the shared parser derives from those args.
+ */
 export function fillSpecFromArgs(args: Parameters<typeof locatorSpecFromArgs>[0]): LocatorSpec {
   return locatorSpecFromArgs(args)
 }
@@ -168,6 +177,9 @@ function asPost(raw: unknown): FillPostReport | undefined {
  * Parse one fill evaluation into a typed run. Never throws: evaluation
  * errors, truncation, malformed JSON, and shape drift collapse into
  * `ok:false` with a reason, exactly like {@link parseLocatorReply}.
+ * @param evaluation - the fill script's page evaluation result.
+ * @param targetId - the session target the evaluation ran under.
+ * @returns the typed run pairing the reply with its target id.
  */
 export function parseFillReply(evaluation: PageEvaluation, targetId: string): FillRun {
   if (evaluation.error !== undefined) {
@@ -212,6 +224,9 @@ export function parseFillReply(evaluation: PageEvaluation, targetId: string): Fi
  * resolution failures straight back), then the write + read-back per element
  * kind. Expects `spec`, `value`, `clear`, `verify`, `MAX_*`, and `DIRTY` in
  * scope the way the locator expression sets them up.
+ * @param spec - the locator spec serialized into the page-side script.
+ * @param options - fill flags (`clear`, `verify`) plus the value to write.
+ * @returns the expression source yielding the JSON-encoded fill reply.
  */
 export function buildFillExpression(spec: LocatorSpec, options: FillOptions & { value: string }): string {
   const clear = options.clear !== false
@@ -347,6 +362,9 @@ ${locatorPageCore()}
  * Tiny read-back probe used after the `Input.insertText` fallback: the
  * element is already focused + selected by the fill script, so
  * `document.activeElement` is the field itself.
+ * @param kind - which read-back to take: `value` for input/textarea,
+ *   `contenteditable` for the element's text.
+ * @returns the probe expression yielding the page URL and the read-back value.
  */
 export function buildFillReadExpression(kind: 'value' | 'contenteditable'): string {
   const read = kind === 'value'
@@ -364,7 +382,10 @@ export function buildFillReadExpression(kind: 'value' | 'contenteditable'): stri
 })()`
 }
 
-/** Extract the fallback read-back value; undefined when the probe failed. */
+/** Extract the fallback read-back value; undefined when the probe failed.
+ * @param evaluation - the read-back probe's page evaluation result.
+ * @returns the page URL plus the actual value, or undefined when the probe failed.
+ */
 export function parseFillRead(evaluation: PageEvaluation): { url: string, actual?: string } | undefined {
   if (evaluation.error !== undefined || !evaluation.hasValue || evaluation.value === '') return undefined
   let parsed: unknown
@@ -380,7 +401,12 @@ export function parseFillRead(evaluation: PageEvaluation): { url: string, actual
   return { url, actual: record.actual }
 }
 
-/** Map a parsed page reply to the tool envelope (shared by the poll loop). */
+/** Map a parsed page reply to the tool envelope (shared by the poll loop).
+ * @param reply - the parsed fill reply from the page.
+ * @param targetId - the session target the attempt ran under.
+ * @param length - the length of the value the caller tried to write.
+ * @returns the `cdp_fill` envelope carrying the reply's fields plus the attempt metadata.
+ */
 export function fillOutcomeFromReply(reply: FillReply, targetId: string, length: number): FillOutcome {
   return {
     ok: reply.ok,
@@ -403,6 +429,12 @@ export function fillOutcomeFromReply(reply: FillReply, targetId: string, length:
  * Build the final fallback outcome after `Input.insertText`: re-read the
  * element, settle `post.passed`, and state the framework-revert reason
  * when the value still did not stick.
+ * @param reply - the reply that flagged `fallbackNeeded` and carries the original `post`.
+ * @param targetId - the session target the fallback attempt ran under.
+ * @param length - the length of the value the caller tried to write.
+ * @param actual - the value re-read after `Input.insertText`, when the probe succeeded.
+ * @param url - the page URL at read-back time, preferred over the reply's own URL.
+ * @returns the final envelope with `fallbackUsed` and a settled verification `post`.
  */
 export function fillFallbackOutcome(
   reply: FillReply,
@@ -440,7 +472,10 @@ export function fillFallbackOutcome(
   }
 }
 
-/** `<tag#id "name">` subject line shared by the renderers. */
+/** `<tag#id "name">` subject line shared by the renderers.
+ * @param target - the resolved element facts, when the reply carried a target.
+ * @returns the bracketed subject line, or undefined when no target was resolved.
+ */
 export function targetLabel(target: FillRenderInput['target']): string | undefined {
   if (target === undefined) return undefined
   const id = typeof target.id === 'string' && target.id !== '' ? `#${target.id}` : ''
@@ -453,6 +488,10 @@ export function targetLabel(target: FillRenderInput['target']): string | undefin
 /**
  * Render one `cdp_fill` outcome: success names the subject, strategy, and
  * verification; failure leads with what could not be filled and why.
+ * @param value - the outcome to render.
+ * @param written - the value the caller wrote, when known; otherwise the
+ *   reply's own expectation is quoted in the success line.
+ * @returns the single text block for the tool card.
  */
 export function renderFill(value: FillRenderInput, written?: string): string {
   const subject = targetLabel(value.target) ?? 'element'

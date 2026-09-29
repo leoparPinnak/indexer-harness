@@ -46,7 +46,7 @@ dsh --profile web
 
 ### 挂载内容
 
-- `GET /api/server/cdp/status`，位于 Connection 的 Host/Origin + cookie 围栏之后。
+- `GET /api/server/cdp/status`，位于 Connection 的 Host/Origin fence 之后。
 - 模型工具 `cdp_status`，前提是 profile 挂载了 `tools` 注册表。
 - `app:cdp-status` prompt 段，前提是 profile 挂载了 `systemPrompt`。
 - `ui-cdp-view` 浏览器行：右侧边栏的 CDP 标签页。
