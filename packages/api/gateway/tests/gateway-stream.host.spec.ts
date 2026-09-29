@@ -22,7 +22,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'fixture/broken': { readonly count: bigint }
   }
 }
-import { provideBrowserCredentials } from './browser-credentials.ts'
 import TypertGatewayService, {
   TypertGatewayError,
   type Config as GatewayConfig,
@@ -42,31 +41,9 @@ vi.mock('node:crypto', async (importOriginal) => {
 })
 
 const randomUuid = vi.mocked(randomUUID)
-const browserCookies = new WeakMap<Context, string>()
 const REMOTE_HOST = { home: '/home/fixture' } as const
 type AgentWireId = TypertContextWire<TypertContextMap['agent']>
 const agentId = (value: string): AgentWireId => value as AgentWireId
-
-/** Exchange this test Host's process token for its WebSocket/HTTP Cookie header. */
-function browserCookie(ctx: Context): string {
-  const existing = browserCookies.get(ctx)
-  if (existing !== undefined) return existing
-  const origin = `http://127.0.0.1:${String(ctx.webServer.port)}`
-  const target = new URL(ctx.connection.authenticatedUrl(origin))
-  let setCookie: string | undefined
-  ctx.connection.authorizeIndex({
-    method: 'GET',
-    url: `${target.pathname}${target.search}`,
-    headers: { host: target.host },
-  }, {
-    writeHead(_status, headers) { setCookie = headers?.['set-cookie'] },
-    end() {},
-  })
-  if (setCookie === undefined) throw new Error('gateway stream fixture did not receive a browser cookie')
-  const cookie = setCookie.split(';', 1)[0]!
-  browserCookies.set(ctx, cookie)
-  return cookie
-}
 
 class FeedService extends Service {
   readonly typertRemote = bindTypertRemote(this, 'feed')
@@ -298,9 +275,7 @@ describe('Typert Remote streams', () => {
 
   it('uses the configured WebSocket heartbeat interval', { timeout: 1_000 }, async () => {
     const { ctx } = await setup(true, { websocketHeartbeatIntervalMs: 20 })
-    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {
-      headers: { cookie: browserCookie(ctx) },
-    })
+    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`)
     const ping = once(socket, 'ping')
     await once(socket, 'open')
     expect((await ping)[0]).toEqual(Buffer.alloc(0))
@@ -311,9 +286,7 @@ describe('Typert Remote streams', () => {
 
   it('multiplexes independent streams over one WebSocket and propagates cancellation', async () => {
     const { ctx, service } = await setup(true)
-    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {
-      headers: { cookie: browserCookie(ctx) },
-    })
+    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`)
     await once(socket, 'open')
     const frames: Record<string, unknown>[] = []
     socket.on('message', (data) => { frames.push(JSON.parse(rawText(data)) as Record<string, unknown>) })
@@ -395,9 +368,7 @@ describe('Typert Remote streams', () => {
     expect(() => { ctx.typertGateway.registerRemoteEvents(source, REMOTE_HOST) })
       .toThrow('forwarded Remote event source is already registered')
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {
-      headers: { cookie: browserCookie(ctx) },
-    })
+    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`)
     await once(socket, 'open')
     const frames: Record<string, unknown>[] = []
     socket.on('message', (data) => { frames.push(JSON.parse(rawText(data)) as Record<string, unknown>) })
@@ -846,9 +817,7 @@ describe('Typert Remote streams', () => {
 
   it('validates the internal Remote event request and reports an absent source', async () => {
     const { ctx } = await setup(true)
-    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {
-      headers: { cookie: browserCookie(ctx) },
-    })
+    const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`)
     await once(socket, 'open')
     const frames: Record<string, unknown>[] = []
     socket.on('message', (data) => { frames.push(JSON.parse(rawText(data)) as Record<string, unknown>) })
@@ -908,17 +877,11 @@ describe('Typert Remote streams', () => {
     ;(request as { abort(): void }).abort()
   })
 
-  it('answers an unauthenticated trusted Host with 401 before opening a stream', async () => {
+  it('accepts a trusted Host with no browser credentials before opening a stream', async () => {
     const { ctx } = await setup(true)
     const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`)
-    socket.on('error', () => {})
-    const responseEvent: unknown[] = await once(socket, 'unexpected-response')
-    const request = responseEvent[0]
-    const response = responseEvent[1]
-    const rejected = response as { statusCode?: number; resume(): void }
-    expect(rejected.statusCode).toBe(401)
-    rejected.resume()
-    ;(request as { abort(): void }).abort()
+    await once(socket, 'open')
+    socket.close()
   })
 })
 
@@ -930,7 +893,6 @@ async function setup(
   roots.push(ctx)
   if (transport) {
     await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
-    provideBrowserCredentials(ctx)
   }
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService, gatewayConfig)
@@ -991,17 +953,13 @@ interface RemoteEventTestClient {
   readonly socket: WebSocket
   readonly frames: Record<string, unknown>[]
   readonly streamId: string
-  readonly clientId: RemoteEventClientId
+  readonly clientId: string
   readonly origin: string
-  readonly cookie: string
 }
 
 async function openEventClient(ctx: Context, streamId: string): Promise<RemoteEventTestClient> {
   const origin = `http://127.0.0.1:${String(ctx.webServer.port)}`
-  const cookie = browserCookie(ctx)
-  const socket = new WebSocket(`${origin.replace('http:', 'ws:')}/api/remote.mux`, {
-    headers: { cookie },
-  })
+  const socket = new WebSocket(`${origin.replace('http:', 'ws:')}/api/remote.mux`)
   await once(socket, 'open')
   const frames: Record<string, unknown>[] = []
   socket.on('message', (data) => { frames.push(JSON.parse(rawText(data)) as Record<string, unknown>) })
@@ -1018,7 +976,7 @@ async function openEventClient(ctx: Context, streamId: string): Promise<RemoteEv
     if (typeof candidate === 'string') clientId = candidate as RemoteEventClientId
   })
   if (clientId === undefined) throw new Error('Remote event stream omitted its Client id')
-  return { socket, frames, streamId, clientId, origin, cookie }
+  return { socket, frames, streamId, clientId, origin }
 }
 
 function deliveredInvocation(client: RemoteEventTestClient): RemoteEventInvocationFrame | undefined {
@@ -1050,7 +1008,7 @@ async function sendEventResult(
   const rpcId = `remote-event-result-${client.streamId}`
   const response = await fetch(`${client.origin}/api/$events/result`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: client.cookie },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       type: 'client-request',
       rpcId,

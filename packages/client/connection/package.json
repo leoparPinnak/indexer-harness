@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-connection",
-  "description": "Authenticated RPC transport, generation lifecycle, and browser fixture",
+  "description": "Token-free RPC transport, generation lifecycle, and browser fixture",
   "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"

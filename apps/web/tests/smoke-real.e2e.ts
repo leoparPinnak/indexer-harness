@@ -30,26 +30,6 @@ import WebSocket from 'ws'
 import { REPO_ROOT, connectFreshWorkspace, newEnglishPage, probeFreePort, requireDist, saveFailureShot } from './support.ts'
 
 const WEB_SURFACE_PROMPT = fileURLToPath(new URL('./expected/web-runtime-context/web-surface-prompt.expected.md', import.meta.url))
-const authenticatedCookies = new Map<string, Promise<{ origin: string; cookie: string }>>()
-
-/** Exchange a printed process token once for Node-side HTTP/WebSocket probes. */
-function authenticatedWeb(launchUrl: string): Promise<{ origin: string; cookie: string }> {
-  const existing = authenticatedCookies.get(launchUrl)
-  if (existing !== undefined) return existing
-  const exchange = (async () => {
-    const response = await fetch(launchUrl, { redirect: 'manual' })
-    const setCookie = response.headers.get('set-cookie')
-    if (response.status !== 303 || setCookie === null) {
-      throw new Error(`dsh web authentication returned HTTP ${String(response.status)}`)
-    }
-    return {
-      origin: new URL(launchUrl).origin,
-      cookie: setCookie.split(';', 1)[0]!,
-    }
-  })()
-  authenticatedCookies.set(launchUrl, exchange)
-  return exchange
-}
 
 const comboMapUrl = (url: string): string => url.replace(/\/client\.js(?=,|&rev=)/g, '/client.js.map')
 
@@ -75,10 +55,9 @@ function waitForReadyLine(child: ChildProcess): Promise<string> {
 }
 
 async function remoteRpc<T>(baseUrl: string, endpoint: string, args: object): Promise<T> {
-  const authenticated = await authenticatedWeb(baseUrl)
-  const response = await fetch(`${authenticated.origin}/api/${endpoint}`, {
+  const response = await fetch(`${new URL(baseUrl).origin}/api/${endpoint}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: authenticated.cookie },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       type: 'client-request',
       rpcId: `smoke-${endpoint}`,
@@ -96,10 +75,7 @@ async function remoteRpc<T>(baseUrl: string, endpoint: string, args: object): Pr
 
 /** Read the explicit page cut from a freshly opened Session follow stream. */
 async function sessionCursor(baseUrl: string, sessionId: string): Promise<number> {
-  const authenticated = await authenticatedWeb(baseUrl)
-  const socket = new WebSocket(`${authenticated.origin.replace(/^http/u, 'ws')}/api/remote.mux`, {
-    headers: { cookie: authenticated.cookie },
-  })
+  const socket = new WebSocket(`${new URL(baseUrl).origin.replace(/^http/u, 'ws')}/api/remote.mux`)
   const streamId = `smoke-history-${randomUUID()}`
   try {
     await new Promise<void>((resolve, reject) => {
@@ -317,8 +293,8 @@ describe('dsh web keyless CLI smoke', () => {
     let browser: Browser | undefined
     try {
       const readyUrl = await waitForReadyLine(child)
-      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+$/u)
-      expect((await fetch(readyUrl, { redirect: 'manual' })).status).toBe(303)
+      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/u)
+      expect((await fetch(readyUrl, { redirect: 'manual' })).status).toBe(200)
       browser = await chromium.launch({ headless: true })
       const page = await newEnglishPage(browser)
       const pluginScripts: string[] = []

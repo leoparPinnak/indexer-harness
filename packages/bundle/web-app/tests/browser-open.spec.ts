@@ -91,7 +91,9 @@ describe('web app browser startup', () => {
     globals.__dshConnection = {
       authenticatedUrl: (baseUrl) => {
         const url = new URL(baseUrl)
-        url.searchParams.set('token', 'fixture-token')
+        url.pathname = '/'
+        url.search = ''
+        url.hash = ''
         return url.href
       },
       authorizeIndex: () => true,
@@ -120,7 +122,7 @@ describe('web app browser startup', () => {
     await ctx.loader.await()
     await opened
 
-    expect(openedUrl).toBe(`http://127.0.0.1:${String(ctx.webServer.port)}/?token=fixture-token`)
+    expect(openedUrl).toBe(`http://127.0.0.1:${String(ctx.webServer.port)}/`)
     expect(openedStatus).toBe(200)
   })
 })

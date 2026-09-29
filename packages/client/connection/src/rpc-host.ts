@@ -11,7 +11,7 @@ import { clientRequestSchema } from './rpc-schema.ts'
 import { bridge } from './http-bridge.ts'
 import { isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
-import type { BrowserAuth } from './browser-auth.ts'
+import { admissionRejection } from './admission.ts'
 import type {
   ConnectionIndexRequest,
   ConnectionIndexResponse,
@@ -65,12 +65,10 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Provide the Host half over the active HTTP server.
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
-   * @param browserAuth - process token and persistent browser-session owner.
    */
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
-    private readonly browserAuth: BrowserAuth,
   ) {
     super(ctx, 'connection')
   }
@@ -93,20 +91,28 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
   }
 
-  /** Apply the configured Host/Origin fence, then browser authentication. */
+  /** Apply the configured Host/Origin fence, then the admission seam. */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
     if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
-    return this.browserAuth.isAuthenticated(request) ? undefined : 401
+    return admissionRejection(request)
   }
 
-  /** Authenticate an index request through the process-token exchange or cookie. */
+  /** Apply the Host/Origin fence, then the admission seam, owning a denial response. */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
-    return this.browserAuth.authorizeIndex(request, response)
+    const rejection = this.requestRejection(request)
+    if (rejection === undefined) return true
+    response.writeHead(rejection, { 'cache-control': 'no-store' })
+    response.end(rejection === 401 ? 'unauthorized\n' : 'forbidden\n')
+    return false
   }
 
-  /** Add this process's launch token to the clean application URL. */
+  /** Return the clean application root URL; no credentials are added. */
   authenticatedUrl(baseUrl: string): string {
-    return this.browserAuth.authenticatedUrl(baseUrl)
+    const url = new URL(baseUrl)
+    url.pathname = '/'
+    url.search = ''
+    url.hash = ''
+    return url.href
   }
 
   /**

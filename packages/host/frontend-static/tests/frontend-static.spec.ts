@@ -15,7 +15,6 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import * as Connection from '@deepseek-ai/dsh-client-connection'
-import LocalCredentials from '@deepseek-ai/dsh-credentials-local'
 import HttpServer from '@deepseek-ai/dsh-host-webserver'
 import * as FrontendStatic from '../src/index.ts'
 
@@ -42,10 +41,6 @@ async function loadComposition(): Promise<Context> {
   await mkdir(join(dist, 'empty'))
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
-    "- name: '@deepseek-ai/dsh-credentials-local'",
-    '  config:',
-    `    path: '${join(root, '.credentials.yaml')}'`,
-    '    watch: false',
     "- name: '@deepseek-ai/dsh-host-webserver'",
     '  config:',
     "    host: '127.0.0.1'",
@@ -63,7 +58,6 @@ async function loadComposition(): Promise<Context> {
   await context.plugin(Loader)
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
-    ['@deepseek-ai/dsh-credentials-local', LocalCredentials],
     ['@deepseek-ai/dsh-host-webserver', HttpServer],
     ['@deepseek-ai/dsh-client-connection', Connection],
     ['@deepseek-ai/dsh-host-frontend-static', FrontendStatic],
@@ -103,22 +97,14 @@ describe('real Loader composition', () => {
     const server = loaded.webServer
     const port = server.port
     const launchUrl = loaded.connection.authenticatedUrl(`http://127.0.0.1:${String(port)}`)
-    const exchange = await fetch(launchUrl, { redirect: 'manual' })
-    expect(exchange.status).toBe(303)
-    expect(exchange.headers.get('location')).toBe('/')
-    const setCookie = exchange.headers.get('set-cookie')
-    if (setCookie === null) throw new Error('authenticated frontend did not set a cookie')
-    const cookie = setCookie.split(';', 1)[0]!
-    const authenticated = (init?: RequestInit): RequestInit => {
-      const headers = new Headers(init?.headers)
-      headers.set('cookie', cookie)
-      return { ...init, headers }
-    }
-
+    // Admission is unconditional: the clean root URL renders index.html with
+    // no token query and no session cookie.
+    const entry = await fetch(launchUrl, { redirect: 'manual' })
+    expect(entry.status).toBe(200)
     expect(await request(port, '/')).toMatchObject({
-      status: 401,
-      type: 'text/plain; charset=utf-8',
-      body: 'dsh web authentication required; reopen the URL printed by dsh web.\n',
+      status: 200,
+      type: 'text/html; charset=utf-8',
+      body: expect.stringContaining('shell'),
     })
 
     // Real assets with their MIME types; a live rebuild is served on the next read.
@@ -142,26 +128,26 @@ describe('real Loader composition', () => {
     // Only the root and index path render index.html through registered taps.
     const untap = server.tapIndex(html => html.replace('<head>', '<head><script>window.__T__=1</script>'))
     for (const path of ['/', '/index.html', '/?fixture']) {
-      const got = await request(port, path, authenticated())
+      const got = await request(port, path)
       expect(got.status).toBe(200)
       expect(got.type).toBe('text/html; charset=utf-8')
       expect(got.body).toContain('__T__')
       expect(got.body).toContain('shell')
     }
-    expect(await request(port, '/', authenticated({ method: 'HEAD' }))).toEqual({
+    expect(await request(port, '/', { method: 'HEAD' })).toEqual({
       status: 200,
       type: 'text/html; charset=utf-8',
       body: '',
     })
     untap()
-    expect((await request(port, '/', authenticated())).body).not.toContain('__T__')
+    expect((await request(port, '/')).body).not.toContain('__T__')
 
     // A missing configured index follows the same empty-404 contract for both
     // of its public entry paths and for both supported methods.
     await rm(join(root!, 'dist', 'index.html'))
     for (const path of ['/', '/index.html']) {
-      const get = await request(port, path, authenticated())
-      const head = await request(port, path, authenticated({ method: 'HEAD' }))
+      const get = await request(port, path)
+      const head = await request(port, path, { method: 'HEAD' })
       expect(get).toEqual({ status: 404, type: null, body: '' })
       expect(head).toEqual(get)
     }
@@ -183,7 +169,7 @@ describe('real Loader composition', () => {
       expect(get).toEqual({ status: 404, type: null, body: '' })
       expect(head).toEqual(get)
     }
-    expect(await request(port, '/api/no/such/route', authenticated())).toEqual({
+    expect(await request(port, '/api/no/such/route')).toEqual({
       status: 404,
       type: 'text/plain;charset=UTF-8',
       body: 'not found',

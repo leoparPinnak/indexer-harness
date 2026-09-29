@@ -194,13 +194,14 @@ describe('web e2e: Markdown image rendering', () => {
     if (imageOrigin !== undefined) await stopServer(imageOrigin.server)
   })
 
-  it('authenticates file requests and isolates directly opened active content', async () => {
+  it('serves file requests without credentials and isolates directly opened active content', async () => {
     const path = `/api/file?path=${encodeURIComponent(join(scaffold.workspaceCwd, 'active.html'))}`
-    const unauthenticated = await fetch(new URL(path, scaffold.baseUrl))
-    expect(unauthenticated.status).toBe(401)
-    await unauthenticated.body?.cancel()
+    // Admission is unconditional: a Node-side request with no browser
+    // context and no cookie reaches the route.
+    const admitted = await fetch(new URL(path, scaffold.baseUrl))
+    expect(admitted.status).toBe(200)
+    await admitted.body?.cancel()
     const preview = await newEnglishPage(browser)
-    await preview.context().addCookies(await page.context().cookies())
     try {
       const response = await preview.goto(new URL(path, scaffold.baseUrl).href)
       expect(response?.status()).toBe(200)
