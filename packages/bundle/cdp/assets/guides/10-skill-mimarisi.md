@@ -21,6 +21,13 @@ Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
 
 ---
 
+## İçindekiler
+
+- [§1 Araç → sonraki araç tablosu (39/39)](#1-arac--sonraki-arac-3939)
+- [§2 Akış haritası — 14 iş akışı](#2-akış-haritası--14-iş-akışı)
+- [§3 Polimorfizm kümeleri — 9 küme](#3-polimorfizm-kümeleri--aynı-iş-birden-çok-yol)
+- [§4 Model için tek sayfalık çalışma düzeni](#4-model-için-tek-sayfalık-çalışma-düzeni)
+
 ## 1. ARAÇ → SONRAKİ ARAÇ (39/39)
 
 **`öncesi`** = o aracı besleyen araç. **`sonrası`** = çağrıdan sonra mantıklı olan
@@ -28,38 +35,38 @@ tek adım. **`◦`** = zorunlu, **`·`** = olası.
 
 | # | araç | öncesi | sonrası |
 |---|---|---|---|
-| 1 | `cdp_status` | — (giriş noktası) | `cdp_tabs` |
-| 2 | `cdp_open` | `cdp_status` · `cdp_endpoints` | `cdp_status` |
-| 3 | `cdp_tabs` | `cdp_status` | `cdp_eval(location.href)` · `cdp_tab_focus` |
-| 4 | `cdp_navigate` | `cdp_tabs` | `cdp_wait` |
-| 5 | `cdp_snapshot` | `cdp_tabs` | `cdp_click(ref)` · `cdp_text(ref)` · `cdp_find` |
+| 1 | `cdp_status` | — (giriş noktası); `cdp_open` ve `cdp_profiles` dönüşünde geri bildirir | `cdp_tabs` |
+| 2 | `cdp_open` | `cdp_status` · `cdp_endpoints` · `cdp_profiles` | `cdp_status` |
+| 3 | `cdp_tabs` | `cdp_status` · `cdp_contexts` · `cdp_tab_new` · `cdp_tab_close` | `cdp_eval(location.href)` · `cdp_tab_focus` |
+| 4 | `cdp_navigate` | `cdp_tabs` · `cdp_stealth` | `cdp_wait` |
+| 5 | `cdp_snapshot` | `cdp_tabs` · `cdp_wait` | `cdp_click(ref)` · `cdp_text(ref)` · `cdp_find` |
 | 6 | `cdp_eval` | `cdp_tabs` | `cdp_exec` (kanıt gerekiyorsa) |
-| 7 | `cdp_click` | `cdp_find` · `cdp_locate` · `cdp_snapshot` | `cdp_expect` ◦ · `cdp_screenshot` |
+| 7 | `cdp_click` | `cdp_find` · `cdp_locate` · `cdp_snapshot` · `cdp_fill` · `cdp_scroll` · `cdp_tab_focus` · `cdp_viewport` | `cdp_expect` ◦ · `cdp_screenshot` |
 | 8 | `cdp_type` | `cdp_click` (odak için) | `cdp_expect` ◦ · `cdp_text` |
 | 9 | `cdp_wait` | `cdp_navigate` · `cdp_click` · `cdp_scroll` | `cdp_snapshot` · `cdp_exec` · `cdp_expect` |
 | 10 | `net_capture` | — (kullanıcı eylemi) | `cdp_exec(fetch)` · `net_export` |
 | 11 | `net_export` | `net_capture` | — (rapor) |
-| 12 | `cdp_screenshot` | `cdp_snapshot` | `cdp_locate` ◦ (görsel döngü) |
+| 12 | `cdp_screenshot` | `cdp_snapshot` · `cdp_click` · `cdp_expect` | `cdp_locate` ◦ (görsel döngü) |
 | 13 | `cdp_viewport` | `cdp_status` | `cdp_find` · `cdp_click` (yeniden ölç) |
 | 14 | `cdp_printpdf` | `cdp_wait` | `cdp_readpdf` · `cdp_pdftotext` |
 | 15 | `cdp_download` | **`cdp_click`ten ÖNCE** | `cdp_files` · `cdp_readpdf` |
-| 16 | `cdp_readpdf` | `cdp_printpdf` · `cdp_download` | `cdp_files` |
-| 17 | `cdp_pdftotext` | `cdp_wait` (PDF sekmesi) | — (okuma) |
-| 18 | `cdp_files` | `cdp_download` · `cdp_printpdf` | `cdp_readpdf` |
-| 19 | `cdp_exec` | `cdp_eval` · `net_capture` | `cdp_expect` · `cdp_extract` |
+| 16 | `cdp_readpdf` | `cdp_printpdf` · `cdp_download` · `cdp_files` | `cdp_files` |
+| 17 | `cdp_pdftotext` | `cdp_wait` (PDF sekmesi) · `cdp_printpdf` | — (okuma) |
+| 18 | `cdp_files` | `cdp_download` · `cdp_printpdf` · `cdp_extract` · `cdp_readpdf` | `cdp_readpdf` |
+| 19 | `cdp_exec` | `cdp_eval` · `net_capture` · `cdp_tab_focus` · `cdp_wait` | `cdp_expect` · `cdp_extract` |
 | 20 | `cdp_tab_new` | `cdp_tabs` | `cdp_tabs` (yeni id'yi sabitle) |
 | 21 | `cdp_tab_close` | `cdp_tabs` | `cdp_tabs` |
 | 22 | `cdp_tab_focus` | `cdp_tabs` · `cdp_dialog` | `cdp_exec` · `cdp_click` |
 | 23 | `cdp_scroll` | `cdp_find` (`inViewport:false`) | `cdp_find` · `cdp_click` · `cdp_expect` |
 | 24 | `cdp_dialog` | `dialog-open` reddi | `cdp_expect` (diyalog sonrası) |
 | 25 | `cdp_upload` | `cdp_dialog` (chooser açıksa) | `cdp_expect` |
-| 26 | `cdp_text` | `cdp_find` · `cdp_snapshot` | `cdp_expect` |
-| 27 | `cdp_expect` | **her mutasyon** | (biter) · `cdp_screenshot` (kanıt) |
+| 26 | `cdp_text` | `cdp_find` · `cdp_snapshot` · `cdp_type` | `cdp_expect` |
+| 27 | `cdp_expect` | **her mutasyon** — somutlayıcıları: `cdp_captcha` · `cdp_click` · `cdp_dialog` · `cdp_exec` · `cdp_extract` · `cdp_find` · `cdp_scroll` · `cdp_text` · `cdp_type` · `cdp_upload` · `cdp_wait` | (biter) · `cdp_screenshot` (kanıt) |
 | 28 | `cdp_endpoints` | "araçlar tarayıcıyı görmüyor" | `cdp_open` |
 | 29 | `cdp_contexts` | `cdp_open` | `cdp_tabs` |
 | 30 | `cdp_fill` | `cdp_find` · `cdp_scroll` | `cdp_click` (gönder) |
-| 31 | `cdp_find` | `cdp_snapshot` | `cdp_click` ◦ · `cdp_scroll` · `cdp_expect` |
-| 32 | `cdp_extract` | `cdp_wait` | `cdp_expect` · `cdp_files` |
+| 31 | `cdp_find` | `cdp_snapshot` · `cdp_scroll` · `cdp_viewport` | `cdp_click` ◦ · `cdp_scroll` · `cdp_expect` |
+| 32 | `cdp_extract` | `cdp_wait` · `cdp_exec` | `cdp_expect` · `cdp_files` |
 | 33 | `cdp_stealth` | `cdp_fingerprint` | `cdp_navigate` (tekrar dene) |
 | 34 | `cdp_fingerprint` | engellenme belirtisi | `cdp_stealth` · `cdp_captcha(scan)` |
 | 35 | `cdp_captcha` | `cdp_fingerprint` · şüpheli sayfa | `cdp_expect` · (üçüncü taraf ise **raporla**) |
@@ -320,6 +327,11 @@ Her küme: **yollar** · **varsayılan** · **ne zaman geçersin**.
 **Geçiş kuralı:** `cdp_find` `inViewport:false` dediyse → **1**. Dönen `scrollY`
 bir **ölçümdür**, varsayımın değil.
 
+**Sıralı yedek plan:** bir yol sustuğunda şu sırayla in:
+1. `cdp_scroll({ mode:'selector', selector })` — `scrollY` artmadıysa derinliği ölç.
+2. `cdp_scroll({ mode:'bottom' })` + derinlik sınırı (09 §4.6) — sonsuz kaydırmayı yakala.
+3. Hâlâ görünür değilse `cdp_click({ css })` — locator kendi `scrollIntoView`'unu yapar.
+
 ### 3.4 Alana yazma — 4 yol
 
 | # | Yol | Ne zaman |
@@ -396,6 +408,11 @@ gerektiğinden ağır olan seviye gereksiz gizlilik ve gereksiz sürektir.
 Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** —
 çünkü yeni profil "giriş yapılmamış" görünür (09 §4.5).
 
+**Sıralı yedek plan:** seviye tutmazsa bir üste çık:
+1. `cdp_tab_new({ focus:false })` kendi sekmen tutmadıysa → 2'ye geç.
+2. `cdp_contexts({ action:'create'|'open' })` — temiz çerezle başla, bulaşma sürerse → 3'e geç.
+3. `cdp_open({ profile:'assistant' })` — kalıcı, giriş yapılmış profile geç; iş bitince `cdp_contexts({ action:'dispose' })`.
+
 ### 3.9 Kanıt biçimi — 5 yol
 
 | Yol | Ne zaman |
@@ -405,6 +422,11 @@ Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** �
 | `cdp_readpdf`/`cdp_pdftotext` | Doküman kanıtı |
 | `net_export` | Trafik kanıtı (kimin ne konuştuğu) |
 | Rapor metni | Her zaman: *neyi yaptın, hangi gözlemle doğruladın* |
+
+**Sıralı yedek plan:** kanıt biçimi yetmezse bir üst biçime geç:
+1. `cdp_expect` metin iddiasını karşılamadıysa → `cdp_screenshot` ile görsel kanıt.
+2. Görsel yetmiyorsa (doküman, tartışma, trafik) → `cdp_readpdf`/`cdp_pdftotext` ya da `net_export`.
+3. Ölçüm hâlâ yoksa → rapor metni: neyi yaptın, hangi gözlemle doğruladın.
 
 ---
 

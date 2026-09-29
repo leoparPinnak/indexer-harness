@@ -126,6 +126,19 @@ describe('saveTextFile', () => {
     const b = await saveTextFile({ root, sessionId: 'sess-1', suggestedName: 'r.txt', content: 'b' })
     expect(a.path).not.toBe(b.path)
   })
+
+  it('keeps concurrent saves of identical input independent and intact (race)', async () => {
+    const content = 'same content\n'.repeat(500)
+    const saves = await Promise.all(Array.from({ length: 8 }, () =>
+      saveTextFile({ root, sessionId: 'sess-race', suggestedName: 'r.txt', content })))
+    // The exclusive create is what makes racing writers safe: no name collision,
+    // no EEXIST failure, and no writer landing in another writer's file.
+    expect(new Set(saves.map(saved => saved.path)).size).toBe(saves.length)
+    for (const saved of saves) {
+      expect(readFileSync(saved.path, 'utf8')).toBe(content)
+      expect(saved.bytes).toBe(Buffer.byteLength(content, 'utf8'))
+    }
+  })
 })
 
 describe('privateRoot', () => {

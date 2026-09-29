@@ -296,6 +296,7 @@
     { "path": "./packages/bundle/base" },
     { "path": "./packages/bundle/cdp" },
     { "path": "./packages/bundle/deamon" },
+    { "path": "./packages/ipc/ipc-pipe" },
     { "path": "./packages/bundle/headless" },
     { "path": "./packages/bundle/sdk-app" },
     { "path": "./packages/bundle/sdk-minimal" },

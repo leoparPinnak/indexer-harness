@@ -8,6 +8,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { SpillLocator, SpillStore, type SaveTextSpill, type SpillRef } from '@deepseek-ai/dsh-spill'
 import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
 import { formatSpillNotice } from '@deepseek-ai/dsh-spill-policy/notice'
+import { formatSpillReceipt } from '@deepseek-ai/dsh-spill-policy/envelope'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it } from 'vitest'
@@ -127,9 +128,13 @@ describe.each([
 
     it('keeps a notice-only result generic when no preview fits', async () => {
       const original = '雪'.repeat(1_000) + '\n[exit code: 9]'
-      const notice = formatSpillNotice({ kind: 'exact', count: Buffer.byteLength(original, 'utf8') }, spillReference)
-      const { block, saves } = await executeShell(original, nested, name, Buffer.byteLength(notice, 'utf8'))
-      expect(block.content).toEqual([{ type: 'text', text: notice }])
+      const bytes = Buffer.byteLength(original, 'utf8')
+      const notice = formatSpillNotice({ kind: 'exact', count: bytes }, spillReference)
+      const receipt = formatSpillReceipt({ chars: original.length, bytes })
+      // A budget that fits the receipt row and the notice but no preview bytes.
+      const maxInlineBytes = Buffer.byteLength(receipt, 'utf8') + 2 + Buffer.byteLength(notice, 'utf8')
+      const { block, saves } = await executeShell(original, nested, name, maxInlineBytes)
+      expect(block.content).toEqual([{ type: 'text', text: `${receipt}\n\n${notice}` }])
       expect(saves).toHaveLength(1)
       expect(saves[0]!.bytes).toEqual(Buffer.from(original, 'utf8'))
       expect(terminalCardModel(block)).toBeNull()

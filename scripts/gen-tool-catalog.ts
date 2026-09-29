@@ -174,6 +174,14 @@ export interface ToolPackage {
    */
   toolsConfig?: ToolsConfig
   /**
+   * A `tool-*` leaf that ships engine code other tool packages call (the
+   * hashline engine behind tool-fs / tool-str-replace-editor's routing seam):
+   * it registers no model-facing names of its own. Declaring it makes the
+   * zero-tool boot EXPECTED — `assertToolsHarvested` then demands exactly
+   * zero, so the flag can never mask tools that appear later.
+   */
+  library?: true
+  /**
    * A deployment note rendered after the package's tools, for a fact that
    * booting the package alone cannot show. The registered tool NAME can be a
    * load-time config (`tool-subagent`'s `toolName`), so one package may appear
@@ -201,6 +209,17 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'ask_user_question pauses the tool call until the active UI provider returns a human answer.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-editor-evolved',
+    dir: 'tool-editor-evolved',
+    source: 'packages/fs/tool-editor-evolved/src/index.ts',
+    requires: [],
+    writes: [],
+    library: true,
+    async mount() {},
+    note:
+      'Library package: the hashline engine is consumed by dsh-tool-fs and dsh-tool-str-replace-editor through the isHashlinePatch routing seam; it registers no tool of its own, so the schema harvest mounts nothing.',
   },
   {
     pkg: '@deepseek-ai/dsh-tools',
@@ -674,6 +693,13 @@ export function assertManifestComplete(packages: ToolPackage[] = TOOL_PACKAGES, 
  * @throws when the boot registered no tool at all.
  */
 export function assertToolsHarvested(entry: ToolPackage, harvested: number): void {
+  if (entry.library === true) {
+    if (harvested === 0) return
+    throw new Error(
+      `gen-tool-catalog: ${entry.pkg} declares library: true but registered ${harvested} tool(s). `
+      + 'Drop the flag now that it ships model-facing names.',
+    )
+  }
   if (harvested > 0) return
   throw new Error(
     `gen-tool-catalog: ${entry.pkg} booted without registering a single tool. `

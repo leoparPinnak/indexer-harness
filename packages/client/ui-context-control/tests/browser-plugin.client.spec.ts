@@ -163,7 +163,7 @@ describe('ui-context-control browser apply', () => {
     // A rejected envelope must surface, never report success.
     b.settingsRemote.update.mockResolvedValueOnce({
       ok: false,
-      error: new RemoteError('settings/conflict', 'revision moved', { expected: 1, actual: 2 }),
+      error: new RemoteError('settings/conflict', 'revision moved', { ns: 'compaction-basic', expected: 1, actual: 2 }),
     } as never)
     await expect(face.writeCap(32768))
       .rejects.toThrow(/settings write failed: revision moved \(settings\/conflict\)/)

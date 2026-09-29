@@ -10,6 +10,7 @@
     { "path": "../../../vendor/schemastery" },
     { "path": "../../core/tools" },
     { "path": "../fs" },
+    { "path": "../tool-editor-evolved" },
     { "path": "../../sandbox/sandbox" },
     { "path": "../../sandbox/sandbox-policy" }
   ]

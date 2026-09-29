@@ -8,7 +8,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-fs'
+import { FsError } from '@deepseek-ai/dsh-fs'
+import { isHashlinePatch, runHashlineEdit } from '@deepseek-ai/dsh-tool-editor-evolved'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
 import { sessionResolveOptions } from './session-cwd.ts'
@@ -116,6 +117,44 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       // > backend default, plus the session cwd root) BEFORE anything executes.
       const sandboxPolicy = await sandbox.resolvePolicy('edit', args, exec)
       const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, input.filePath, sandboxPolicy?.workspaceRoot))
+      // Hashline chain: a patch-shaped old_string takes the hashline path — parse,
+      // header-hash check, compare-and-swap write, read-back byte verification — and
+      // the literal string-replace below stays the fallback for ordinary input.
+      // Both layers of the edit safety net are reused, not re-invented: the
+      // fs/edit-intent waterfall still enforces read-before-edit (it can throw
+      // FS_NOT_OBSERVED before anything runs), and the write carries the same
+      // replaceIfVersion basis the literal path uses, so a concurrent edit loses
+      // with FS_STALE_VERSION instead of being overwritten.
+      if (isHashlinePatch(input.oldString)) {
+        try {
+          const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+          const edited = await runHashlineEdit(
+            {
+              displayPath: target.displayPath,
+              casBasis: async () => {
+                if (intent !== undefined) return { kind: 'replaceIfVersion', version: intent.version }
+                const info = await ctx.fs.stat(target, exec.signal)
+                if (info === undefined || info.type !== 'file') {
+                  throw new FsError(
+                    `cannot edit "${target.displayPath}": file changed since it was read`,
+                    'FS_STALE_VERSION',
+                  )
+                }
+                return { kind: 'replaceIfVersion', version: info.version }
+              },
+              read: async () => ctx.fs.readText(target, exec.signal),
+              write: async (content, expected) => {
+                const written = await ctx.fs.writeText(target, content, expected, exec.signal, sandboxPolicy)
+                ctx.emit('fs/observed', target, { kind: 'present', version: written.version }, exec)
+              },
+            },
+            input.oldString,
+          )
+          return { path: edited.path, before: edited.before, after: edited.after }
+        } catch (error: unknown) {
+          throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+        }
+      }
       // Single-slot decision: the policy plugin returns { version: vObserved } or
       // throws FS_NOT_OBSERVED; the bare default is undefined (unconditional edit).
       // No stat — the bare default never manufactures a version basis. The intent

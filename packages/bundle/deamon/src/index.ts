@@ -16,6 +16,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-skill'
 import type { AssembleContext } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type { DeamonTransport } from './deamon-manager.ts'
 import { registerSandboxRoutes } from './sandbox.ts'
 import { shellboxSkillProvider } from './skill.ts'
 import {
@@ -39,10 +40,18 @@ export interface Config {
    * not in the GUI, so the orientation text would be false.
    */
   surfaceContext: boolean
+  /**
+   * How the bridge reaches the Deamon: `pipe` (the default) speaks the home's
+   * named-pipe gateway, `http` keeps the legacy loopback path that D9 removes.
+   * Both transports stay mounted while the shift lasts, and a gateway the
+   * bridge cannot reach downgrades that session to `http` with a logged reason.
+   */
+  transport: DeamonTransport
 }
 
 export const Config: z<Config> = z.object({
   surfaceContext: z.boolean().default(true),
+  transport: z.union(['pipe', 'http'] as const).default('pipe'),
 })
 
 /** Model-visible orientation for the Shellbox isolated desktop feature. */
@@ -61,7 +70,7 @@ function shellboxSurfacePrompt(): string {
 
 /** Mount the Shellbox routes, tool, skill, and prompt section. */
 export function apply(ctx: Context, config: Config): void {
-  registerSandboxRoutes(ctx)
+  registerSandboxRoutes(ctx, { transport: config.transport })
   // The skill registry belongs to profiles that mount it; the bridge itself
   // mounts on the webServer alone, so registration waits here instead of
   // holding the whole plugin back.

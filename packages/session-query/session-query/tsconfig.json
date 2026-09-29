@@ -33,10 +33,16 @@
       "path": "../../session/session-persistence"
     },
     {
+      "path": "../../session/session-persistence-jsonl"
+    },
+    {
       "path": "../../session/session-projection"
     },
     {
       "path": "../../session/session-projection-cache"
+    },
+    {
+      "path": "../../util/home-paths"
     }
   ]
 }

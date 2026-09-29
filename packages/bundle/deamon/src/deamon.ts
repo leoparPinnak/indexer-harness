@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { GatewayAlreadyRunningError, startPipeGateway, type PipeGateway } from '@deepseek-ai/dsh-ipc-pipe'
 import {
   SandboxSessionManager,
   parseSessionParam,
@@ -78,6 +79,17 @@ export function getDaemonDiscoveryPath(): string {
     }
   }
   return join(base, 'deamon.json')
+}
+
+/**
+ * Seed naming this daemon's gateway coordinates. `DEAMON_DISCOVERY_FILE`
+ * keeps a spec's pipe beside its own discovery file so two daemons in one
+ * test run never fight over an endpoint; without it the DSH home names it.
+ * @returns the seed, or undefined for the home-derived default.
+ */
+export function getGatewaySeed(): string | undefined {
+  const override = process.env.DEAMON_DISCOVERY_FILE
+  return override !== undefined && override !== '' ? override : undefined
 }
 
 /** Create a minimal console logger when none is provided. */
@@ -464,12 +476,37 @@ export async function startDeamon(options: DeamonOptions = {}): Promise<DeamonHa
     log.warn(`failed to write discovery file: ${String(err)}`)
   }
 
+  // Mount the named-pipe gateway beside the HTTP listener. The bridge picks
+  // its transport with `deamon.transport`; both stay alive for the shift, and
+  // a gateway already mounted by another live daemon is reported, not fatal —
+  // that daemon is the one the bridge will attach to.
+  let gateway: PipeGateway | undefined
+  try {
+    gateway = await startPipeGateway({
+      seed: getGatewaySeed(),
+      log,
+      handler: async (req, res) => {
+        // The gateway pair carries exactly the HTTP-shaped subset the routes
+        // read: method, url, a readable body, and a response they set headers
+        // on and write to — the same objects a `node:http` listener hands over.
+        await handleRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse)
+      },
+    })
+  } catch (error: unknown) {
+    if (error instanceof GatewayAlreadyRunningError) {
+      log.warn(`deamon: ${error.message}; serving the HTTP transport only`)
+    } else {
+      log.error(`deamon: named-pipe gateway did not mount: ${String(error)}`)
+    }
+  }
+
   const close = async (): Promise<void> => {
     try {
       rmSync(discoveryFile, { force: true })
     } catch {
       // Ignored
     }
+    if (gateway !== undefined) await gateway.close()
     await manager.stopAll()
     await new Promise<void>((resolve) => {
       server.close(() => { resolve() })

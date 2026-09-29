@@ -18,6 +18,17 @@ kullanırım ve aldığımın gerçekten tam olduğunu nasıl anlarım?"*
 
 ---
 
+## İçindekiler
+
+1. [§1 Kapsam](#1-kapsam-ne-zaman-uygulanır-ne-zaman-uygulanmaz)
+2. [§2 Araç envanteri](#2-arac-envanteri--38-aracın-tamamı)
+3. [§3 Kanıtla öğrenilmiş kurallar](#3-kanıtla-öğrenilmiş-kurallar)
+4. [§4 Reçeteler](#4-reçeteler)
+5. [§4.10 Kanıt kaydı ve doğrulanmayan iddialar](#410-kanıt-kaydı-ve-doğrulanmayan-iddialar)
+6. [§5 Karar ağacı](#5-karar-ağacı--hangi-durumdaysan-hangi-araçı)
+7. [§6 Sık yapılan hatalar](#6-sık-yapılan-hatalar)
+8. [§7 Kısa kontrol listesi](#7-kısa-kontrol-listesi)
+
 ## 1. Kapsam: ne zaman uygulanır, ne zaman uygulanmaz
 
 ### 1.1 Uygulanır

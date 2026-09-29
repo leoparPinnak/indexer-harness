@@ -69,9 +69,10 @@ describe('spill: field policing', () => {
     const out = spillTextField('cdp_text', 'text', { ok: true, text: big }, rec.write)
     expect(rec.calls).toHaveLength(1)
     expect(rec.calls[0]?.content).toBe(big) // lossless: full payload on disk
-    expect((out as { text: string }).text.length).toBeLessThan(big.length)
-    expect((out as { text: string }).text).toContain('/spill/')
-    expect((out as { spill: { chars: number } }).spill.chars).toBe(big.length)
+    expect(out.text.length).toBeLessThan(big.length)
+    expect(out.text).toContain('/spill/')
+    const spilled = out as unknown as { spill: { chars: number } } // spillTextField augments the envelope with its spill receipt
+    expect(spilled.spill.chars).toBe(big.length)
   })
 
   it('row field spills JSON with the total and keeps head+tail rows', () => {
@@ -83,7 +84,8 @@ describe('spill: field policing', () => {
     expect(rec.calls[0]?.content.length).toBeGreaterThan(SPILL_THRESHOLD_CHARS)
     const kept = (out as { data: unknown[] }).data
     expect(kept).toHaveLength(4) // 3 head + 1 tail
-    expect((out as { spill: { rows: number } }).spill.rows).toBe(400)
+    const spilled = out as unknown as { spill: { rows: number } } // spillRowsField augments the envelope with its spill receipt
+    expect(spilled.spill.rows).toBe(400)
   })
 
   it('small row sets are NEVER rewritten', () => {

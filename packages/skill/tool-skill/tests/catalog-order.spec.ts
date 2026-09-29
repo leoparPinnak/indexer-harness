@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { catalogSourceEntries, digestCatalogEntries } from '../src/index.ts'
-import type { SkillSummary } from '../src/index.ts'
+import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 
 function skill(name: string): SkillSummary {
   return { name, description: `${name} açıklaması` } as SkillSummary

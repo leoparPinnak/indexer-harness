@@ -12,6 +12,17 @@ when the page puts a verification challenge in the way.
 
 ---
 
+## Contents
+
+1. [The measuring discipline](#1-the-measuring-discipline-why-hardcoded-coordinates-fail)
+2. [The visual loop](#1b-the-visual-loop-dom-bulamadiysa-script-yazma-gorseye-bak)
+3. [Approaching, not teleporting](#2-approaching-not-teleporting)
+4. [Sliders and tracks](#3-sliders-and-tracks)
+5. [Delayed confirmations](#4-delayed-confirmations)
+6. [Honest failure (Layer A)](#5-honest-failure-layer-a-detect-classify-report)
+7. [Verification challenges (first-party only)](#6-verification-challenges-first-party-only)
+8. [Layer C: verification-challenge roles](#layer-c-verification-challenge-roles)
+
 ## 1. The measuring discipline (why hardcoded coordinates fail)
 
 CDP input (`Input.dispatchMouseEvent`) takes **viewport CSS pixels**. Three

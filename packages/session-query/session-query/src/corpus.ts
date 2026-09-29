@@ -76,7 +76,9 @@ export class SessionCorpus {
         persisted: durable !== undefined,
       })
     }
-    return [...records.values()].sort(compareSessions)
+    return [...records.values()].sort(
+      (a, b) => compareSessionHeaders(a.header, b.header),
+    )
   }
 
   /**
@@ -304,8 +306,16 @@ function snapshotLive(session: Session): LogicalSession {
   }
 }
 
-function compareSessions(a: SessionRecord, b: SessionRecord): number {
-  return b.header.createdAt - a.header.createdAt || a.header.id.localeCompare(b.header.id)
+/**
+ * Deterministic corpus order: newest header first, session id breaking ties.
+ * Shared by listing results and every scan layered over them, so a filtered
+ * scan keeps exactly the full scan's row order.
+ * @param a - first stored header.
+ * @param b - second stored header.
+ * @returns a negative value when `a` sorts first, positive when `b` does.
+ */
+export function compareSessionHeaders(a: SessionHeader, b: SessionHeader): number {
+  return b.createdAt - a.createdAt || a.id.localeCompare(b.id)
 }
 
 function notFound(sessionId: SessionId): SessionQueryError {

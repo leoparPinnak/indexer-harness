@@ -20,14 +20,14 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { buffer } from 'node:stream/consumers'
 import { fileURLToPath } from 'node:url'
-import { get as httpGet, type ClientRequest, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { Context, Logger } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type { WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import WebSocket, { WebSocketServer } from 'ws'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { DeamonManager } from './deamon-manager.ts'
+import { DeamonManager, type DaemonStream, type DeamonTransport } from './deamon-manager.ts'
 import { markShellboxTouched, setShellboxChangeSource } from './shellbox-changes.ts'
 import type {
   ShellboxChangeKind,
@@ -56,6 +56,7 @@ let sharedDaemonManager: DeamonManager | undefined
 export function getDeamonManager(log?: Logger): DeamonManager {
   if (internals.daemonManager !== undefined) return internals.daemonManager
   return sharedDaemonManager ??= new DeamonManager({
+    transport: internals.transport,
     log: log ?? {
       info: (m: string) => { console.log(`[deamon] ${m}`) },
       warn: (m: string) => { console.warn(`[deamon] ${m}`) },
@@ -76,6 +77,8 @@ export const internals = {
   commandFile: '',
   /** Whether to use the isolated Deamon microservice (defaults to true in production). */
   useDaemon: true,
+  /** Transport the shared DeamonManager mounts with: `deamon.transport` in a composition. */
+  transport: 'pipe' as DeamonTransport,
   /** Test seam override for daemon manager. */
   daemonManager: undefined as DeamonManager | undefined,
   resetController: async (): Promise<void> => {
@@ -1486,18 +1489,16 @@ async function serveSandboxFrames(
   manager: SandboxSessionManager,
 ): Promise<void> {
   const state = { closed: false }
-  let upstream: IncomingMessage | undefined
-  let proxyReq: ClientRequest | undefined
+  let upstream: DaemonStream | undefined
   const finish = (): void => {
     state.closed = true
     upstream?.destroy()
-    proxyReq?.destroy()
   }
   ws.once('close', finish)
   ws.once('error', finish)
   try {
     if (internals.useDaemon) {
-      const ready = await daemonManager.ensureRunning()
+      await daemonManager.ensureRunning()
       if (state.closed) return
       /* v8 ignore next -- an upgraded request always carries a parsed target; the default only satisfies the `string | undefined` type. */
       const query = new URL(req.url ?? '/', 'http://127.0.0.1').search
@@ -1506,31 +1507,33 @@ async function serveSandboxFrames(
         finish()
         ws.close(1011, 'sandbox stream ended')
       }
-      proxyReq = httpGet(`http://127.0.0.1:${String(ready.port)}/stream${query}`, (daemonRes) => {
-        upstream = daemonRes
-        /* v8 ignore next 4 -- a response from the same tick must not reattach after the close; no spec can order those two events. */
-        if (state.closed) {
-          daemonRes.destroy()
-          return
-        }
-        /* v8 ignore next -- Node emits the response only after parsing a status line; the default keeps a missing status retryable. */
-        if ((daemonRes.statusCode ?? 500) >= 400) {
-          finish()
-          daemonRes.destroy()
-          ws.close(1013, 'sandbox stream unavailable')
-          return
-        }
-        daemonRes.on('error', endStream)
-        daemonRes.on('end', endStream)
-        daemonRes.on('data', (chunk: Buffer) => {
-          for (const frame of parser.push(chunk)) sendFrame(ws, frame)
-        })
-      })
-      proxyReq.on('error', () => {
+      let source: DaemonStream
+      try {
+        // Same byte stream as the HTTP face, whichever transport carried it.
+        source = await daemonManager.openStream(`/stream${query}`)
+      } catch {
         /* v8 ignore next -- an error landing after the close already destroyed the request races that close on the event loop. */
         if (state.closed) return
         finish()
         ws.close(1013, 'sandbox daemon unavailable')
+        return
+      }
+      upstream = source
+      /* v8 ignore next 4 -- a response from the same tick must not reattach after the close; no spec can order those two events. */
+      if (state.closed) {
+        source.destroy()
+        return
+      }
+      if (source.statusCode >= 400) {
+        finish()
+        source.destroy()
+        ws.close(1013, 'sandbox stream unavailable')
+        return
+      }
+      source.on('error', endStream)
+      source.on('end', endStream)
+      source.on('data', (chunk: Buffer) => {
+        for (const frame of parser.push(chunk)) sendFrame(ws, frame)
       })
       return
     }
@@ -2160,6 +2163,12 @@ export async function handleSandboxChangesLocal(
   return { status: 200, body }
 }
 
+/** Options the sandbox route mount takes from its plugin config. */
+export interface SandboxRouteOptions {
+  /** Transport the bridge reaches the daemon with; `deamon.transport` in a composition. */
+  transport?: DeamonTransport | undefined
+}
+
 /**
  * Register the sandbox-view routes on the Web server: `GET /stream`,
  * `POST /size`, `POST /launch`, `POST /stop`, and `GET /status`, plus the
@@ -2171,8 +2180,11 @@ export async function handleSandboxChangesLocal(
  * accept a body `session`/`instance`), and every entry marks its session as
  * Shellbox-touched for the pre-step change pull.
  * @param ctx - plugin context carrying the webServer service.
+ * @param options - mount options; the transport selects how the bridge reaches
+ * the daemon (`pipe`, the default, or the legacy `http` path).
  */
-export function registerSandboxRoutes(ctx: Context): void {
+export function registerSandboxRoutes(ctx: Context, options?: SandboxRouteOptions): void {
+  internals.transport = options?.transport ?? 'pipe'
   const daemonManager = getDeamonManager(ctx.logger('deamon'))
   const manager = sharedManager ??= new SandboxSessionManager(ctx.logger('deamon'))
 
@@ -2196,52 +2208,7 @@ export function registerSandboxRoutes(ctx: Context): void {
       markShellboxTouched(resolveRequestSession(req))
       if (internals.useDaemon) {
         try {
-          const ready = await daemonManager.ensureRunning()
-          const url = new URL(req.url ?? '/', `http://127.0.0.1:${String(ready.port)}`)
-          // Pipe the daemon stream directly instead of HTTP 307 redirect
-          // because browser <img> elements have inconsistent support for following redirects on multipart/x-mixed-replace streams.
-          const daemonUrl = `http://127.0.0.1:${String(ready.port)}/stream${url.search}`
-          const proxyReq = httpGet(daemonUrl, (daemonRes) => {
-            // The viewer can go away while the daemon answers (a reconnect
-            // abandons the previous image request). Writing headers to a
-            // dead response throws outside any try, which is an uncaught
-            // exception that takes the whole web server down with it.
-            try {
-              /* v8 ignore next -- Node guarantees a status line here; the ?? default serves an incomplete parse no spec can produce. */
-              res.writeHead(daemonRes.statusCode ?? 200, {
-                ...daemonRes.headers,
-                'cache-control': 'no-store, no-cache, must-revalidate',
-                'access-control-allow-origin': '*',
-              })
-            } catch {
-              /* v8 ignore next -- only the socket-death order production observed throws this write; a spec teardown cannot stage it. */
-              daemonRes.destroy()
-              /* v8 ignore next -- companion daemon-side teardown on that same unstageable throw. */
-              proxyReq.destroy()
-              /* v8 ignore next -- a failed header write must not fall through to the pipe; same unstageable throw. */
-              return
-            }
-            // A daemon that dies mid-stream errors its response. `pipe` does
-            // not forward that, and an unhandled response error is an uncaught
-            // exception that takes the whole web server down with it.
-            daemonRes.on('error', () => { res.destroy() })
-            daemonRes.pipe(res)
-          })
-          proxyReq.on('error', (proxyErr) => {
-            /* v8 ignore next -- after the header is written the client's failure arrives on the daemon response, never on this request. */
-            if (res.headersSent) {
-              res.destroy()
-              return
-            }
-            respondJson(res, 502, {
-              ok: false,
-              error: `Failed to stream from daemon: ${String(proxyErr)}`,
-            })
-          })
-          res.on('close', () => {
-            proxyReq.destroy()
-          })
-          return
+          await daemonManager.ensureRunning()
         } catch (err: unknown) {
           respondJson(res, 503, {
             ok: false,
@@ -2250,6 +2217,44 @@ export function registerSandboxRoutes(ctx: Context): void {
           })
           return
         }
+        const query = new URL(req.url ?? '/', 'http://127.0.0.1').search
+        let source: DaemonStream
+        try {
+          // The daemon's frame feed arrives as one byte stream whichever
+          // transport carried it, so the multipart body below is unchanged.
+          source = await daemonManager.openStream(`/stream${query}`)
+        } catch (err: unknown) {
+          respondJson(res, 502, {
+            ok: false,
+            error: `Failed to stream from daemon: ${String(err)}`,
+          })
+          return
+        }
+        // The viewer can go away while the daemon answers (a reconnect
+        // abandons the previous image request). Writing headers to a
+        // dead response throws outside any try, which is an uncaught
+        // exception that takes the whole web server down with it.
+        try {
+          res.writeHead(source.statusCode, {
+            ...source.headers,
+            'cache-control': 'no-store, no-cache, must-revalidate',
+            'access-control-allow-origin': '*',
+          })
+        } catch {
+          /* v8 ignore next -- only the socket-death order production observed throws this write; a spec teardown cannot stage it. */
+          source.destroy()
+          /* v8 ignore next -- a failed header write must not fall through to the pipe; same unstageable throw. */
+          return
+        }
+        // A daemon that dies mid-stream errors its response. `pipe` does
+        // not forward that, and an unhandled response error is an uncaught
+        // exception that takes the whole web server down with it.
+        source.on('error', () => { res.destroy() })
+        source.pipe(res)
+        res.on('close', () => {
+          source.destroy()
+        })
+        return
       }
       const sessionId = parseSessionParam(req)
       const instanceId = parseInstanceParam(req)
