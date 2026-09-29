@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-09-windowed-compaction-session-context-budget.md
-2026-09-09-windowed-compaction-session-context-budget.md: d5b5919c4f0e5c6e6ce563fa80cf8bb5f555139c
-2026-09-09-windowed-compaction-session-context-budget.zh.md: 62f4d18fdf8ad985b04788263333328295cf1a91
+2026-09-09-windowed-compaction-session-context-budget.md: 24f87c41bed59c419222c5b921597f2e32a605fc
+2026-09-09-windowed-compaction-session-context-budget.zh.md: 215a6c6eda8300faca5a1e3643fcca9c06406692

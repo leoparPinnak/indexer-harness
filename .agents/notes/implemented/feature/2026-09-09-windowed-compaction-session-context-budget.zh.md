@@ -2,6 +2,8 @@
 
 Status: implemented
 
+[English](2026-09-09-windowed-compaction-session-context-budget.md) | 中文
+
 ## Problem
 
 Bir modelin bağlam penceresinin küçültülmesi sıkıştırmayı bozuyordu: tek-seferlik özetleyici, sıkıştırılabilir bölgenin tamamını yönerge zarfıyla tek çağrıda gönderiyordu ve küçük pencerelerde bu çağrının kendisi taşıyordu. Taşma kullanıcıya `Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.` olarak dönüyordu; kök nedenler özetleme çağrısının pencereye sığmaması ve daraltma doğrulamasının başarısız olmasıydı. Arayüzde otomatik sıkıştırmanın nerede tetikleneceği ve hangi stratejiyle özetleneceği görünmüyor, hiçbiri oturum başına ayarlanamıyordu.

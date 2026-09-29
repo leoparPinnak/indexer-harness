@@ -333,7 +333,23 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
 ```
 
-来源：[`packages/compaction/compaction/src/types.ts:72`](../packages/compaction/compaction/src/types.ts)
+来源：[`packages/compaction/compaction/src/types.ts:192`](../packages/compaction/compaction/src/types.ts)
+
+<a id="compactionmode--log-only"></a>
+
+#### `compaction/mode` — log-only
+
+```ts persistence-catalog
+/**
+ * The session's compaction mode was switched — log-only whole-value
+ * replace: the LAST such event is the session's mode, folded by
+ * {@link readCompactionMode}. Survives resume and fork by replay; absent
+ * means the backend defaults apply.
+ */
+'compaction/mode': CompactionSessionMode
+```
+
+来源：[`packages/compaction/compaction/src/types.ts:216`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionprune--log-only"></a>
 
@@ -359,7 +375,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/compaction/compaction/src/types.ts:82`](../packages/compaction/compaction/src/types.ts)
+来源：[`packages/compaction/compaction/src/types.ts:202`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionstart--log-only"></a>
 
@@ -374,7 +390,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
 ```
 
-来源：[`packages/compaction/compaction/src/types.ts:24`](../packages/compaction/compaction/src/types.ts)
+来源：[`packages/compaction/compaction/src/types.ts:125`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionsummary--log-only"></a>
 
@@ -410,6 +426,13 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
   maxTokens?: number
   /** Provider-reported token usage for the summarization request, when emitted. */
   usage?: TokenUsage
+  /**
+   * Map and intermediate-merge calls whose outputs the final call
+   * consolidated, in call order. Absent on a one-shot summary; the final
+   * call's own envelope and output stay in the fields above and in the
+   * single-call arm below.
+   */
+  intermediateCalls?: CompactionSummaryCall[]
 } & (
   | {
     /** Complete provider output before the backend's safe summary projection. */
@@ -428,7 +451,28 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 类型：[ContentBlock](subsystems/core.zh.md) · [TokenUsage](subsystems/llm-streaming.zh.md)
 
-来源：[`packages/compaction/compaction/src/types.ts:34`](../packages/compaction/compaction/src/types.ts)
+来源：[`packages/compaction/compaction/src/types.ts:147`](../packages/compaction/compaction/src/types.ts)
+
+<a id="compactionwindows--log-only"></a>
+
+#### `compaction/windows` — log-only
+
+```ts persistence-catalog
+/**
+ * The windowed summarization pipeline committed to its map phase —
+ * log-only, inside the `compaction/start`/`compaction/end` bracket. It
+ * exists so an observer can see the multi-call mechanism running before
+ * the first window call starts; `windows` is the planned map-pass count.
+ */
+'compaction/windows': {
+  compactionId: CompactionId
+  sourceCommandId?: CommandId
+  /** Number of message windows the summarizer split the shadowed span into. */
+  windows: number
+}
+```
+
+来源：[`packages/compaction/compaction/src/types.ts:132`](../packages/compaction/compaction/src/types.ts)
 
 ### `deliverables/*`
 
@@ -456,7 +500,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'feedback/message-delete': MessageFeedbackDelete
 ```
 
-来源：[`packages/feedback/message-feedback/src/types.ts:55`](../packages/feedback/message-feedback/src/types.ts)
+来源：[`packages/feedback/message-feedback/src/types.ts:58`](../packages/feedback/message-feedback/src/types.ts)
 
 <a id="feedbackmessage-put--log-only"></a>
 
@@ -467,7 +511,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'feedback/message-put': MessageFeedbackPut
 ```
 
-来源：[`packages/feedback/message-feedback/src/types.ts:53`](../packages/feedback/message-feedback/src/types.ts)
+来源：[`packages/feedback/message-feedback/src/types.ts:56`](../packages/feedback/message-feedback/src/types.ts)
 
 <a id="feedbackrecord--log-only"></a>
 
@@ -586,7 +630,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'model/selection': ModelSelection
 ```
 
-来源：[`packages/api/session-controller/src/types.ts:40`](../packages/api/session-controller/src/types.ts)
+来源：[`packages/api/session-controller/src/types.ts:41`](../packages/api/session-controller/src/types.ts)
 
 ### `permission/*`
 
@@ -804,7 +848,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/deamon/src/types.ts:154`](../packages/bundle/deamon/src/types.ts)
+来源：[`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/src/types.ts)
 
 <a id="shellboxchange--log-only"></a>
 
@@ -834,7 +878,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/deamon/src/types.ts:138`](../packages/bundle/deamon/src/types.ts)
+来源：[`packages/bundle/deamon/src/types.ts:146`](../packages/bundle/deamon/src/types.ts)
 
 ### `step/*`
 

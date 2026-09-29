@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包可为采用 Node 内置 `fetch` 的 Harness 请求应用一份出站 HTTP 代理策略，包括 LLM（大语言模型）、web 搜索与 HTTP MCP 流量。启动器只读取一次标准代理环境变量，普通 `fetch` 调用方无需额外引入或改动。已安装的 dispatcher 还承载本进程的出站连接超时：始终无法建立的连接会在数秒内结束，而不是拖到 undici 默认的十秒。loopback 流量保持直连；不受支持的代理 URL 会被报告，并针对受影响的协议跳过。公共辅助函数可让调用方路由采用自有代理设置的传输、准备子进程环境，或为隔离回放清除代理变量。
+使用本包可为采用 Node `fetch` 的 Harness 请求应用一份出站 HTTP 代理策略，包括 LLM（大语言模型）、web 搜索与 HTTP MCP 流量。启动器只读取一次标准代理环境变量，普通 `fetch` 调用方无需额外引入或改动。已安装的 dispatcher 还承载本进程的出站连接超时：停滞的连接会在数秒内结束，而不是拖到 undici 默认的 10 秒。loopback 流量保持直连；不受支持的代理 URL 会被报告，并针对受影响的协议跳过。辅助函数可路由采用自有代理设置的传输、准备子进程环境，或为隔离回放清除代理变量。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 编写新的出站调用
 
-普通 `fetch()` 已经走代理，任何最终落到 `globalThis.fetch` 的 SDK 也一样——MCP HTTP 传输与 pi-ai 提供方栈都是如此。自建传输的 SDK 则不会走代理，而本仓库随附的 SDK 中已有两个如此。不要对任何 SDK 想当然，去查。
+普通 `fetch()` 已经走代理，任何最终落到 `globalThis.fetch` 的 SDK 也一样——MCP HTTP 传输与 pi-ai 提供方栈都是如此。自建传输的 SDK 则**不会**走代理，而本仓库随附的已有两个如此：OTLP 导出器经由 `node:http` 投递，E2B SDK 则自行构造 undici dispatcher。不要对任何 SDK 想当然，去查。
 
 | 你要写的东西 | 使用 |
 |---|---|

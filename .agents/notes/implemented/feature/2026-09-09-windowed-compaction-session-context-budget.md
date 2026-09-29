@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-09-09-windowed-compaction-session-context-budget.zh.md)
+
 ## Problem
 
 Shrinking a model's context window broke compaction: the one-shot summarizer sent the whole compactable region plus its instruction envelope in a single call, and on small windows that call itself overflowed. The overflow surfaced to the user as `Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.`, with root causes of a summarizer call that does not fit the window and a shrink validation failure. Nothing in the UI showed where auto-compaction would trigger or which strategy would summarize, and none of it was adjustable per session.

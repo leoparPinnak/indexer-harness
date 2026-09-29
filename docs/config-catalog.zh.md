@@ -215,7 +215,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/session-controller/src/index.ts:69`](../packages/api/session-controller/src/index.ts)
+来源：[`packages/api/session-controller/src/index.ts:73`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -358,6 +358,70 @@ export type Config = LocalConfig
 依赖：[`LocalConfig`](#deepseek-aidsh-bash-local)
 
 来源：[`packages/shell/bash-sandbox/src/index.ts:36`](../packages/shell/bash-sandbox/src/index.ts)
+
+<a id="deepseek-aidsh-cdp"></a>
+
+## `@deepseek-ai/dsh-cdp`
+
+需要：`webServer`
+
+```ts config-catalog
+/** Plugin config: composed deployment settings for the CDP extension. */
+export interface Config {
+  /**
+   * TCP port of the browser's remote-debugging endpoint
+   * (`--remote-debugging-port`). The connection phase attaches to it.
+   * @default 9222
+   */
+  remoteDebuggingPort?: number
+  /**
+   * TCP port the extension's HTTP proxy listener binds on loopback. A port
+   * equal to the resolved `remoteDebuggingPort` is refused at load, because
+   * the proxy can never share the browser's debugging endpoint.
+   * @default 9333
+   */
+  proxyListenPort?: number
+  /**
+   * Directory holding the guide web the `cdp_guide` tools read. Empty resolves
+   * the bundle's own published `assets/` directory. The guide web lands in a
+   * later phase; the field is validated but not yet read.
+   * @default ''
+   */
+  guideAssetsDir?: string
+  /**
+   * plan10: downloads root for `cdp_download`, `cdp_printpdf`, `cdp_readpdf`,
+   * and `cdp_files`. Empty resolves `<cwd>/.dsh/cdp-downloads`. Every path
+   * these tools see is confined to it.
+   * @default ''
+   */
+  downloadsDir?: string
+  /**
+   * plan10: hard byte cap for `cdp_readpdf` inputs.
+   * @default 67108864 (64 MiB)
+   */
+  maxPdfBytes?: number
+  /**
+   * plan05: extra absolute roots `cdp_upload` may bind files from, on top of
+   * the built-in roots (working directory and the downloads dir).
+   * @default []
+   */
+  uploadRoots?: string[]
+  /**
+   * plan05: skip the `cdp_upload` root allow-list entirely. True trades the
+   * path sandbox for convenience.
+   * @default false
+   */
+  allowAnyPath?: boolean
+  /**
+   * plan04: loopback debug ports `cdp_endpoints` / `GET …/cdp/endpoints`
+   * probes by default (the probe itself always targets 127.0.0.1).
+   * @default [9222, 9225, 9333, 9444]
+   */
+  discoveryPorts?: number[]
+}
+```
+
+来源：[`packages/bundle/cdp/src/index.ts:33`](../packages/bundle/cdp/src/index.ts)
 
 <a id="deepseek-aidsh-client-connection"></a>
 
@@ -578,7 +642,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/bundle/deamon/src/index.ts:28`](../packages/bundle/deamon/src/index.ts)
+来源：[`packages/bundle/deamon/src/index.ts:35`](../packages/bundle/deamon/src/index.ts)
 
 <a id="deepseek-aidsh-e2b"></a>
 
@@ -1301,6 +1365,8 @@ export interface PiAiModelProfile {
    * declares the offered levels and their wire spellings.
    */
   reasoningEfforts?: false | PiAiReasoningEfforts
+  /** The model's own default reasoning level, selected from its declared efforts. */
+  reasoning?: string
   /** pi-ai wire-compatibility switches for this model, winning over the route's per field; one its protocol does not declare is refused. */
   compat?: PiAiCompatProfile
 }
@@ -1417,7 +1483,7 @@ export type PiAiModality = Model<Api>['input'][number]
  * absence; every other declared level must name a wire value. A level absent
  * from the dict is not offered.
  */
-export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | null>>
+export type PiAiReasoningEfforts = Record<string, string | null | undefined>
 
 /** One reasoning-dispatch wire format a profile may name. */
 export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFormat']>
@@ -2734,7 +2800,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/context/time-context/src/index.ts:48`](../packages/context/time-context/src/index.ts)
+来源：[`packages/context/time-context/src/index.ts:49`](../packages/context/time-context/src/index.ts)
 
 <a id="deepseek-aidsh-tmux-context"></a>
 
@@ -3343,7 +3409,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/bundle/web-app/src/index.ts:59`](../packages/bundle/web-app/src/index.ts)
+来源：[`packages/bundle/web-app/src/index.ts:58`](../packages/bundle/web-app/src/index.ts)
 
 <a id="deepseek-aidsh-web-fetch-http"></a>
 
@@ -3515,6 +3581,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-attachment`（[`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-autopush`（[`packages/client/ui-autopush/src/index.ts`](../packages/client/ui-autopush/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-brand-official`（[`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-cdp-view`（[`packages/client/ui-cdp-view/src/index.ts`](../packages/client/ui-cdp-view/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-chat`（[`packages/client/ui-chat/src/index.ts`](../packages/client/ui-chat/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-commands`（[`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-conversation`（[`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts)）
@@ -3607,6 +3674,7 @@ export interface Config {
 - `@deepseek-ai/dsh-spill` — 抽象 `SpillStore`（[`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts)）
 - `@deepseek-ai/dsh-subprocess` — 抽象 `SubprocessRuntime`（[`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts)）
 - `@deepseek-ai/dsh-workflow` — 抽象 `WorkflowEngine`（[`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts)）
+
 ## 库包（无插件入口）
 
 由其他包作为库导入；`cordis.yml` 无法加载它们。
@@ -3620,6 +3688,7 @@ export interface Config {
 - `@deepseek-ai/dsh-chunked-list`（[`packages/util/chunked-list/src/index.ts`](../packages/util/chunked-list/src/index.ts)）
 - `@deepseek-ai/dsh-client-store`（[`packages/client/store/src/index.ts`](../packages/client/store/src/index.ts)）
 - `@deepseek-ai/dsh-client-test-runtime`（[`packages/test-support/client-runtime/src/index.ts`](../packages/test-support/client-runtime/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-context-control`（[`packages/client/ui-context-control/src/index.ts`](../packages/client/ui-context-control/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-dockkit`（[`packages/client/ui-dockkit/src/index.ts`](../packages/client/ui-dockkit/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-primitives`（[`packages/client/ui-primitives/src/index.ts`](../packages/client/ui-primitives/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-slots`（[`packages/client/ui-slots/src/index.ts`](../packages/client/ui-slots/src/index.ts)）

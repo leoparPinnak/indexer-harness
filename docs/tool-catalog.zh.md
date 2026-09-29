@@ -45,6 +45,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-cdp` | `cdp_captcha`、`cdp_click`、`cdp_contexts`、`cdp_dialog`、`cdp_download`、`cdp_endpoints`、`cdp_eval`、`cdp_exec`、`cdp_expect`、`cdp_extract`、`cdp_files`、`cdp_fill`、`cdp_find`、`cdp_fingerprint`、`cdp_locate`、`cdp_lock`、`cdp_navigate`、`cdp_open`、`cdp_pdftotext`、`cdp_printpdf`、`cdp_profiles`、`cdp_readpdf`、`cdp_screenshot`、`cdp_scroll`、`cdp_snapshot`、`cdp_status`、`cdp_stealth`、`cdp_tab_close`、`cdp_tab_focus`、`cdp_tab_new`、`cdp_tabs`、`cdp_text`、`cdp_type`、`cdp_unlock`、`cdp_upload`、`cdp_viewport`、`cdp_wait`、`net_capture`、`net_export` | `ctx.tools`、`ctx.webServer (route registration seam)`、`ctx.systemPrompt (prompt section, opportunistic)`、`ctx.skills (skill provider, opportunistic)` | `tool/call`、`tool/result` | - | CDP bundle 在 `bundle/cdp` 叶子（位于 `tool-*` 完整性 glob 之外）下随包提供 36 个面向模型的工具（34 个 `cdp_*` 加 `net_capture`/`net_export`），并且只挂载在 webServer surface 上；skills 与 systemPrompt 注册是机会性注入，因此裸上下文启动仍能采集到全部 schema。`cdp_status` 反映已安装版本／target／代理与当前浏览器 profile；`cdp_open` 会先发现既有 endpoint，并在附加或启动前询问使用哪个 profile。`cdp_exec` 比 `cdp_eval` 更倾向于给出有保证的错误 envelope；`cdp_captcha` 检测、驱动并验证第一方挑战，绝不经手任何第三方提供方；stealth 工具加固客户端（检测姿态），并不绕过第三方 CAPTCHA 提供方。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -630,7 +631,6 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 ### `str_replace_editor`
 
 用于查看、创建和编辑文件的自定义编辑工具：
-
 * 状态会在命令调用以及与用户的讨论之间持久保留
 * 如果 `path` 是文件，`view` 会显示应用 `cat -n` 后的结果。如果 `path` 是目录，`view` 会列出最多向下 2 层的非隐藏文件和目录
 * 如果指定的 `create` 命令目标 `path` 已作为文件存在，则不能使用该命令
@@ -638,7 +638,6 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 * 当前命令不使用某个参数时，值为 `null` 的占位参数视为未提供。必填参数仍须提供值；删除匹配内容时应省略 `str_replace.new_str`，而不是将其设为 `null`
 
 使用 `str_replace` 命令时请注意：
-
 * `old_str` 参数应与原文件中一行或多行连续内容**完全**匹配。请留意空白字符！
 * 如果 `old_str` 参数在文件中不唯一，则不会执行替换。请确保在 `old_str` 中包含足够的上下文，使其唯一
 * `new_str` 参数应包含用于替换 `old_str` 的已编辑行
@@ -1643,7 +1642,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "prompt": {
       "type": "string",
-      "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
+      "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs. Require a final summary report as the closing message — findings and outcome only, no step narration."
     },
     "run_in_background": {
       "type": "boolean",
@@ -2097,8 +2096,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
-这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。
-
+这 9 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。
 
 <a id="deepseek-aidsh-tool-todo"></a>
 
@@ -2161,7 +2159,6 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 工作流的身份通过 `meta` 参数以 JSON 形式传入：必填的 `name`（简短 kebab-case）和 `description` 字符串，以及可选的 `whenToUse` 字符串和 `phases` 数组（`{title, detail?, provider?, model?}`）。`script` 参数只能是纯 JavaScript **函数体**，不能是 TypeScript，也不能包含 `export const meta` 语句；meta 是参数而非代码。脚本支持顶层 await；请以 `return <value>` 结尾，该值必须可以 JSON 序列化，并作为此工具的结果。
 
 脚本函数体提供以下钩子：
-
 - `agent(prompt, opts?): Promise<any>`：运行一个 subagent 直至完成。不提供 `opts.schema` 时，解析为子级最终文本；提供 `opts.schema` 时，它必须是以对象为根、且**只能**使用 type/properties/required/additionalProperties/items/enum/const/oneOf 的 JSON Schema，不支持 pattern/format/数值边界，此时解析为通过校验的对象。子级失败时解析为 `null`，可使用 `.filter(Boolean)` 过滤。其他选项包括 `label`（显示名称）、`phase`（进度组），以及相互独立的 `provider`／`model` LLM（大语言模型）目标覆盖项，两者可单独提供。其他任何选项（`effort`／`isolation`／`agentType`）都会明确报错。
 - `pipeline(items, ...stages): Promise<any[]>`：让每个条目分别经过各阶段，阶段之间**没有**屏障；多阶段工作优先使用它。每个阶段接收 `(prev, item, index)`。普通的阶段异常会将该**条目**变为 `null`，并跳过它的剩余阶段。
 - `parallel(thunks): Promise<any[]>`：并发运行零参数函数并等待**全部**完成。它会形成屏障，仅当某个阶段确实需要汇总全部先前结果时使用。抛出异常的 thunk 解析为 `null`。
@@ -2296,3 +2293,1502 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。
+
+<a id="deepseek-aidsh-cdp"></a>
+
+## `@deepseek-ai/dsh-cdp`
+
+### `cdp_captcha`
+
+检测、驱动并读取第一方验证挑战。action "scan"（Katman A）为每个第一方候选分类（checkbox、滑块、图片选择、表单字段、延迟确认遮罩、多步链、帧内挑战、假成功诱饵、动态目标、可见蜜罐），并为每个候选附加深度 DOM 证据：getBoundingClientRect → scrollIntoView → 重新测量（FRESH）→ elementFromPoint 命中测试，外加覆盖层与陷阱清单以及第三方判定。action "drag"（Katman B）基于读取到的轨道几何（K4 接近路径、过冲＋回拉，mouseup 前重新测量一次）执行真实的 CDP 按下—移动—释放滑块手势，并通过回读值证明送达——已派发的手势绝不会被报告为成功。action "verify" 在一次调用中读取解题状态：aria-checked、data-solved/data-confirmed、滑块值与 data-target 的比对、徽章文本，以及页面自身的 wrongClick/decoy/honeypot 计数（页面未公布的计数器直接省略，绝不臆造）。第三方提供方（reCAPTCHA/hCaptcha/Turnstile/Cloudflare）会与候选一同报告（thirdParty.verdict），遍历继续处理同源候选。空扫描会带原因返回 candidates: []，绝不静默返回 []。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "scan = detect + deep DOM + third-party verdict; drag = human-like slider gesture; verify = read the solution state.",
+      "enum": [
+        "scan",
+        "drag",
+        "verify"
+      ]
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to the active tab)."
+    },
+    "ref": {
+      "type": "string",
+      "description": "drag only: snapshot ref from cdp_snapshot addressing the slider."
+    },
+    "css": {
+      "type": "string",
+      "description": "drag only: CSS selector for the track (also used to pick the thumb)."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "drag only: match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "drag only: ARIA role to match (requires name)."
+    },
+    "name": {
+      "type": "string",
+      "description": "drag only: accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "drag only: visible text resolved through the locator ladder."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "drag only: how text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "drag only: 0-based candidate index; required when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "drag only: CSS selector bounding the whole search."
+    },
+    "thumbSelector": {
+      "type": "string",
+      "description": "drag only: explicit thumb selector inside the track (default: the first thumb-like child)."
+    },
+    "targetPct": {
+      "type": "number",
+      "description": "drag only: target percent 0..100; read from the track's data-target when omitted."
+    },
+    "steps": {
+      "type": "integer",
+      "description": "drag only: press-move-release sample count (clamped 4..200, default 24)."
+    },
+    "approach": {
+      "type": "boolean",
+      "description": "drag only: emit the K4 approach path before pressing (default true)."
+    },
+    "overshoot": {
+      "type": "boolean",
+      "description": "drag only: overshoot the target and pull back before releasing (default true)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Re-probe window in ms; each action applies its own default when omitted."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_click`
+
+在视口坐标上点击，使用逼真的类人指针运动与时序。plan08：传入快照 `ref` 而非 x/y，点击该元素的新鲜（FRESH）中心（在动作时解析；页面重渲染会返回 stale-ref，绝不会给出错误坐标）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "x": {
+      "type": "number",
+      "description": "X coordinate in CSS pixels (required together with y, unless ref is passed)."
+    },
+    "y": {
+      "type": "number",
+      "description": "Y coordinate in CSS pixels (required together with x, unless ref is passed)."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Snapshot ref from cdp_snapshot; clicks that element’s fresh centre instead of x/y."
+    },
+    "css": {
+      "type": "string",
+      "description": "CSS selector; when any locator param is present, x/y are refused."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; required when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Locator resolve budget in ms (default 5000, max 30000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_contexts`
+
+管理活动浏览器中的隔离浏览器上下文：列出上下文及其实时 target 数量、创建新上下文（独立的 cookie／存储，而不是第二个浏览器）、在其中打开标签页，或销毁某个上下文（关闭其标签页并清空其存储）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "'list' (default), 'create', 'open', or 'dispose'."
+    },
+    "contextId": {
+      "type": "string",
+      "description": "Target context; required for 'open'/'dispose' unless the default context is meant (empty string)."
+    },
+    "url": {
+      "type": "string",
+      "description": "With action:'open', the initial URL of the new tab (required)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_dialog`
+
+检查并应答 JavaScript 对话框（alert/confirm/prompt/beforeunload）。对话框挂起期间，页面级工具会以 dialog-open 被拒绝，直到你在这里接受或关闭它。使用 action:"policy" 可为会话自动应答后续对话框。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "'list' (default), 'accept', 'dismiss', or 'policy'."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Tab whose dialog to answer; required when several tabs have pending dialogs."
+    },
+    "promptText": {
+      "type": "string",
+      "description": "Reply sent when accepting a prompt dialog (defaults to the dialog's own defaultPrompt)."
+    },
+    "policy": {
+      "type": "string",
+      "description": "With action:'policy', the new auto-answer policy: 'none', 'accept', or 'dismiss'."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_download`
+
+等待下一次浏览器下载完成，并报告它落在下载根目录内的位置。会把自动命名的文件重命名为其建议文件名；renameTo 目标已被占用是硬错误。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "timeoutMs": {
+      "type": "number",
+      "description": "How long to wait for a download to begin (default 60000)."
+    },
+    "renameTo": {
+      "type": "string",
+      "description": "Explicit destination basename (must not already exist)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_endpoints`
+
+发现并报告浏览器调试端点：探测每个已配置 loopback 端口的 /json/version，把应答与实时连接池合并，展示哪个端点处于活动状态、哪些已附加／停靠、重连后的 socket 健康状况，以及每个端点运行在哪个 profile 上（'assistant'、一次性 dsh-cdp-*，或对外来浏览器为 unknown）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "ports": {
+      "type": "string",
+      "description": "Comma-separated loopback ports to probe, e.g. \"9222,9333\" (default: configured discovery ports)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Per-port probe timeout in milliseconds (default 500)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_eval`
+
+在页面执行上下文中求值一段受限的 JavaScript 表达式。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expression": {
+      "type": "string",
+      "description": "JavaScript code to evaluate."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  },
+  "required": [
+    "expression"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_exec`
+
+在页面中运行一段 JavaScript 表达式，带强制错误 envelope、在脚本之后断言的可选后置条件、可选的 promise 等待，以及显式的“是否发生了任何事”标志。表达式抛出时绝不返回空结果。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expression": {
+      "type": "string",
+      "description": "JavaScript to evaluate in the page. May be an IIFE/statement block."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    },
+    "awaitPromise": {
+      "type": "boolean",
+      "description": "Await a returned promise before reading the value (default false)."
+    },
+    "postCondition": {
+      "type": "string",
+      "description": "Expression evaluated AFTER the script; must be truthy to pass. Failure marks ok:false."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Bound for the whole call in milliseconds (default 15000 — doubled only for a CORROBORATED hidden tab, and the doubled bound comes back as effectiveTimeoutMs; max 60000). /* plan10-fix, plan15-hidden */"
+    }
+  },
+  "required": [
+    "expression"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_expect`
+
+用 locator 断言页面条件：exists、visible、enabled、textEquals、textContains 或 urlMatches（页面 URL 正则，忽略 locator）。轮询直到通过或 timeoutMs 到期（默认 0 = 单次尝试）。断言失败返回 ok:false 以及原因＋候选——预期之内的失败是数据，不是错误。plan08：传入快照 `ref` 以断言那个确切元素（strategy 'ref'；页面重渲染会返回 stale-ref）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "check": {
+      "type": "string",
+      "description": "The assertion to run.",
+      "enum": [
+        "exists",
+        "visible",
+        "enabled",
+        "textEquals",
+        "textContains",
+        "urlMatches"
+      ]
+    },
+    "expected": {
+      "type": "string",
+      "description": "Required for textEquals/textContains (expected text) and urlMatches (a regex); ignored by the other checks."
+    },
+    "css": {
+      "type": "string",
+      "description": "CSS selector; bypasses the text ladder, matches within scope."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name), e.g. button, link, textbox."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; REQUIRED when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Snapshot ref from cdp_snapshot; asserts against that exact element (other locator params ignored)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Poll until the assertion passes within this budget (default 0 = single attempt, max 30000)."
+    }
+  },
+  "required": [
+    "check"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_extract`
+
+用 JSON 规格从当前页面抽取结构化数据——{"kind":"page"} 取页面字段（title/url/h1/lang/description/openDialog），{"kind":"list"} 取过滤后的集合（from: role/selector/ariaLabel/withinRole，where: nameMatches/visibleOnly，fields: name|role|value|text|href|checked|box|count|attr:<name>），{"kind":"field"} 取单个值。构造上即诚实：损坏的规格返回 ok:false ＋ error，空结果返回 data:[] ＋ missing，只要 missing/truncatedFields/limit 截断了答案，complete 就为 false。数据行在动作时重新测量。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to the active tab)."
+    },
+    "spec": {
+      "type": "string",
+      "description": "JSON projection spec, e.g. {\"kind\":\"list\",\"from\":{\"role\":\"link\"},\"fields\":{\"name\":\"name\",\"href\":\"href\"},\"limit\":50}."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Wait window for the slice to appear (default 0 = single probe)."
+    }
+  },
+  "required": [
+    "spec"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_files`
+
+限定在下载根目录内的文件操作：list、read、write、stat、delete、mkdir。逃出根目录的路径会被拒绝；读取有上限；写入绝不会在根目录之外创建目录。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "op": {
+      "type": "string",
+      "description": "Operation: list, read, write, stat, delete, or mkdir."
+    },
+    "path": {
+      "type": "string",
+      "description": "Root-relative path; empty addresses the root (list/stat/delete only)."
+    },
+    "content": {
+      "type": "string",
+      "description": "Text to write (write only)."
+    },
+    "encoding": {
+      "type": "string",
+      "description": "utf8 (default) or base64 for read/write."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Allow write to replace an existing file (default false → hard error)."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Allow delete to remove a directory tree (default false)."
+    },
+    "maxBytes": {
+      "type": "number",
+      "description": "Read byte budget (default and cap 4 MiB)."
+    }
+  },
+  "required": [
+    "op"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_fill`
+
+通过 locator DSL 填写表单字段：解析元素（css > aria-label > role+name > text 阶梯），经由原生 value setter ＋ input/change 事件写入（对 React/Vue 安全），选中匹配的 <option>，或插入 contenteditable——然后回读值以证明写入生效。若框架回滚写入，会触发一次聚焦的 Input.insertText 后备（fallbackUsed:true）；第二次失败会报告期望值／实际值之差——绝不静默吞掉。文件输入会被拒绝。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "css": {
+      "type": "string",
+      "description": "CSS selector; bypasses the text ladder, matches within scope."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name), e.g. button, link, textbox."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; REQUIRED when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "value": {
+      "type": "string",
+      "description": "Value to write into the element."
+    },
+    "clear": {
+      "type": "boolean",
+      "description": "Replace the current value (default true); false appends."
+    },
+    "verify": {
+      "type": "boolean",
+      "description": "Read the value back after writing (default true)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Resolve + write budget in ms (default 5000, max 30000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  },
+  "required": [
+    "value"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_find`
+
+按 ref/selector/aria-label/role/text 定位元素，并返回所选元素的 ref，附带新鲜的 rect 与可操作性（visible/inViewport/enabled/hitTarget）。诚实发现：0 个匹配会带原因返回 ok:false，而不是静默吞掉；多个匹配会返回候选＋警告（用 nth 选择）。矩形在动作时测量——绝不沿用更早快照中存下的值。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to the active tab)."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Exact snapshot reference to resolve (role|name|ordinal, #n-disambiguated)."
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector (scoped when scope is given)."
+    },
+    "css": {
+      "type": "string",
+      "description": "Alias of selector (same argument name as cdp_click/cdp_text)."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Exact aria-label / accessible-name match."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match; combined with text/ariaLabel."
+    },
+    "text": {
+      "type": "string",
+      "description": "Accessible-name substring match (display-normalized, bidi-safe)."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector limiting the search to one subtree."
+    },
+    "nth": {
+      "type": "number",
+      "description": "0-based candidate index (default 0)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Re-probe window while waiting for the element (default 0 = single probe)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_fingerprint`
+
+探测一次页面，报告浏览器叙事的一致程度：把 navigator 表面（webdriver、UA、platform、languages、UA-CH、plugins、screen 与 window 对比、chrome 附加项、fonts、connection、device 数值、自动化变量）与当前 stealth profile 对比，然后把每处差异分类为有序的 why-blocked 原因（A11：critical → low，每条都带 layer ＋ 证据）。仅做诊断——它分类页面为何会拒绝自动化；不改变任何页面状态。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Page to probe; defaults to the active tab."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_locate`
+
+回答“这一点上是什么？”——识别并描述 document.elementFromPoint(x,y)：tag/id/classes/role/ariaLabel/短文本、新鲜的视口 rect、是否可交互、inViewport、coveredBy（有东西压在其上时的遮挡者，字段名与含义同 cdp_find）、position/z-index，以及一条简短的祖先链（kapsam），指明该点所在的组件。这是探测（PROBE），绝不是点击：视觉循环是 cdp_screenshot（selector|clip ＋ rects:true ＋ annotate:true ＋ inline:true）→ 模型指定一个点 → cdp_locate(x,y) 核实那里是什么 → cdp_click(x,y)。把“看”与“做”分开，才让瞄错可以恢复：空点会返回 ok:false ＋ reason ＋ 带距离的 `nearest` 元素，于是模型自行纠正，而不是点进虚空。绝不臆造数据——某处没有元素是数据，不是异常。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "x": {
+      "type": "number",
+      "description": "Viewport CSS x of the point (the coordinate cdp_click takes)."
+    },
+    "y": {
+      "type": "number",
+      "description": "Viewport CSS y of the point."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to the active tab)."
+    }
+  },
+  "required": [
+    "x",
+    "y"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_lock`
+
+对一个标签页取得 TTL 租约，让并行自动化排队，而不是在同一页面上交错输入。租约会随 `lockedUntil` 到期而失效，无需任何计时器——被遗忘的锁绝不会越过其 TTL。lock-held 在返回内带 holder 与到期时间（是数据，不是错误）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab to lease (defaults to the active tab)."
+    },
+    "holder": {
+      "type": "string",
+      "description": "Who is taking the lease (e.g. the subagent id); echoed in lock-held answers. Defaults to \"session\"."
+    },
+    "ttlMs": {
+      "type": "number",
+      "description": "Lease lifetime in ms, clamped to 1000..300000 (default 60000)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_navigate`
+
+把活动的或指定的浏览器标签页导航到某个 URL。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "Destination URL to navigate to."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id of tab to navigate (defaults to active tab)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Maximum load wait timeout in milliseconds."
+    }
+  },
+  "required": [
+    "url"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_open`
+
+通过 Chrome DevTools Protocol 打开或附加到一个 Chromium 浏览器实例。不带 endpoint/port 调用时，它首先扫描默认的 loopback 调试端口：若发现活动浏览器，会返回带发现表的 needsChoice，且不附加到任何东西，由用户来选（“9222 上那个 Google profile，还是新端口？”）。传入 switchTo/port/endpoint 可直接做出该决定，或传 profile:'assistant' 在 $DSH_HOME/profiles 下的持久已登录 profile 上启动（其会话在重启后依然存续）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": "number",
+      "description": "Port of an already running remote debugging browser."
+    },
+    "headless": {
+      "type": "boolean",
+      "description": "Whether to launch headless when starting a new browser."
+    },
+    "executablePath": {
+      "type": "string",
+      "description": "Custom path to Chromium/Chrome/Edge executable."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "Explicit ws:// debugger URL; skips port discovery and launching."
+    },
+    "switchTo": {
+      "type": "number",
+      "description": "The chosen live port from a needsChoice table; switches to it explicitly."
+    },
+    "profile": {
+      "type": "string",
+      "description": "Named persistent profile under $DSH_HOME/profiles (e.g. 'assistant'); the signed-in session survives restarts."
+    },
+    "managed": {
+      "type": "boolean",
+      "description": "Launch on the DSH-owned pinned browser in $DSH_HOME/browser (strict: no system fall-back; a miss refuses honestly). Ignored when executablePath is given."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_pdftotext`
+
+抽取页面正在展示的 PDF 中的文本：自动策略依次为 network → print → axtree（也可用 strategy 固定其一）。报告策略细节与诚实性注记；所有策略失败时汇总各自的原因。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "strategy": {
+      "type": "string",
+      "description": "Pin one strategy: network, print, axtree, or auto (default)."
+    },
+    "maxChars": {
+      "type": "number",
+      "description": "Character budget (default 16000, cap 64000)."
+    },
+    "page": {
+      "type": "number",
+      "description": "Read exactly this page."
+    },
+    "pageFrom": {
+      "type": "number",
+      "description": "First page when continuing a window."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Per-strategy wall-clock budget (default 20000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the PDF tab (defaults to active tab)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_printpdf`
+
+把当前页面打印为下载根目录内的 PDF（Page.printToPDF 往返）。返回保存路径、大小与页数；字节留在磁盘上。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "description": "Paper format: A4, Letter, Legal, or Tabloid (default: CDP default)."
+    },
+    "landscape": {
+      "type": "boolean",
+      "description": "Landscape orientation."
+    },
+    "scale": {
+      "type": "number",
+      "description": "Paper scale 0.1..2.0."
+    },
+    "printBackground": {
+      "type": "boolean",
+      "description": "Include background graphics (default true)."
+    },
+    "pageRanges": {
+      "type": "string",
+      "description": "Page range such as \"1-3,5\"."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab to print (defaults to active tab)."
+    },
+    "saveTo": {
+      "type": "string",
+      "description": "Explicit destination filename inside the downloads root; hard-errors if it exists."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_profiles`
+
+管理 $DSH_HOME/profiles 下持久已登录浏览器 profile 的命名清单与生命周期。action:"list"（默认）报告每个 profile 及其诚实的锁报告（locked、artifacts、pid），外加活动 profile 的标识；action:"stop" 结束活动会话——只有当是本服务启动了该浏览器时才终止其进程，并且绝不删除 profile（会话才是全部意义；锁状态从磁盘读取，绝不猜测）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "'list' (default) or 'stop'."
+    },
+    "profile": {
+      "type": "string",
+      "description": "stop: the profile to stop; defaults to the active one. Refused in-band when it is not the active profile."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_readpdf`
+
+从下载根目录读取 PDF，输出带页码标记、受预算约束的文本。支持 page/pageFrom 游标、pages 规格（"1-5"、"3,7"）、meta/forms/barcode 诚实性字段，以及对加密或纯图片文档的诚实报告。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Root-relative PDF path inside the downloads root."
+    },
+    "page": {
+      "type": "number",
+      "description": "Read exactly this page (single-page mode; its own budget, cursor = next page)."
+    },
+    "pageFrom": {
+      "type": "number",
+      "description": "First page to read when continuing a previous window."
+    },
+    "pages": {
+      "type": "string",
+      "description": "Page list/range spec, e.g. \"1-5\" or \"3,7,9-12\"."
+    },
+    "maxChars": {
+      "type": "number",
+      "description": "Character budget for this call (default 16000, cap 64000)."
+    },
+    "includeMeta": {
+      "type": "boolean",
+      "description": "Skip /Info metadata parsing when false."
+    }
+  },
+  "required": [
+    "path"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_screenshot`
+
+把截图捕获到文件：返回路径与解析出的尺寸，绝不返回原始二进制。可选 fullPage/clip/selector 捕获、jpeg 质量、小预算内的内联 base64，以及不依赖 DOM 的矩形图例／标注。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab (defaults to active tab)."
+    },
+    "fullPage": {
+      "type": "boolean",
+      "description": "Capture the whole scrollable page instead of the viewport."
+    },
+    "format": {
+      "type": "string",
+      "description": "Image format: \"png\" (default) or \"jpeg\"."
+    },
+    "quality": {
+      "type": "number",
+      "description": "JPEG quality 0..100 (default 80; ignored for png)."
+    },
+    "clip": {
+      "type": "object",
+      "description": "Explicit CSS-pixel capture region {x, y, width, height, scale?}; overrides fullPage.",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "scale": {
+          "type": "number"
+        }
+      }
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector; captures that element's bounding box (top document only)."
+    },
+    "saveTo": {
+      "type": "string",
+      "description": "Workspace-relative destination; defaults to screenshots/<timestamp>-<n>.<ext>."
+    },
+    "inline": {
+      "type": "boolean",
+      "description": "Also return the image as base64 when it fits inlineMaxBytes (default false)."
+    },
+    "inlineMaxBytes": {
+      "type": "number",
+      "description": "Inline budget in bytes (default 65536, capped at 65536)."
+    },
+    "rects": {
+      "type": "boolean",
+      "description": "Return snapshot box rects mapped onto image pixels with a coordinate legend."
+    },
+    "annotate": {
+      "type": "boolean",
+      "description": "Paint the legend rects onto the saved png after capture; the page DOM is never touched."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_scroll`
+
+用类人滚轮事件、键盘翻页（PageUp/PageDown）或锚点／selector／边缘跳转滚动页面，并报告滚动后经核实的位置（scrollY、范围、边缘）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "deltaY": {
+      "type": "number",
+      "description": "Wheel delta in CSS px, positive = down (mode 'wheel')."
+    },
+    "deltaX": {
+      "type": "number",
+      "description": "Horizontal wheel delta in CSS px."
+    },
+    "mode": {
+      "type": "string",
+      "description": "wheel (default) | pagedown | pageup | top | bottom | anchor | selector."
+    },
+    "x": {
+      "type": "number",
+      "description": "Pointer X for wheel mode (default: viewport centre)."
+    },
+    "y": {
+      "type": "number",
+      "description": "Pointer Y for wheel mode (default: viewport centre)."
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector to scroll into view (mode 'selector')."
+    },
+    "anchor": {
+      "type": "string",
+      "description": "Element id or name to jump to (mode 'anchor')."
+    },
+    "smooth": {
+      "type": "boolean",
+      "description": "Use behavior:'smooth' for anchor/selector/top/bottom."
+    },
+    "repetitions": {
+      "type": "number",
+      "description": "Repeat the unit 1-20 times (default 1)."
+    },
+    "settleMs": {
+      "type": "number",
+      "description": "Wait 0-2000 ms after scrolling before reading the position."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to the resolution policy)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_snapshot`
+
+捕获当前页面的编织式 DOM 快照，带稳定的元素引用与包围盒。plan08：传入 `ref` 可额外用新文档核验该引用（stale-ref 会诚实返回，而不是信任一个旧 rect）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab (defaults to active tab)."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Snapshot ref to verify in this call; adds ref/staleRef/refRect to the answer."
+    },
+    "interactive": {
+      "type": "boolean",
+      "description": "Keep only interactive entries (buttons, links, fields…); nodeCount stays the woven total."
+    },
+    "compact": {
+      "type": "boolean",
+      "description": "Clip names/values to 80 chars — smaller payload, identical refs."
+    },
+    "includeDiff": {
+      "type": "boolean",
+      "description": "Diff against the previous cdp_snapshot of the same target key: the nodes list narrows to what changed and a diff block carries the full delta (a rename shows as removed+added since the ref carries the name)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_status`
+
+报告 CDP 浏览器控制扩展的状态：已安装 bundle 版本、活动浏览器 target、代理监听器状态、连接状态、当前 target、已知的打开标签页，以及一旦探测过就报告实时视口。在驱动浏览器之前调用它，检查扩展是否可用。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_stealth`
+
+检查或切换同时驱动浏览器叙事每一层的 stealth profile——JS 补丁、User-Agent/Sec-CH-UA*/Accept-Language 头，以及启动标志（G9/G3/G4/G26 一致性）。action "status" 报告活动 profile、每个内置 profile、跨层一致性判定以及各层警告；action "apply" 激活某个 profile 并在页面上重新注册整套叙事（新建或刷新的文档会拾取它）。诊断与叙事维护：它让浏览器报告的表面与一套一致的叙事对齐，并报告差异。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "'status' (default), 'apply' (switch profile), or 'list' (profiles only, no page contact).",
+      "enum": [
+        "status",
+        "apply",
+        "list"
+      ]
+    },
+    "profile": {
+      "type": "string",
+      "description": "Profile id (windows-chrome|macos-chrome|linux-chrome|windows-edge); required for action 'apply'."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Page session to register on; defaults to the active tab."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_tab_close`
+
+带守卫地关闭浏览器标签页：关闭活动标签页需要显式 targetId（或 confirmActive:true），关闭最后一个剩余页面标签页需要 force:true。报告后继的活动标签页。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Tab to close. Defaults to the active tab (guarded)."
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Permit closing the last remaining page tab (default false)."
+    },
+    "confirmActive": {
+      "type": "boolean",
+      "description": "Required when targetId is omitted and it is the active tab."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_tab_focus`
+
+聚焦（激活）某个浏览器标签页——这是显式切换“省略 targetId 的调用所解析到的那个”标签页的方式。它还会请浏览器把该标签页带到前台（activateBrowser:false 跳过这一步）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "Tab to focus."
+    },
+    "activateBrowser": {
+      "type": "boolean",
+      "description": "Send Target.activateTarget to the real browser (default true)."
+    }
+  },
+  "required": [
+    "targetId"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_tab_new`
+
+打开一个新的浏览器标签页（Target.createTarget）并报告其 id、url 与焦点。这是创建标签页唯一被认可的方式——解析绝不会静默地生出一个标签页。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "URL to open. Defaults to about:blank."
+    },
+    "focus": {
+      "type": "boolean",
+      "description": "Activate the new tab after creating it (default true)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_tabs`
+
+列出受控浏览器中打开的标签页与 target，并标记活动标签页。默认从浏览器刷新；可按类型或标题／url 子串过滤。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "refresh": {
+      "type": "boolean",
+      "description": "Force a Target.getTargets round trip (default true)."
+    },
+    "type": {
+      "type": "string",
+      "description": "Filter rows by target type, e.g. 'page'."
+    },
+    "query": {
+      "type": "string",
+      "description": "Case-insensitive substring matched against title and url."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_text`
+
+读取 locator 解析到的元素的可见文本，并断言该 locator 无歧义地解析成功。locator 优先级：css > aria-label > role+name > text（text 阶梯：aria-label、role+name、tag+text、innerText）。未找到、有歧义（多于 1 个匹配且未给 nth）以及隐藏元素都会连同原因＋候选证据失败——绝不返回猜来的元素。plan08：传入快照 `ref` 读取那个确切元素（strategy 'ref'；页面重渲染会返回 stale-ref，而不是猜一个匹配）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "css": {
+      "type": "string",
+      "description": "CSS selector; bypasses the text ladder, matches within scope."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name), e.g. button, link, textbox."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; REQUIRED when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Snapshot ref from cdp_snapshot; reads that exact element (other locator params ignored)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Poll until resolved+visible within this budget (default 0 = single attempt, max 30000)."
+    },
+    "maxChars": {
+      "type": "integer",
+      "description": "Maximum characters of returned text (default 2000, max 4000)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_type`
+
+以类人的节奏与字符延迟把文本输入到聚焦的页面元素中。plan08：传入快照 `ref` 可先聚焦该元素（在其新鲜中心点击，然后输入）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Text to type."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Snapshot ref from cdp_snapshot; clicks that element’s fresh centre to focus it, then types."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  },
+  "required": [
+    "text"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_unlock`
+
+归还一个 cdp_lock 租约。传入 `holder` 时持有者必须匹配；未知或已释放的 id 在返回内带说明（重复解锁是数据，不是错误）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "lockId": {
+      "type": "string",
+      "description": "Lease id returned by cdp_lock."
+    },
+    "holder": {
+      "type": "string",
+      "description": "Unlocking owner; must match the lease holder when given."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_upload`
+
+把宿主机上的绝对路径文件绑定到页面 file input（selector 模式）或打开中的文件选择器（chooser:true），随后校验 input.files。路径必须是绝对路径且位于允许的根内（工作目录、下载目录、已配置的 uploadRoots）；对话框挂起期间会以 dialog-open 拒绝。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "array",
+      "description": "Absolute host paths to bind (max 10 per call).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector of the file input (set mode; omit with chooser:true)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    },
+    "chooser": {
+      "type": "boolean",
+      "description": "Wait for an open file chooser instead of selecting by selector."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Chooser wait budget in milliseconds (500-30000, default 5000)."
+    }
+  },
+  "required": [
+    "files"
+  ]
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_viewport`
+
+读取或显式修改视口（Emulation.setDeviceMetricsOverride）。不带参数时只报告实时视口；width+height 设置它；reset 清除它。没有任何其他工具会改变视口。只有当页面自身的 resize 处理器可证明地运行过，变更才会被报告为已生效——否则返回 ok:false 及原因。appliedViewport 才是本次调用实际作用的对象。/* plan15-viewport */
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "width": {
+      "type": "number",
+      "description": "Viewport width in CSS pixels (16..10000, integer; requires height)."
+    },
+    "height": {
+      "type": "number",
+      "description": "Viewport height in CSS pixels (16..10000, integer; requires width)."
+    },
+    "deviceScaleFactor": {
+      "type": "number",
+      "description": "Device pixel ratio to emulate (default: keep the observed one)."
+    },
+    "mobile": {
+      "type": "boolean",
+      "description": "Whether to emulate a mobile (touch) viewport; default false."
+    },
+    "reset": {
+      "type": "boolean",
+      "description": "Clear the emulation override and restore the live window metrics."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id of the tab (defaults to active tab)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_wait`
+
+等待页面条件：CSS selector、aria-label/text/visible 元素状态、network-idle（默认安静 500ms）、下一次导航，或 URL 正则模式。超时以返回内带方式给出（ok:false ＋ reason ＋ waitedMs），而不是抛出。strategy=text 等待与 text 参数匹配的可见文本（＋ textMatch），无需 selector。向后兼容：cdp_wait({selector}) 与从前一样等待 CSS 存在（默认超时 10000ms）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "selector": {
+      "type": "string",
+      "description": "Value for css/aria-label/visible strategies (css is the default); may also carry strategy=text for back-compat."
+    },
+    "strategy": {
+      "type": "string",
+      "description": "What to wait for: css, aria-label, text, visible, network-idle, navigation, url (default css; defaults to text when text is passed).",
+      "enum": [
+        "css",
+        "aria-label",
+        "text",
+        "visible",
+        "network-idle",
+        "navigation",
+        "url"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "description": "Expected visible text for strategy=text — works standalone, no selector required."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How strategy=text compares the text (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "url": {
+      "type": "string",
+      "description": "Regex for strategy=url (the selector may carry it instead)."
+    },
+    "idleMs": {
+      "type": "number",
+      "description": "Quiet window for network-idle in milliseconds (default 500)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Maximum wait timeout in milliseconds (default: 10000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `net_capture`
+
+查询本地代理拦截到的 HTTP/HTTPS 网络交换。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "limit": {
+      "type": "number",
+      "description": "Maximum number of exchanges to return (default 50)."
+    },
+    "host": {
+      "type": "string",
+      "description": "Filter captured requests by target host."
+    }
+  }
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `net_export`
+
+从代理捕存中导出流量指标、主机分组与请求时间线。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+CDP bundle 在 `bundle/cdp` 叶子（位于 `tool-*` 完整性 glob 之外）下随包提供 36 个面向模型的工具（34 个 `cdp_*` 加 `net_capture`/`net_export`），并且只挂载在 webServer surface 上；skills 与 systemPrompt 注册是机会性注入，因此裸上下文启动仍能采集到全部 schema。`cdp_status` 反映已安装版本／target／代理与当前浏览器 profile；`cdp_open` 会先发现既有 endpoint，并在附加或启动前询问使用哪个 profile。`cdp_exec` 比 `cdp_eval` 更倾向于给出有保证的错误 envelope；`cdp_captcha` 检测、驱动并验证第一方挑战，绝不经手任何第三方提供方；stealth 工具加固客户端（检测姿态），并不绕过第三方 CAPTCHA 提供方。
