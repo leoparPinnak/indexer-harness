@@ -111,6 +111,7 @@ kind: "package-reference"
 | [`src/checkpoint-recorder.ts`](src/checkpoint-recorder.ts) | 工具生命周期桥：鸭子类型的 before/after 水龙头，每次写调用一条日志步骤，故障隔离 |
 | [`src/checkpoint-mount.ts`](src/checkpoint-mount.ts) | 目录绑定的记录器工厂：attach 闭包以函数形式跨包传递，不牵连类型依赖 |
 | [`src/checkpoint-restore.ts`](src/checkpoint-restore.ts) | 回绕应用器：经回读验证的 blob 还原、幂等的新建删除、逐路径诚实失败 — 计划之外绝不触碰 |
+| [`src/search-sessions.ts`](src/search-sessions.ts) | 转写召回 v1：线性扫描 + 匹配居中片段 + 锚定窗口（Hermes `get_anchored_view` 形态）。有意不做索引 — 分层 FTS 栈是文档中的下一级台阶。 |
 | [`src/retry-jitter.ts`](src/retry-jitter.ts) | 两阶段抖动等待工具（Hermes 移植）。实测注记：generation 的“验证赢家”已更快解决发布竞争，故此处刻意不接线 — 留给真正的瞬态争用缝。 |
 | [`src/migration-verifier.ts`](src/migration-verifier.ts) | stage 与竞争 generation 校验的 Worker 生命周期 |
 | [`src/zstd.ts`](src/zstd.ts) | Zstandard 帧压缩、解码与帧扫描 |

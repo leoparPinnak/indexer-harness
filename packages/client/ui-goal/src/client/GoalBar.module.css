@@ -31,6 +31,20 @@
   background: var(--dsw-specific-tip);
 }
 
+/* Complete state: green border + green background tint */
+.barComplete {
+  border-color: #238636;
+  background: rgba(35, 134, 54, 0.08);
+}
+
+.barComplete .goalGlyph {
+  color: #3fb950;
+}
+
+.barComplete .label {
+  color: #3fb950;
+}
+
 .goalGlyph {
   display: inline-flex;
   flex: none;

@@ -26,11 +26,12 @@ export interface GoalBarProps extends GoalBarActions {
   activation?: GoalActivation
 }
 
-/** Strip label keys per visible phase; complete goals render nothing. */
+/** Strip label keys per visible phase; complete goals render with green border. */
 const PHASE_LABELS = {
   active: 'phase.active',
   paused: 'phase.paused',
   blocked: 'phase.blocked',
+  complete: 'phase.complete',
 } as const satisfies Record<string, GoalKey>
 
 /** Strip label for an active goal using its process-local activation. */
@@ -82,8 +83,8 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
     if (result?.ok) setClearedGoalId(clearedId)
   }, [onClear, runAction])
 
-  // Loading, absent, and complete goals have no strip at all.
-  if (goal === undefined || goal === null || goal.phase === 'complete' || goal.id === clearedGoalId) return null
+  // Loading and absent goals have no strip at all.
+  if (goal === undefined || goal === null || goal.id === clearedGoalId) return null
 
   if (editing) {
     return (
@@ -134,10 +135,12 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
   const title = goal.phase === 'blocked' ? goal.blockedReason?.message : undefined
   const label = goal.phase === 'active' ? activeLabel(activation, t) : t(PHASE_LABELS[goal.phase])
   const showResume = goal.phase === 'paused'
+    || goal.phase === 'complete'
     || (goal.phase === 'active' && activation === 'disarmed')
+  const barClass = goal.phase === 'complete' ? `${css.bar} ${css.barComplete}` : css.bar
   return (
     <div className={css.dock} data-goal-bar>
-      <div className={css.bar} title={title}>
+      <div className={barClass} title={title}>
         <span className={css.goalGlyph}><IconGoalOutline16 size={14} /></span>
         <span className={css.label}>{label}</span>
         <span className={css.objective}>{goal.objective}</span>
