@@ -114,6 +114,67 @@ describe('ToolResultPruner content transform', () => {
     expect(codePointLength('a😀b')).toBe(3)
   })
 
+  it('lifts a spill path into the marker so the cut never strands it', () => {
+    // The pointer is the ONLY way back to a bounded output. When the notice
+    // sits in the middle the prune removes, the path has to travel with the
+    // marker or the model loses its recovery link for good. Budget is the real
+    // one — a pointer long enough to keep must fit alongside head and tail.
+    const prune = service({ thresholdChars: 300, headChars: 40, tailChars: 10 })
+    const spill = 'C:\\Users\\name\\AppData\\Local\\Temp\\dsh-spill-abc\\spill.txt'
+    const body = `${'A'.repeat(200)}[output truncated; full output: ${spill}]${'B'.repeat(200)}`
+    const result = prune.pruneContent([{ type: 'text', text: body }])
+    expect(result).not.toBeNull()
+    const first = result?.[0]
+    const text = first?.type === 'text' ? first.text : ''
+    expect(text).toContain(spill)
+    expect(text).toContain('recover:')
+    // The plain marker form is reserved for results that had no pointer.
+    expect(text).not.toBe(PRUNE_MARKER)
+  })
+
+  it('declines the cut when no pointer form can shrink the result', () => {
+    // A long path plus a tiny budget cannot produce a smaller result, and a cut
+    // that grows the context is worse than no cut. Declining leaves the result
+    // intact for a wider budget instead of stranding the path.
+    const tiny = service({ thresholdChars: 60, headChars: 5, tailChars: 5 })
+    const spill = 'C:\\Users\\name\\AppData\\Local\\Temp\\dsh-spill-abc\\spill.txt'
+    const body = `${'A'.repeat(200)}[output truncated; full output: ${spill}]${'B'.repeat(200)}`
+    expect(tiny.pruneContent([{ type: 'text', text: body }])).toBeNull()
+  })
+
+  it('keeps the pointer in a bare line when only that form fits', () => {
+    // Room for the path but not for the full marker sentence: the short line
+    // still leaves the output reachable.
+    const tight = service({ thresholdChars: 140, headChars: 10, tailChars: 5 })
+    const spill = 'C:\\spill\\out.log'
+    const body = `${'A'.repeat(200)}[output truncated; full output: ${spill}]${'B'.repeat(200)}`
+    const result = tight.pruneContent([{ type: 'text', text: body }])
+    const first = result?.[0]
+    const text = first?.type === 'text' ? first.text : ''
+    expect(text).toContain(spill)
+    expect(tight.measureContent(result ?? [])).toBeLessThanOrEqual(140)
+  })
+
+  it('keeps the pointer when a tight threshold squeezes the head', () => {
+    // Losing head text is recoverable; losing the recovery path is not. So the
+    // head yields budget to the pointer instead of the pointer being dropped.
+    const tight = service({ thresholdChars: 120, headChars: 10, tailChars: 5 })
+    const spill = 'C:\\spill\\out.log'
+    const body = `${'A'.repeat(200)}[output truncated; full output: ${spill}]${'B'.repeat(200)}`
+    const result = tight.pruneContent([{ type: 'text', text: body }])
+    const text = result![0]!.type === 'text' ? result![0]!.text : ''
+    expect(text).toContain(spill)
+    expect(tight.measureContent(result!)).toBeLessThanOrEqual(120)
+  })
+
+  it('reads the lossy-read notice as a recovery path too', () => {
+    const prune = service()
+    const spill = 'C:\\spill\\err.log'
+    const body = `${'A'.repeat(60)}[some output was dropped from memory; full output: ${spill}]${'B'.repeat(60)}`
+    const text = prune.pruneContent([{ type: 'text', text: body }])![0]!
+    expect(text.type === 'text' && text.text).toContain(spill)
+  })
+
   it('keeps configured head and tail without splitting surrogate pairs', () => {
     const prune = service()
     const result = prune.pruneContent([{ type: 'text', text: '😀'.repeat(60) }])

@@ -134,6 +134,7 @@ These limits define when trimming is a poor fit or needs special care; they are 
 - **Character budgets are not token budgets** — provider token density varies, so `ctx.tokenMeter` remains the authority for deciding whether trimming relieved request pressure.
 - **Pruning is syntactic** — it retains the beginning and end without interpreting which middle lines are semantically important.
 - **Grapheme clusters can split** — code-point slicing protects surrogate pairs but does not perform locale-aware grapheme segmentation.
+- **A recovery pointer can outlive the budget** — when a result carries a spill path (`[output truncated; full output: …]`), the path is lifted into the marker so the cut never strands it. If no pointer form fits the threshold, the trim is **declined** and the result is left intact rather than grown: a result that cannot get smaller is not rewritten. Raising `thresholdChars` is the fix for that case.
 
 <a id="dev-note"></a>
 ### Dev Note

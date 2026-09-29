@@ -13,7 +13,14 @@ import type { Session, SessionEvent, SessionSeq, ToolResultMessage } from '@deep
 import type {} from '@deepseek-ai/dsh-compaction'
 // Type-only: the `ctx.tokenMeter` Context merge for the declared injection.
 import type {} from '@deepseek-ai/dsh-token-meter'
-import { codePointLength, DEFAULTS, PRUNE_MARKER, resolveConfig } from './config.ts'
+import {
+  codePointLength,
+  DEFAULTS,
+  PRUNE_MARKER,
+  pruneMarker,
+  recoveryPathOf,
+  resolveConfig,
+} from './config.ts'
 import type {
   PrunedEntry,
   PruneResult,
@@ -84,7 +91,24 @@ export class ToolResultPruner extends Service {
     const totalChars = this.measureContent(blocks)
     if (totalChars <= this.config.thresholdChars) return null
 
-    const removedStart = this.config.headChars
+    // A pointer found only inside the removed middle would be gone for good,
+    // so it is lifted into the marker before the cut. When even a bare pointer
+    // cannot fit the threshold, the path alone is still kept — a shorter line
+    // beats losing the only route back to a bounded output.
+    const recoveryPath = recoveryPathOf(blocks)
+    const pathFits = recoveryPath === undefined
+      || this.config.headChars
+        + this.config.tailChars
+        + codePointLength(pruneMarker(recoveryPath)) <= this.config.thresholdChars
+    const marker = recoveryPath !== undefined && !pathFits
+      ? `\n\n[recover: ${recoveryPath}]\n\n`
+      : pruneMarker(pathFits ? recoveryPath : undefined)
+    // Keeping the path costs budget. Under a tight threshold the head yields
+    // room for it: losing head text is recoverable, losing the pointer is not.
+    const headRoom = recoveryPath === undefined || !pathFits
+      ? this.config.headChars
+      : this.config.headChars + (codePointLength(marker) - codePointLength(PRUNE_MARKER))
+    const removedStart = Math.max(0, headRoom)
     const removedEnd = totalChars - this.config.tailChars
     const pruned: ContentBlock[] = []
     let consumed = 0
@@ -102,10 +126,10 @@ export class ToolResultPruner extends Service {
       const headEnd = Math.min(points.length, Math.max(0, removedStart - blockStart))
       const tailStart = Math.min(points.length, Math.max(0, removedEnd - blockStart))
       const intersectsRemoved = blockStart < removedEnd && blockEnd > removedStart
-      const marker = intersectsRemoved && !markerInserted ? PRUNE_MARKER : ''
-      if (marker.length > 0) markerInserted = true
+      const gap = intersectsRemoved && !markerInserted ? marker : ''
+      if (gap.length > 0) markerInserted = true
       const text = points.slice(0, headEnd).join('')
-        + marker
+        + gap
         + points.slice(tailStart).join('')
       if (text.length > 0) pruned.push({ ...block, text })
       consumed = blockEnd
@@ -114,10 +138,13 @@ export class ToolResultPruner extends Service {
     /* v8 ignore next -- totalChars > threshold and valid budgets guarantee a removed text span. */
     if (!markerInserted) throw new Error('tool-result prune: failed to locate the removed text span')
     const charsAfter = this.measureContent(pruned)
-    /* v8 ignore next -- config validation fixes the emitted head + marker + tail budget. */
-    if (charsAfter > this.config.thresholdChars || charsAfter >= totalChars) {
+    if (charsAfter >= totalChars) {
       throw new Error('tool-result prune: replacement must be smaller and within threshold')
     }
+    // A pointer can be long enough that head+marker+tail no longer shrinks the
+    // result. Returning null declines this cut rather than growing the context:
+    // the next pass sees the same oversized result and a wider budget.
+    if (charsAfter > this.config.thresholdChars) return null
     return pruned
   }
 
