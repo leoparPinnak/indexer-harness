@@ -107,6 +107,7 @@ describe('web-app sandbox bridge', () => {
 
   let tempDir: string
   let commandFile: string
+  let savedHome: string | undefined
 
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'dsh-sandbox-bridge-'))
@@ -121,6 +122,9 @@ describe('web-app sandbox bridge', () => {
     connectionRejection = undefined
     // Keep spawned daemons off the live discovery coordinates of this machine.
     process.env.DEAMON_DISCOVERY_FILE = join(tempDir, 'daemon-discovery.json')
+    // Gateway keys a daemon derives land in a temp DSH home, not the live one.
+    savedHome = process.env.DSH_HOME
+    process.env.DSH_HOME = tempDir
   })
 
   afterEach(async () => {
@@ -130,6 +134,9 @@ describe('web-app sandbox bridge', () => {
     internals.commandFile = ''
     internals.useDaemon = true
     delete process.env.DEAMON_DISCOVERY_FILE
+    if (savedHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = savedHome
+    savedHome = undefined
     for (let attempt = 0; ; attempt += 1) {
       try {
         rmSync(tempDir, { recursive: true, force: true })
@@ -300,6 +307,7 @@ async function httpStandInStream(port: number, path: string): Promise<DaemonStre
       '/api/server/sandbox/status',
       '/api/server/sandbox/stop',
       '/api/server/sandbox/stream',
+      '/api/server/sandbox/uia',
       '/api/server/sandbox/windows',
       '/api/server/sandbox/windows/close',
       '/api/server/sandbox/windows/focus',

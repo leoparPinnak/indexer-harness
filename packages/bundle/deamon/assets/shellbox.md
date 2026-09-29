@@ -52,7 +52,7 @@ These are current facts of the implementation:
 
 ## Security and ports
 
-- The WebSocket handshake runs Connection's `requestRejection` Host/Origin + cookie fence first — same trust as every other `/api` route.
+- The WebSocket handshake runs Connection's `requestRejection` Host/Origin fence first — same trust as every other `/api` route.
 - The helper daemon binds loopback only (default port 4005, `DEAMON_PORT` to pin; falls back to an ephemeral port and publishes it in a discovery file under `$DSH_HOME`). It is not a public endpoint.
 
 ## Troubleshooting

@@ -46,7 +46,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### What gets mounted
 
-- Routes under `/api/server/sandbox/*` plus the `GET /api/server/sandbox/ws` WebSocket frame feed, all behind Connection's Host/Origin + cookie fence.
+- Routes under `/api/server/sandbox/*` plus the `GET /api/server/sandbox/ws` WebSocket frame feed, all behind Connection's Host/Origin fence.
 - One shared helper daemon on loopback (default port 4005, `DEAMON_PORT` to pin) spawning `sandbox/sandbox-host.ps1` per desktop.
 - The model tools `shellbox_launch`, `shellbox_state`, and `shellbox_input`, the bundled `shellbox` skill, and the `app:shellbox-surface` and `app:shellbox-changes` prompt sections.
 - The `ui-sandbox-view` browser row: the right-sidebar Daemon tab.
@@ -84,6 +84,8 @@ A stream request reaches the daemon through `DeamonManager.ensureRunning`, which
 | [`tests/loader-composition.spec.ts`](tests/loader-composition.spec.ts) | The patch boots through a real Loader tree |
 | [`tests/skill.spec.ts`](tests/skill.spec.ts) | Skill candidate and body load |
 | [`tests/shellbox-state.spec.ts`](tests/shellbox-state.spec.ts) | Change-awareness pull, projection, prompt line, and tool contracts |
+| [`tests/nativewin.spec.ts`](tests/nativewin.spec.ts) | Input-mode grammar and caps, `uia` clamping, frozen-protocol edits, compiled SendInput layout and input-desktop gate |
+| [`tests/d8-desktop.spec.ts`](tests/d8-desktop.spec.ts) | Gated live-desktop harness for the `uia` walk and the composite (`DSH_D8_DESKTOP=1`) |
 
 ### Invariant ownership
 
@@ -137,6 +139,7 @@ These limits tell you what to expect in unusual setups. They are current package
 - **The desktop never idles out** — after every viewer leaves, capture keeps running; only `POST /api/server/sandbox/stop`, an instance terminate, or a server shutdown ends it.
 - **Change awareness needs `sessionProjections`** — a profile without the projection registry never logs desktop changes, and `shellbox_state` fails with an explicit message instead of guessing.
 - **Input needs a running desktop helper** — `shellbox_input` reports the no-helper message until a win32 shellbox desktop is up; host-desktop input is always refused.
+- **Send-mode input is gated, and delivery stops at the focus wall** — a `mode:"send"` batch injects only when the session's input desktop *is* the sandbox desktop (measured refusal on a normal session, so nothing can ever reach the user's real desktop), and even in that branch the OS focus policy keeps end-to-end delivery on the `post` path; `POST /api/server/sandbox/uia` answers a bounded accessibility read. Measurements live in `sandbox/PROTOCOL.md`.
 - **Desktop profiles add it on demand** — the shipped desktop profile lists `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app` only; run `dsh plugin --profile <desktop-profile> add @deepseek-ai/dsh-deamon` to mount this bundle there.
 
 <a id="dev-note"></a>

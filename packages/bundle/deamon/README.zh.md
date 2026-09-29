@@ -46,7 +46,7 @@ dsh --profile web
 
 ### 挂载内容
 
-- `/api/server/sandbox/*` 下的路由，加上 `GET /api/server/sandbox/ws` WebSocket 帧传输，全部位于 Connection 的 Host/Origin + cookie 围栏之后。
+- `/api/server/sandbox/*` 下的路由，加上 `GET /api/server/sandbox/ws` WebSocket 帧传输，全部位于 Connection 的 Host/Origin fence 之后。
 - 一个仅绑定回环的共享辅助守护进程（默认端口 4005，`DEAMON_PORT` 可固定），按桌面执行 `sandbox/sandbox-host.ps1`。
 - 模型工具 `shellbox_launch`、`shellbox_state` 与 `shellbox_input`、内置 `shellbox` skill，以及 `app:shellbox-surface` 与 `app:shellbox-changes` prompt 段。
 - `ui-sandbox-view` 浏览器行：右侧边栏的 Daemon 标签页。
@@ -84,6 +84,8 @@ dsh --profile web
 | [`tests/loader-composition.spec.ts`](tests/loader-composition.spec.ts) | 补丁经真实 Loader 树启动 |
 | [`tests/skill.spec.ts`](tests/skill.spec.ts) | skill 候选项与正文加载 |
 | [`tests/shellbox-state.spec.ts`](tests/shellbox-state.spec.ts) | 变更感知拉取、投影、prompt 提示行与工具契约 |
+| [`tests/nativewin.spec.ts`](tests/nativewin.spec.ts) | 输入模式语法与上限、`uia` 钳制、冻结协议改动、编译后的 SendInput 布局与输入桌面门控 |
+| [`tests/d8-desktop.spec.ts`](tests/d8-desktop.spec.ts) | 受门控的实机桌面测试台：`uia` 遍历与合成（`DSH_D8_DESKTOP=1`） |
 
 ### 不变式归属
 
@@ -137,6 +139,7 @@ dsh --profile web
 - **桌面不会空闲退出**——所有查看者离开后采集仍持续运行；只有 `POST /api/server/sandbox/stop`、实例终止或服务端关闭才会结束它。
 - **变更感知需要 `sessionProjections`**——没有投影注册表的 profile 从不记录桌面变更，`shellbox_state` 会以明确报错拒绝，而不是凭空猜测。
 - **输入需要运行中的桌面辅助进程**——在 win32 shellbox 桌面就绪前，`shellbox_input` 返回无辅助进程消息；宿主桌面的输入始终被拒绝。
+- **send 模式输入受门控，送达止于焦点之墙**——只有当会话的输入桌面*就是*沙箱桌面时 `mode:"send"` 才注入（普通会话上实测为拒绝，因此绝不会触达用户的真实桌面）；即便进入该分支，系统焦点策略仍使端到端送达停留在 `post` 路径；`POST /api/server/sandbox/uia` 返回有界的无障碍读取。测量记录见 `sandbox/PROTOCOL.md`。
 - **桌面 profile 按需添加**——随附的桌面 profile 只列出 `@deepseek-ai/dsh-base` 与 `@deepseek-ai/dsh-web-app`；运行 `dsh plugin --profile <desktop-profile> add @deepseek-ai/dsh-deamon` 即可在其中挂载本组合包。
 
 <a id="dev-note"></a>

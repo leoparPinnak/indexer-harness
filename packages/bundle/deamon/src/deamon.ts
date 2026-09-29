@@ -25,11 +25,13 @@ import {
   readBody,
   respondJson,
   handleSandboxInputLocal,
+  handleSandboxUiaLocal,
   handleSandboxWindowsLocal,
   handleSandboxWindowActionLocal,
   handleSandboxChangesLocal,
 } from './sandbox.ts'
 
+/** Fallback daemon TCP port when neither the environment nor an option names one. */
 export const DEFAULT_DEAMON_PORT = 4005
 
 /** Minimal logger contract for the daemon. */
@@ -66,6 +68,7 @@ export interface DeamonHandle {
 /**
  * Resolve the daemon discovery file path: `DEAMON_DISCOVERY_FILE` overrides
  * it so a spec can own its own path, otherwise `$DSH_HOME` or `~/.dsh`.
+ * @returns the absolute path to the daemon discovery file.
  */
 export function getDaemonDiscoveryPath(): string {
   const override = process.env.DEAMON_DISCOVERY_FILE
@@ -288,6 +291,13 @@ export async function startDeamon(options: DeamonOptions = {}): Promise<DeamonHa
       // Deliver sandbox input events to the target desktop
       if (pathname === '/input') {
         const result = await handleSandboxInputLocal(manager, req, await readSandboxBody(req))
+        respondJson(res, result.status, result.body)
+        return
+      }
+
+      // Read one window's bounded accessibility tree from the target desktop
+      if (pathname === '/uia') {
+        const result = await handleSandboxUiaLocal(manager, req, await readSandboxBody(req))
         respondJson(res, result.status, result.body)
         return
       }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it, expect } from 'vitest'
 import { request } from 'node:http'
-import { rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -14,15 +14,26 @@ import { DeamonManager } from '../src/deamon-manager.ts'
 const ROUTES = ['/input', '/windows', '/windows/focus', '/windows/close', '/changes'] as const
 
 // Specs own their daemon discovery coordinates; the live daemon of this
-// machine must never be overwritten or deleted by a test run.
+// machine must never be overwritten or deleted by a test run. The gateway key
+// the daemon derives from those coordinates lands in a temp DSH home for the
+// same reason: a spec run must not litter the live `~/.dsh/ipc` directory.
 let discoveryPath: string
+let savedHome: string | undefined
+let specHome: string
 beforeEach(() => {
   discoveryPath = join(tmpdir(), `dsh-deamon-discovery-${randomUUID()}.json`)
   process.env.DEAMON_DISCOVERY_FILE = discoveryPath
+  savedHome = process.env.DSH_HOME
+  specHome = mkdtempSync(join(tmpdir(), 'dsh-deamon-home-'))
+  process.env.DSH_HOME = specHome
 })
 afterEach(() => {
   delete process.env.DEAMON_DISCOVERY_FILE
   rmSync(discoveryPath, { force: true })
+  if (savedHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = savedHome
+  savedHome = undefined
+  rmSync(specHome, { recursive: true, force: true })
 })
 
 function httpRequest(

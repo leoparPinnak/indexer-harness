@@ -23,6 +23,7 @@ const ROUTES = [
   '/api/server/shellbox/launch',
   '/api/server/sandbox/stop',
   '/api/server/sandbox/input',
+  '/api/server/sandbox/uia',
   '/api/server/sandbox/windows',
   '/api/server/sandbox/windows/focus',
   '/api/server/sandbox/windows/close',
