@@ -5,9 +5,14 @@ import { formatSpillNotice, hasSpillNotice } from '../src/notice.ts'
 const ref = { locator: SpillLocator('/spill/output.txt'), retrievalHint: 'Read the file.' }
 
 describe('persisted spill notice', () => {
-  it('preserves the historical spelling independently of the formatter', () => {
+  it('formats the tagged budget notice and still recognizes the recorded spelling', () => {
+    const tagged = '[budget notice] (Omitted 50000 bytes. Full formatted result stored at: /spill/output.txt. Read the file.)'
+    expect(formatSpillNotice({ kind: 'exact', count: 50000 }, ref)).toBe(tagged)
+    expect(hasSpillNotice(tagged)).toBe(true)
+    expect(hasSpillNotice(`failed\n[exit code: 7]\n\n${tagged}`)).toBe(true)
+
+    // Recordings made before the tag keep their presentation.
     const historical = '(Omitted 50000 bytes. Full formatted result stored at: /spill/output.txt. Read the file.)'
-    expect(formatSpillNotice({ kind: 'exact', count: 50000 }, ref)).toBe(historical)
     expect(hasSpillNotice(historical)).toBe(true)
     expect(hasSpillNotice(`failed\n[exit code: 7]\n\n${historical}`)).toBe(true)
   })

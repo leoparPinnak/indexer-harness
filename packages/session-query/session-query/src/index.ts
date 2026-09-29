@@ -80,6 +80,22 @@ export {
 } from './filters.ts'
 export { assertSessionHeadersCompatible } from './sources.ts'
 export type { SessionObservation, SessionObservationOptions } from './observation.ts'
+export {
+  LayeredSessionRecall,
+  SESSION_LAYERED_APPLICATION_ID,
+  SESSION_LAYERED_FOLD_VERSION,
+  SESSION_LAYERED_SCHEMA_VERSION,
+  foldForIndex,
+  linearSessionRecall,
+  recallKeyOf,
+} from './layered-search.ts'
+export type {
+  LayeredRecallMode,
+  LayeredRecallOptions,
+  LayeredRecallResult,
+  LayeredRecallSessionHit,
+  LayeredSessionRecallOptions,
+} from './layered-search.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

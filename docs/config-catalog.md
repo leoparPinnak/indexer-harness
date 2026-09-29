@@ -2391,15 +2391,29 @@ Requires: `tools`
 /** Plugin config. */
 export interface Config {
   /**
-   * The model-facing context cap for a plain-text tool result, in UTF-8 bytes.
-   * Omitted disables the policy entirely (no-op). When set, a result larger than
-   * this is spilled and replaced with a preview derived from this same budget.
+   * The default model-facing context cap for a plain-text tool result, in UTF-8
+   * bytes. Omitted disables the policy entirely (no-op). When set, a result
+   * larger than the applicable budget is spilled and replaced with an envelope
+   * derived from that same budget.
    */
   maxInlineBytes?: number
+  /**
+   * Per-tool retain budgets keyed by tool name: a non-negative byte budget, or
+   * `'skip'` to never spill that tool's model-facing result. Rows merge over
+   * {@link DEFAULT_TOOL_RETAIN_LIMITS}; an unlisted tool uses `maxInlineBytes`.
+   * Numeric rows also retune the durable log copy; `'skip'` rows do not.
+   */
+  toolLimits?: Record<string, ToolRetainLimit>
 }
+
+/**
+ * Per-tool retain policy: a UTF-8 byte budget for that tool's model-facing
+ * result, or `'skip'` to keep it inline without spilling.
+ */
+export type ToolRetainLimit = number | 'skip'
 ```
 
-Source: [`packages/spill/spill-policy/src/index.ts:61`](../packages/spill/spill-policy/src/index.ts)
+Source: [`packages/spill/spill-policy/src/index.ts:94`](../packages/spill/spill-policy/src/index.ts)
 
 <a id="deepseek-aidsh-storage-domain"></a>
 

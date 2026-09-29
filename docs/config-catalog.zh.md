@@ -639,7 +639,17 @@ export interface Config {
    * not in the GUI, so the orientation text would be false.
    */
   surfaceContext: boolean
+  /**
+   * How the bridge reaches the Deamon: `pipe` (the default) speaks the home's
+   * named-pipe gateway, `http` keeps the legacy loopback path that D9 removes.
+   * Both transports stay mounted while the shift lasts, and a gateway the
+   * bridge cannot reach downgrades that session to `http` with a logged reason.
+   */
+  transport: DeamonTransport
 }
+
+/** How the bridge reaches the daemon: the named-pipe gateway, or loopback HTTP. */
+export type DeamonTransport = 'pipe' | 'http'
 ```
 
 来源：[`packages/bundle/deamon/src/index.ts:35`](../packages/bundle/deamon/src/index.ts)
@@ -2383,15 +2393,29 @@ export interface Config {
 /** Plugin config. */
 export interface Config {
   /**
-   * The model-facing context cap for a plain-text tool result, in UTF-8 bytes.
-   * Omitted disables the policy entirely (no-op). When set, a result larger than
-   * this is spilled and replaced with a preview derived from this same budget.
+   * The default model-facing context cap for a plain-text tool result, in UTF-8
+   * bytes. Omitted disables the policy entirely (no-op). When set, a result
+   * larger than the applicable budget is spilled and replaced with an envelope
+   * derived from that same budget.
    */
   maxInlineBytes?: number
+  /**
+   * Per-tool retain budgets keyed by tool name: a non-negative byte budget, or
+   * `'skip'` to never spill that tool's model-facing result. Rows merge over
+   * {@link DEFAULT_TOOL_RETAIN_LIMITS}; an unlisted tool uses `maxInlineBytes`.
+   * Numeric rows also retune the durable log copy; `'skip'` rows do not.
+   */
+  toolLimits?: Record<string, ToolRetainLimit>
 }
+
+/**
+ * Per-tool retain policy: a UTF-8 byte budget for that tool's model-facing
+ * result, or `'skip'` to keep it inline without spilling.
+ */
+export type ToolRetainLimit = number | 'skip'
 ```
 
-来源：[`packages/spill/spill-policy/src/index.ts:61`](../packages/spill/spill-policy/src/index.ts)
+来源: [`packages/spill/spill-policy/src/index.ts:94`](../packages/spill/spill-policy/src/index.ts)
 
 <a id="deepseek-aidsh-storage-domain"></a>
 
@@ -3702,6 +3726,7 @@ export interface Config {
 - `@deepseek-ai/dsh-home-paths`（[`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts)）
 - `@deepseek-ai/dsh-hook-protocol`（[`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts)）
 - `@deepseek-ai/dsh-http-proxy`（[`packages/util/http-proxy/src/index.ts`](../packages/util/http-proxy/src/index.ts)）
+- `@deepseek-ai/dsh-ipc-pipe`（[`packages/ipc/ipc-pipe/src/index.ts`](../packages/ipc/ipc-pipe/src/index.ts)）
 - `@deepseek-ai/dsh-launch-environment`（[`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts)）
 - `@deepseek-ai/dsh-llm-mock-server`（[`packages/test-support/llm-mock-server/src/index.ts`](../packages/test-support/llm-mock-server/src/index.ts)）
 - `@deepseek-ai/dsh-loader-smoke`（[`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts)）
@@ -3724,6 +3749,7 @@ export interface Config {
 - `@deepseek-ai/dsh-session-title-llm`（[`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts)）
 - `@deepseek-ai/dsh-subagent-in-process-driver`（[`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts)）
 - `@deepseek-ai/dsh-timeout`（[`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts)）
+- `@deepseek-ai/dsh-tool-editor-evolved`（[`packages/fs/tool-editor-evolved/src/index.ts`](../packages/fs/tool-editor-evolved/src/index.ts)）
 - `@deepseek-ai/dsh-typert-generator`（[`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts)）
 - `@deepseek-ai/dsh-typert-protocol`（[`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts)）
 - `@deepseek-ai/dsh-typert-registry`（[`packages/typert/registry/src/index.ts`](../packages/typert/registry/src/index.ts)）

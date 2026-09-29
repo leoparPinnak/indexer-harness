@@ -50,6 +50,19 @@ Body-free records expose only `SessionHeader.isSeeded`. Reads that return event 
 
 The text clause is a literal, case-insensitive, whitespace-flexible scan of extracted semantic text — not a full-text query. Use it for arbitrary substring recall; use the mounted backend's search methods when you need ranked full-text results.
 
+### Layered transcript recall
+
+`LayeredSessionRecall` (a plain class in this package, not a `ctx.sessionQuery` method) searches the stored corpus through two layers: a derived SQLite index over folded session text recalls candidate sessions first, and the linear recall primitive (`searchEventLines` from `dsh-session-persistence-jsonl`) builds every hit. Because layer 0 produces the hits, an indexed answer is byte-identical to `linearSessionRecall()` — the reference fallback — whenever the candidate set is complete.
+
+```ts
+const recall = new LayeredSessionRecall(ctx.sessionPersistence)
+const result = await recall.search(/release notes/i) // lazy build on first search
+await recall.rebuild() // explicit maintenance
+recall.close()
+```
+
+The index lives at `~/.dsh/cache/session-recall/index.sqlite` (override with `indexPath`) and refreshes incrementally on the persistence `revision` token: unchanged sessions are never re-read, changed ones are re-indexed, vanished ones are dropped. A missing, stale, or corrupt file is dropped silently and the search answers from layer 0; a foreign database is never deleted. A query contributes an index key only when its pattern is literal runs separated by `.`, `^`, `$` with no `u` or `v` flag — everything else scans linearly. Coverage is the persisted corpus; live-preferred ranked search stays with the mounted backend.
+
 ### Configuration
 
 The inherited knobs are set through the mounted backend's config:
@@ -100,6 +113,7 @@ The decision history lives in the [unified service decision](../../../.agents/no
 | [`src/documents.ts`](src/documents.ts) | Surface-aware semantic document projection |
 | [`src/tracing.ts`](src/tracing.ts) | One-shot session-lineage and event-relationship tracing |
 | [`src/sources.ts`](src/sources.ts) | Immutable-header compatibility check |
+| [`src/layered-search.ts`](src/layered-search.ts) | Layered transcript recall: derived lexical index for candidate recall with the linear scan as the always-correct fallback |
 | — | No runtime invariant companion is published; query results are immutable per-call projections whose lineage and event relations are validated while they are built; the service retains no observable result state. |
 
 ### Corpus resolution
@@ -151,6 +165,7 @@ These limits define when this package is a poor fit or needs special operational
 - **No provider coordinator or fallback** — the service is abstract over search, so a composition must mount a concrete backend; there is no search-provider registry or fallback implementation.
 - **Exact reads replay whole logs** — `readSession`, `readSurface`, `filterEvents`, and event traces load and validate the complete logical log, so very large histories pay full inspection per call; `listSessions` stays lightweight.
 - **Literal text scan, not full-text search** — the `text` filter scans extracted documents with a regular expression and does not rank; ranked search requires the mounted backend.
+- **Layered recall indexes the persisted corpus** — `LayeredSessionRecall` covers stored sessions only (live-only sessions belong to the mounted ranked backend) and routes non-literal patterns to the linear fallback, so the index narrows candidates without ranking.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -21,6 +21,7 @@ import type { PostToolDecision, ToolExecution, ToolExecutionToken } from '@deeps
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
+import type { ToolRetainLimit } from '@deepseek-ai/dsh-spill-policy'
 import { WorkerThreadCodeRuntime } from '@deepseek-ai/dsh-code-runtime-worker-thread'
 
 const testToolSignal = new AbortController().signal
@@ -140,7 +141,16 @@ describe('oversized plain-text replacement', () => {
 
     const text = textOf(result.content)
     expect(text).not.toBe(body)
-    expect(text.startsWith('HEAD')).toBe(true)
+    // The envelope leads with its totals receipt, then the retained head, the
+    // truncation marker, the retained tail, and finally the budget notice.
+    expect(text.startsWith('spill: { chars: 1600, bytes: 1600 }\n')).toBe(true)
+    const headAt = text.indexOf('HEAD')
+    const markerAt = text.indexOf('[truncated after 200 bytes]')
+    const tailAt = text.indexOf('TAIL', markerAt)
+    expect(headAt).toBeGreaterThan(0)
+    expect(markerAt).toBeGreaterThan(headAt)
+    expect(tailAt).toBeGreaterThan(markerAt)
+    expect(text).toContain('\n\n[budget notice] (Omitted ')
     expect(text).toContain('Full formatted result stored at: /spill/big.txt')
     expect(text).toContain('Use the stub retrieval path.')
     expect(text).toContain('Omitted')
@@ -236,12 +246,17 @@ describe('read skip', () => {
 
 describe('the durable dispatch-log arm', () => {
   /** Boot code mode + the policy + the worker runtime; run one program via the real bridge. */
-  async function runCodeWith(program: string, maxInlineBytes: number, extraTools: ToolDefinition[] = []) {
+  async function runCodeWith(
+    program: string,
+    maxInlineBytes: number,
+    extraTools: ToolDefinition[] = [],
+    toolLimits?: Record<string, ToolRetainLimit>,
+  ) {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     await ctx.plugin(StubStore)
-    await ctx.plugin(SpillPolicy, { maxInlineBytes })
+    await ctx.plugin(SpillPolicy, { maxInlineBytes, ...toolLimits !== undefined ? { toolLimits } : {} })
     await ctx.plugin(WorkerThreadCodeRuntime, {})
     const events: { type: string; data: unknown }[] = []
     const agent = {
@@ -261,6 +276,26 @@ describe('the durable dispatch-log arm', () => {
       agent: agent as never,
     })
     return { ctx, result, events, spill: ctx.spillStore as StubStore }
+  }
+
+  /**
+   * Read the first text block from a `tool/ptc-dispatch` settle payload. The
+   * payload is an in-process event value typed `unknown`, so it is narrowed
+   * field by field instead of asserted to a fabricated shape.
+   * @param data - the settle event's `data` field.
+   * @returns The first block's text.
+   */
+  function firstSettleText(data: unknown): string {
+    if (typeof data !== 'object' || data === null || !('content' in data)) {
+      throw new Error('settle payload has no content')
+    }
+    const content: unknown = data.content
+    if (!Array.isArray(content)) throw new Error('settle content is not a list')
+    const first: unknown = content[0]
+    if (typeof first !== 'object' || first === null || !('text' in first) || typeof first.text !== 'string') {
+      throw new Error('settle content carries no text block')
+    }
+    return first.text
   }
 
   it('bounds the tool/ptc-dispatch copy of an oversized sub-result while the program value stays whole', async () => {
@@ -456,6 +491,26 @@ describe('the durable dispatch-log arm', () => {
     expect((settle!.data as { content: { text: string }[] }).content[0]!.text).toBe('H'.repeat(2_000))
     expect(warn).toHaveBeenCalled()
   })
+
+  it('bounds a `read` sub-call log copy even though its model-facing row skips it', async () => {
+    const { events, spill } = await runCodeWith(
+      'return (await tools.read({}))[0].text.length', 200, [textTool('read', 'R'.repeat(2_000))])
+    const settle = events.find(event => event.type === 'tool/ptc-dispatch')
+    if (settle === undefined) throw new Error('expected a dispatch settle event')
+    const loggedText = firstSettleText(settle.data)
+    expect(Buffer.byteLength(loggedText, 'utf8')).toBeLessThanOrEqual(200)
+    expect(loggedText).toContain('Full formatted result stored at: /spill/read.txt')
+    expect(spill.saves.filter(entry => entry.source.label === 'dispatch')).toHaveLength(1)
+  })
+
+  it('retunes the durable log copy from a numeric per-tool row', async () => {
+    const { events, spill } = await runCodeWith(
+      'return (await tools.huge_read({}))[0].text.length', 100_000, [], { huge_read: 256 })
+    const settle = events.find(event => event.type === 'tool/ptc-dispatch')
+    if (settle === undefined) throw new Error('expected a dispatch settle event')
+    expect(Buffer.byteLength(firstSettleText(settle.data), 'utf8')).toBeLessThanOrEqual(256)
+    expect(spill.saves.filter(entry => entry.source.label === 'dispatch')).toHaveLength(1)
+  })
 })
 
 describe('nested-call skip', () => {
@@ -600,5 +655,139 @@ describe('disposal (HMR safety)', () => {
     const after = await ctx.tools.execute(exec('big'))
     expect(textOf(after.content)).toBe(body)
     expect(spill?.saves).toHaveLength(1)
+  })
+})
+
+describe('per-tool retain map', () => {
+  it('applies a tighter numeric row instead of the global cap', async () => {
+    const { ctx, spill } = await setup({ maxInlineBytes: 100_000, toolLimits: { chatty: 256 } })
+    const body = 'C'.repeat(500)
+    ctx.tools.register(textTool('chatty', body))
+    const result = await ctx.tools.execute(exec('chatty'))
+    const text = textOf(result.content)
+    expect(spill?.saves).toHaveLength(1)
+    expect(text).not.toBe(body)
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(256)
+    expect(text).toContain('[budget notice]')
+  })
+
+  it('leaves an unlisted tool on the global cap', async () => {
+    const { ctx, spill } = await setup({ maxInlineBytes: 256, toolLimits: { chatty: 100_000 } })
+    const body = 'P'.repeat(500)
+    ctx.tools.register(textTool('plain', body))
+    const result = await ctx.tools.execute(exec('plain'))
+    expect(spill?.saves).toHaveLength(1)
+    expect(Buffer.byteLength(textOf(result.content), 'utf8')).toBeLessThanOrEqual(256)
+  })
+
+  it('keeps the shipped `read` skip row unless a configured row says otherwise', async () => {
+    const skipped = await setup({ maxInlineBytes: 256 })
+    skipped.ctx.tools.register(textTool('read', 'R'.repeat(500)))
+    const untouched = await skipped.ctx.tools.execute(exec('read'))
+    expect(textOf(untouched.content)).toBe('R'.repeat(500))
+    expect(skipped.spill?.saves).toHaveLength(0)
+
+    const enabled = await setup({ maxInlineBytes: 100_000, toolLimits: { read: 256 } })
+    enabled.ctx.tools.register(textTool('read', 'R'.repeat(500)))
+    const spilled = await enabled.ctx.tools.execute(exec('read'))
+    expect(enabled.spill?.saves).toHaveLength(1)
+    expect(Buffer.byteLength(textOf(spilled.content), 'utf8')).toBeLessThanOrEqual(256)
+  })
+
+  it('treats a `skip` row for any tool as keep-inline', async () => {
+    const { ctx, spill } = await setup({ maxInlineBytes: 256, toolLimits: { chatty: 'skip' } })
+    const body = 'C'.repeat(500)
+    ctx.tools.register(textTool('chatty', body))
+    const result = await ctx.tools.execute(exec('chatty'))
+    expect(textOf(result.content)).toBe(body)
+    expect(spill?.saves).toHaveLength(0)
+  })
+
+  it('rejects a negative or fractional row at load', async () => {
+    await expect(setup({ maxInlineBytes: 100, toolLimits: { chatty: -1 } }))
+      .rejects.toThrow(/toolLimits.chatty must be a non-negative integer/)
+    await expect(setup({ maxInlineBytes: 100, toolLimits: { chatty: 1.5 } }))
+      .rejects.toThrow(/toolLimits.chatty must be a non-negative integer/)
+  })
+
+  it('rejects a row that is neither a budget nor `skip` at load', async () => {
+    // JSON.parse yields the raw config a deployment file would hand over; the
+    // plugin's own schema must reject the unknown row value before any call.
+    const config: SpillPolicy.Config = JSON.parse('{"maxInlineBytes":100,"toolLimits":{"chatty":"nope"}}')
+    await expect(setup(config)).rejects.toThrow(/chatty/)
+  })
+
+  it('validates rows even while the policy is disabled', async () => {
+    await expect(setup({ toolLimits: { chatty: -1 } })).rejects.toThrow(/toolLimits.chatty/)
+  })
+})
+
+describe('persist circuit breaker', () => {
+  it('trips once after three failed saves, then stops attempting persists', async () => {
+    const { ctx, spill } = await setup({ maxInlineBytes: 256 })
+    if (spill === undefined) throw new Error('expected a spill backend')
+    spill.fail = true
+    const error = vi.spyOn(ctx.logger, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const saveText = vi.spyOn(spill, 'saveText')
+    const body = 'x'.repeat(500)
+    ctx.tools.register(textTool('big', body))
+
+    // Three overlapping oversized results: three failures, exactly one trip.
+    const concurrent = await Promise.all([
+      ctx.tools.execute(exec('big')),
+      ctx.tools.execute(exec('big')),
+      ctx.tools.execute(exec('big')),
+    ])
+    for (const result of concurrent) expect(textOf(result.content)).toBe(body)
+    expect(saveText).toHaveBeenCalledTimes(3)
+    expect(error).toHaveBeenCalledTimes(1)
+    const trip: unknown = error.mock.calls[0]?.[0]
+    expect(String(trip)).toContain('spill circuit breaker tripped after 3 consecutive persist failures')
+    expect(String(trip)).toContain('keeping oversized results inline')
+
+    // Open: the next oversized result keeps inline without another save attempt.
+    const afterTrip = await ctx.tools.execute(exec('big'))
+    expect(textOf(afterTrip.content)).toBe(body)
+    expect(saveText).toHaveBeenCalledTimes(3)
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalled()
+  })
+})
+
+describe('spill thrash detection', () => {
+  it('warns once when the same oversized artifact spills three times in a row', async () => {
+    const { ctx, spill } = await setup({ maxInlineBytes: 256 })
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const body = 'H'.repeat(500)
+    ctx.tools.register(textTool('same', body))
+
+    await ctx.tools.execute(exec('same'))
+    await ctx.tools.execute(exec('same'))
+    warn.mockClear()
+    const third = await ctx.tools.execute(exec('same'))
+    expect(third.isError).toBe(false)
+    expect(textOf(third.content)).not.toBe(body)
+    expect(warn.mock.calls.some(([message]) => String(message).includes('spill thrash:'))).toBe(true)
+
+    // Same streak continues: no second report for the same artifact.
+    warn.mockClear()
+    await ctx.tools.execute(exec('same'))
+    expect(warn.mock.calls.some(([message]) => String(message).includes('spill thrash:'))).toBe(false)
+    expect(spill?.saves).toHaveLength(4)
+  })
+
+  it('does not report thrash when a different artifact interrupts the streak', async () => {
+    const { ctx } = await setup({ maxInlineBytes: 256 })
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    ctx.tools.register(textTool('one', 'A'.repeat(500)))
+    ctx.tools.register(textTool('two', 'B'.repeat(500)))
+
+    await ctx.tools.execute(exec('one'))
+    await ctx.tools.execute(exec('one'))
+    await ctx.tools.execute(exec('two'))
+    await ctx.tools.execute(exec('one'))
+    await ctx.tools.execute(exec('one'))
+    expect(warn.mock.calls.some(([message]) => String(message).includes('spill thrash:'))).toBe(false)
   })
 })

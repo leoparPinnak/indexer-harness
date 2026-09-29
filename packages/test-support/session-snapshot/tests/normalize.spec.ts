@@ -218,6 +218,31 @@ Additional instructions from: nested\AGENTS.md`,
     expect(out).not.toContain('39387')
   })
 
+  it('stabilizes the spill byte count in a tagged budget notice', () => {
+    const raw = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call_update',
+          content: [{
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'Session prior — title\nTarget event seq 4:\n```json\n{\n  "seq": 4,\n  "time": 1784876275593,\n  "data": {\n    "time": 31337,\n    "note": "model-visible"\n  }\n}\n```\n\nAfter:\n  "time": 424242,\n  neighbor semantic text\n\n[budget notice] (Omitted 39387 bytes. Full formatted result stored at: /tmp/result.txt.)',
+            },
+          }],
+        },
+      },
+    })
+    const out = normalizeStdout(raw, ctx)
+    expect(out).toContain('\\"time\\": {{eventTime}}')
+    expect(out).toContain('Omitted {{eventOmittedBytes}} bytes')
+    expect(out).toContain('[budget notice] (Omitted {{eventOmittedBytes}} bytes.')
+    expect(out).not.toContain('39387')
+    expect(out).not.toContain('1784876275593')
+  })
+
   it('preserves event-like timestamps in unrelated output text', () => {
     const raw = JSON.stringify({
       jsonrpc: '2.0',

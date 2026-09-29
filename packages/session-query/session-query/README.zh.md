@@ -50,6 +50,19 @@ kind: "package-reference"
 
 文本子句是对所提取语义文本的字面、不区分大小写、空白灵活的扫描——而非全文查询。需要任意子字符串召回时使用它；需要带排名的全文结果时使用挂载后端的搜索方法。
 
+### 分层转写召回
+
+`LayeredSessionRecall`（本包中的普通类，不是 `ctx.sessionQuery` 的方法）通过两层搜索已持久化语料：派生 SQLite 索引先按键出的会话文本召回候选会话，线性召回原语（来自 `dsh-session-persistence-jsonl` 的 `searchEventLines`）构建每一个命中。由于命中始终由第 0 层产出，只要候选集完整，带索引的回答与参考回退 `linearSessionRecall()` 逐字节相同。
+
+```ts
+const recall = new LayeredSessionRecall(ctx.sessionPersistence)
+const result = await recall.search(/release notes/i) // lazy build on first search
+await recall.rebuild() // explicit maintenance
+recall.close()
+```
+
+索引位于 `~/.dsh/cache/session-recall/index.sqlite`（可用 `indexPath` 覆盖），并按持久化 `revision` 令牌增量刷新：未变更的会话绝不重读，已变更的会话重新索引，消失的会话删除行。缺失、过期或损坏的文件被静默丢弃、当次搜索由第 0 层回答；属于其他应用的数据库绝不删除。只有当模式由字面量片段构成、以 `.`、`^`、`$` 分隔且不带 `u`/`v` 标志时，查询才贡献索引键——其余一律线性扫描。覆盖范围是已持久化语料；实时优先的带排名搜索仍归挂载后端。
+
 ### 配置
 
 继承的旋钮通过挂载后端的配置设置：
@@ -100,6 +113,7 @@ kind: "package-reference"
 | [`src/documents.ts`](src/documents.ts) | 表层感知的语义文档投影 |
 | [`src/tracing.ts`](src/tracing.ts) | 一次性会话血缘与事件关系追踪 |
 | [`src/sources.ts`](src/sources.ts) | 不可变 header 兼容性检查 |
+| [`src/layered-search.ts`](src/layered-search.ts) | 分层转写召回：用于候选召回的派生词法索引，线性扫描作为永远正确的回退 |
 | — | 不发布运行时不变式伴生入口；查询结果是每次调用产生的不可变投影，其血缘与事件关系会在构建时完成校验；服务不保留可观察的结果状态。 |
 
 ### 语料库解析
@@ -151,6 +165,7 @@ kind: "package-reference"
 - **无提供方协调器或回退**——服务在搜索上是抽象的，组合必须挂载具体后端；没有搜索提供方注册表或回退实现。
 - **精确读取回放整个日志**——`readSession`、`readSurface`、`filterEvents` 与事件追踪会加载并校验完整逻辑日志，因此非常大的历史每次调用都要付出完整检查；`listSessions` 保持轻量。
 - **字面文本扫描，而非全文搜索**——`text` 过滤器用正则表达式扫描提取出的文档且不提供排名；带排名的搜索需要挂载后端。
+- **分层召回索引的是已持久化语料**——`LayeredSessionRecall` 只覆盖已存储会话（仅实时会话归挂载的带排名后端），并把非字面模式路由到线性回退，因此索引只收窄候选、不提供排名。
 
 <a id="dev-note"></a>
 ### 开发备注
