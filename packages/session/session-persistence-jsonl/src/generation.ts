@@ -37,6 +37,9 @@ import type { JsonlCompression } from './format.ts'
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.ts'
 import { publishNewFileWin32 } from './win32.ts'
 import {
+  PUBLISH_PATIENCE_BUDGET_MS, withJitteredPatience, type PatienceSeams,
+} from './retry-jitter.ts'
+import {
   compressZstdFrame,
   createZstdFrameDecoder,
   decompressZstdPrefix,
@@ -189,6 +192,10 @@ interface JsonlGenerationInternals {
   readonly platform: NodeJS.Platform
   readonly publishNewWin32: typeof publishNewFileWin32
   readonly barrier: (phase: GenerationBarrierPhase, attempt: number) => void | Promise<void>
+  /** plan16-patience: injected schedule seams for the contended-publish patience. */
+  readonly patience?: Partial<PatienceSeams> | undefined
+  /** plan16-patience: patience budget override (default {@link PUBLISH_PATIENCE_BUDGET_MS}). */
+  readonly patienceBudgetMs?: number | undefined
 }
 
 /** Dependency overrides for an isolated generation runtime. */
@@ -814,6 +821,12 @@ async function publishCurrentExclusive(
   currentPath: string,
   internals: JsonlGenerationInternals,
 ): Promise<boolean> {
+  // plan16-patience (ölçüm NOTU): buraya jitter'lı sabır DENEYİLDİ ve geri
+  // alındı — kaybeden tarafın "kazananı doğrula" akışı (özdeş bayt → kabul,
+  // farklı bayt → gerçek çatışma) zaten daha hızlı ve daha doğru çözer; kör
+  // retry bu akışı bloke etti (15 test 5'er saniye tükendi). İki fazlı sabır
+  // ALETİ `retry-jitter.ts` olarak durur; gerçek geçici-yarış dikişi bulununca
+  // orada kullanılır.
   if (internals.platform === 'win32') {
     try {
       await internals.publishNewWin32(staged, currentPath)

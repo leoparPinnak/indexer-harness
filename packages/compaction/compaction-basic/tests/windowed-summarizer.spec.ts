@@ -260,7 +260,7 @@ describe('compactionPolicy projection', () => {
     retainRatio: 0.25,
     modelPolicies: [{ provider: 'p', model: 'm', thresholdRatio: 0.75 }],
   })
-  const unit = compactionPolicyProjection(config)
+  const unit = compactionPolicyProjection(() => config)
 
   it('folds mode and routed capacity, ignoring unrelated events', () => {
     const initial = unit.init({} as never, 0 as never)
