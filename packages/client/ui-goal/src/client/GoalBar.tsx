@@ -90,18 +90,20 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
   if (editing) {
     return (
       <div className={css.dock} data-goal-bar>
-        <div className={css.bar}>
+        <div className={css.bar} style={{ cursor: 'default' }}>
           <input
             className={css.objectiveInput}
             type="text"
             aria-label={t('objective.aria')}
             value={draft}
+            title={draft}
             onChange={(e) => { setDraft(e.target.value) }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void handleEdit()
               if (e.key === 'Escape') setEditing(false)
             }}
             autoFocus
+            onFocus={e => e.target.select()}
           />
           {actionError !== null && <span className={css.error} role="alert">{actionError}</span>}
           <div className={css.actions}>
@@ -139,12 +141,38 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
     || goal.phase === 'complete'
     || (goal.phase === 'active' && activation === 'disarmed')
   const barClass = goal.phase === 'complete' ? `${css.bar} ${css.barComplete}` : css.bar
+
+  const openEdit = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setDraft(goal.objective)
+    setEditing(true)
+  }
+
+  const handleBarClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest(`.${css.actions}`)) return
+    openEdit(e)
+  }
+
   return (
     <div className={css.dock} data-goal-bar>
-      <div className={barClass} title={title}>
+      <div className={barClass} title={title} onClick={handleBarClick}>
         <span className={css.goalGlyph}><IconGoalOutline16 size={14} /></span>
         <span className={css.label}>{label}</span>
-        <span className={css.objective}>{goal.objective}</span>
+        <span
+          className={css.objective}
+          title={goal.objective}
+          onClick={openEdit}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              openEdit()
+            }
+          }}
+        >
+          {goal.objective}
+        </span>
         {actionError !== null && <span className={css.error} role="alert">{actionError}</span>}
         <div className={css.actions}>
           {goal.phase === 'active' && activation === 'armed' && (
@@ -166,7 +194,7 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
               type="button"
               className={css.iconBtn}
               disabled={pending}
-              onClick={() => { setDraft(goal.objective); setEditing(true) }}
+              onClick={openEdit}
               aria-label={t('action.edit')}
             >
               <IconEditOutline16 size={14} />

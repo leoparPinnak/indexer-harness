@@ -45,7 +45,7 @@ describe('GoalBar', () => {
     expect(absent.container.firstChild).toBeNull()
     cleanup()
 
-    const complete = render(<GoalBar goal={makeGoal({ phase: 'complete' })} {...actions} t={t} />)
+    render(<GoalBar goal={makeGoal({ phase: 'complete' })} {...actions} t={t} />)
     expect(screen.getByText('已完成的目标')).toBeTruthy()
     expect(screen.getByText('Ship the redesign')).toBeTruthy()
     const bar = screen.getByText('已完成的目标').closest('div')
@@ -59,6 +59,16 @@ describe('GoalBar', () => {
     expect(screen.getByText('Ship the redesign')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '清除目标' }))
     expect(actions.onClear).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the objective text directly opens the edit mode with full draft', () => {
+    const actions = makeActions()
+    render(<GoalBar goal={makeGoal()} {...actions} t={t} />)
+    const objectiveSpan = screen.getByText('Ship the redesign')
+    expect(objectiveSpan.getAttribute('title')).toBe('Ship the redesign')
+    fireEvent.click(objectiveSpan)
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: '目标内容' })
+    expect(input.value).toBe('Ship the redesign')
   })
 
   it('single-flights rapid clear clicks and hides the committed goal before its projection catches up', async () => {
