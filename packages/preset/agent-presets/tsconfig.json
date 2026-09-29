@@ -31,6 +31,9 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../session/session-persistence-jsonl"
+    },
+    {
       "path": "../../session/session-projection"
     },
     {

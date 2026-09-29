@@ -208,7 +208,12 @@
     - id: sandbox-policy
       name: '@deepseek-ai/dsh-sandbox-policy'
       config:
-        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+        # DSH_PERMISSION_MODE resolves through the frozen launch-environment
+        # snapshot the launcher provides before any entry mounts; process.env
+        # is only the bare-composition fallback (launchEnvironmentOf's own
+        # rule), so a config re-parse after a post-snapshot env change cannot
+        # move the sandbox posture.
+        mode: !!js "(typeof launchEnvironment === 'undefined' ? process.env.DSH_PERMISSION_MODE : launchEnvironment.get('DSH_PERMISSION_MODE')?.value) ?? 'workspace-write'"
         workspaceRoot: !!js process.cwd()
 
     - id: bash-sandbox
@@ -224,7 +229,9 @@
     - id: approval
       name: '@deepseek-ai/dsh-user-approval'
       config:
-        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
+        # Same frozen-snapshot routing as sandbox-policy above: the approval
+        # posture follows the launch snapshot, not a live process.env read.
+        policy: !!js "((typeof launchEnvironment === 'undefined' ? process.env.DSH_PERMISSION_MODE : launchEnvironment.get('DSH_PERMISSION_MODE')?.value) ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
 
     - id: permission
       name: '@deepseek-ai/dsh-permission-presets'
@@ -376,6 +383,12 @@
 
     - id: timeout-policy
       name: '@deepseek-ai/dsh-tool-call-timeout-policy'
+
+    # Categorized HARD/SOFT/ALLOW gating over tools/pre-execute. The shipped
+    # row mounts with no rules, so every call stays uncategorised and keeps the
+    # legacy 3-state default until a profile patch assigns taxonomy categories.
+    - id: guard-taxonomy
+      name: '@deepseek-ai/dsh-guard-taxonomy'
 
     - id: spill-local
       name: '@deepseek-ai/dsh-spill-local'

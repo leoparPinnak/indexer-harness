@@ -119,7 +119,7 @@ agent-presets:
 
 ### 常驻挂载
 
-`ensureStanding` 为每个 preset id 保留一个进行中的 promise（single-flight），因此两个竞争首次使用同一 preset 的 agent 共享一份组装。已结算的失败会被移除，以便后续会话重试文件已被修复的 preset。挂载运行在 roster 服务自己的未追踪上下文中——从被追踪上下文派生的子树会经调用方的 shadow fiber 解析服务——因此它比任何 agent 都活得久，只随整棵树卸载。`serviceForAgent` 读取某 agent 对其 preset 挂在 `isolate` realm 之后（组外不可见）的某个服务实例。
+`ensureStanding` 为每个 preset id 保留一个进行中的 promise（single-flight），因此两个竞争首次使用同一 preset 的 agent 共享一份组装。失败的尝试会被保留而非遗忘：roster 持有一条失败记录——错误本身、它的尝试计数，以及失败发生时所对照的文件状态——因此紧随其后的调用会重放这条失败，而不是重新挂载；若一次尝试抛出瞬时 errno，则等待一次有界抖动退避（最多三次尝试：第一次等待取自 retry-jitter 的 FAST 区间 20–150 ms，第二次取自 SLOW 区间 250–1000 ms，其他任何失败以及最后一次失败都立即上报）。当组合文件的 stamp 发生变化时该记录立即释放，已修复的文件因此立刻重试；否则等它的 TTL 到期，而每条失败记录都会让该 TTL 翻倍、上限 60 秒；挂载成功则清除该记录。挂载运行在 roster 服务自己的未追踪上下文中——从被追踪上下文派生的子树会经调用方的 shadow fiber 解析服务——因此它比任何 agent 都活得久，只随整棵树卸载。`serviceForAgent` 读取某 agent 对其 preset 挂在 `isolate` realm 之后（组外不可见）的某个服务实例。
 
 ### 组合清单
 

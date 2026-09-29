@@ -77,4 +77,20 @@ describe('withJitteredPatience: patience with an honest end', () => {
       .catch(() => {})
     expect(waits[0] ?? 0).toBeLessThanOrEqual(100)
   })
+
+  it('runs on the production seams when none are injected', async () => {
+    const started = Date.now()
+    let calls = 0
+    const result = await withJitteredPatience(async () => {
+      calls += 1
+      if (calls < 2) throw Object.assign(new Error('gerçek zaman'), { code: 'EEXIST' })
+      return 'TAMAM'
+    }, { isTransient: transient })
+
+    expect(result).toBe('TAMAM')
+    expect(calls).toBe(2)
+    // The default seams are the real clock, timer, and rand: the retry waited
+    // inside the FAST band (20 ms floor) rather than turning straight around.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(FAST_JITTER_MIN_MS - 10)
+  })
 })
