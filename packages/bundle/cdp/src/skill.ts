@@ -44,10 +44,10 @@ const RETIRED_BODY_RELATIVE = 'SKILL.md'
  * (T1 asserts the same string in the SKILL.md frontmatter parses ≤500, and
  * that the two copies stay byte-identical).
  */
-export const DESCRIPTION = 'Drive Chromium/Edge over the Chrome DevTools Protocol with the cdp_* and net_* tools. '
-  + 'Use when the task opens, navigates, reads, clicks in, types into, waits on, screenshots or network-inspects a browser tab; '
+export const DESCRIPTION = 'Drive Chrome/Edge over the DevTools protocol with the cdp_* and net_* tools. '
+  + 'Use when the task opens, navigates, reads, clicks, types into, waits on, screenshots or network-inspects a tab; '
   + 'when the user mentions a browser, tab, page, form, login, selector, snapshot, popup, download, proxy capture, or "the CDP tab"; '
-  + 'or before any task that mutates page state. Carries the target-confirmation procedure, tool-selection table, and failure playbook.'
+  + 'or before any task that mutates page state. Carries the target-confirmation procedure, tool-selection table, and failure playbook. Also covers isolation levels.'
 
 /** Extra routing hint carried beside the description in the catalog row. */
 export const WHEN_TO_USE = 'Any task that must observe or change a live browser page; load before the first cdp_* call of a session.'

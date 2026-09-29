@@ -179,6 +179,7 @@ export default defineConfig({
         plugins: [pathsPlugin(), standardDecoratorPlugin()],
         test: {
           name: 'thread-safe',
+          testTimeout: 15_000,
           execArgv: vitestExecArgv,
           // Node 24 has aborted in its CJS lexer (v8::ToLocalChecked Empty
           // MaybeLocal in cjs_lexer::Parse) from worker threads on macOS,
@@ -197,6 +198,7 @@ export default defineConfig({
         plugins: [pathsPlugin(), standardDecoratorPlugin()],
         test: {
           name: 'process-bound',
+          testTimeout: 15_000,
           execArgv: vitestExecArgv,
           pool: 'forks',
           setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],

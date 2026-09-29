@@ -1,12 +1,13 @@
 ---
 name: cdp-browser-control
 description: >-
-  Drive Chromium/Edge over the Chrome DevTools Protocol with the cdp_* and net_*
-  tools. Use when the task opens, navigates, reads, clicks in, types into, waits on,
-  screenshots or network-inspects a browser tab; when the user mentions a browser,
+  Drive Chrome/Edge over the DevTools protocol with the cdp_* and net_* tools.
+  Use when the task opens, navigates, reads, clicks, types into, waits on,
+  screenshots or network-inspects a tab; when the user mentions a browser,
   tab, page, form, login, selector, snapshot, popup, download, proxy capture, or
   "the CDP tab"; or before any task that mutates page state. Carries the
   target-confirmation procedure, tool-selection table, and failure playbook.
+  Also covers isolation levels.
 whenToUse: Any task that must observe or change a live browser page; load before the
   first cdp_* call of a session.
 ---

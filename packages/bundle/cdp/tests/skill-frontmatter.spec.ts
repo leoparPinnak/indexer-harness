@@ -76,7 +76,7 @@ describe('assets/skill/SKILL.md frontmatter (plan09 T1)', () => {
 
   it('leaves headroom under the 500-char truncation bound', async () => {
     // Truncation eats trigger words from the END, so a copy that has drifted
-    // long is the failure mode this guards. 33 characters of slack today.
+    // long is the failure mode this guards. 23 characters of slack today.
     expect(DESCRIPTION.length).toBeLessThanOrEqual(500)
     expect(500 - DESCRIPTION.length).toBeGreaterThanOrEqual(16)
   })
