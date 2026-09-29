@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
+import { isHashlinePatch, runHashlineEdit } from '@deepseek-ai/dsh-tool-editor-evolved'
 import { sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
@@ -291,6 +292,32 @@ async function replaceInFile(
   const info = await statExisting(ctx, target, 'str_replace', exec)
   if (info.type !== 'file') {
     throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
+  }
+  // Routing stitch: a hashline-shaped old_str runs through the hashline core on the
+  // very same policy — read-before-edit from the fs/edit-intent waterfall above, the
+  // replaceIfVersion CAS basis from the stat the literal path already took, and the
+  // MutationPolicy sandbox mapping on both the write and its errors. Anything that is
+  // not a hashline patch falls through to the literal string replace unchanged.
+  if (isHashlinePatch(oldValue)) {
+    await runHashlineEdit(
+      {
+        displayPath: target.displayPath,
+        casBasis: async () => intent === undefined
+          ? { kind: 'replaceIfVersion', version: info.version }
+          : { kind: 'replaceIfVersion', version: intent.version },
+        read: async () => ctx.fs.readText(target, exec.signal),
+        write: async (content, expected) => {
+          try {
+            const written = await ctx.fs.writeText(target, content, expected, exec.signal, sandboxPolicy)
+            ctx.emit('fs/observed', target, { kind: 'present', version: written.version }, exec)
+          } catch (error: unknown) {
+            throw policy.mapError(error, sandboxPolicy)
+          }
+        },
+      },
+      oldValue,
+    )
+    return `The file ${target.displayPath} has been edited successfully.`
   }
   const before = await ctx.fs.readText(target, exec.signal)
   const offsets = matchOffsets(before, oldValue)

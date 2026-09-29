@@ -1681,6 +1681,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-sandbox-view':
         specifier: workspace:^
         version: link:../../client/ui-sandbox-view
+      '@deepseek-ai/dsh-ipc-pipe':
+        specifier: workspace:^
+        version: link:../../ipc/ipc-pipe
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
@@ -6425,6 +6428,40 @@ importers:
         specifier: workspace:^
         version: link:../../session/session-projection
 
+  packages/fs/tool-editor-evolved:
+    dependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-fs':
+        specifier: workspace:^
+        version: link:../fs
+      '@deepseek-ai/dsh-fs-local':
+        specifier: workspace:^
+        version: link:../fs-local
+      '@deepseek-ai/dsh-fs-observation-policy':
+        specifier: workspace:^
+        version: link:../fs-observation-policy
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tool-fs':
+        specifier: workspace:^
+        version: link:../tool-fs
+      '@deepseek-ai/dsh-tool-str-replace-editor':
+        specifier: workspace:^
+        version: link:../tool-str-replace-editor
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+
   packages/fs/tool-fs:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -6485,6 +6522,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tool-editor-evolved':
+        specifier: workspace:^
+        version: link:../tool-editor-evolved
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -6626,6 +6666,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tool-editor-evolved':
+        specifier: workspace:^
+        version: link:../tool-editor-evolved
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -7274,6 +7317,8 @@ importers:
       '@deepseek-ai/dsh-scope':
         specifier: workspace:^
         version: link:../../core/scope
+
+  packages/ipc/ipc-pipe: {}
 
   packages/jobs/jobs:
     devDependencies:
