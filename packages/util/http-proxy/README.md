@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to apply one outbound HTTP proxy policy to Harness requests that use Node's built-in `fetch`, including LLM, web-search, and HTTP MCP traffic. The launcher reads standard proxy environment variables once, and ordinary `fetch` callers require no extra imports or changes. The installed dispatcher also carries the process's outbound connect deadline, which ends a connection that never completes in seconds rather than in undici's ten-second default. Local loopback traffic stays direct, while unsupported proxy URLs are reported and skipped for the affected scheme. Public helpers let callers route transports with their own proxy settings, prepare child-process environments, or clear proxy variables for isolated replays.
+Use this package to apply one outbound HTTP proxy policy to Harness requests using Node's `fetch`, including LLM, web-search, and HTTP MCP traffic. The launcher reads standard proxy environment variables once, and ordinary `fetch` callers require no extra imports or changes. The installed dispatcher also carries the process's outbound connect deadline, ending connections that stall in seconds instead of undici's 10-second default. Local loopback traffic stays direct, while unsupported proxy URLs are reported and skipped for the affected scheme. Helpers route transports with their own proxy settings, prepare child-process environments, or clear proxy variables for isolated replays.
 
 ## Table of Contents
 

@@ -32,6 +32,7 @@ import type {
  * Resolve the host operator's Desktop directory path.
  * On Windows, handles OneDrive redirection if configured.
  * Falls back to homedir if Desktop cannot be resolved.
+ * @returns the absolute Desktop directory path for this host.
  */
 export function resolveDesktopDirectory(): string {
   if (process.env.DSH_DESKTOP_DIR && existsSync(process.env.DSH_DESKTOP_DIR)) {

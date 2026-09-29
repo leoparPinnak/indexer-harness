@@ -627,7 +627,11 @@ export const HONEYPOT_RULES: readonly HoneypotRule[] = [
   },
 ]
 
-/** @param id - rule id. @returns the rule, or undefined. */
+/**
+ * Look one honeypot rule up by its id.
+ * @param id - rule id.
+ * @returns the matching rule, or undefined when the id is unknown.
+ */
 export function honeypotRule(id: string): HoneypotRule | undefined {
   return HONEYPOT_RULES.find(rule => rule.id === id)
 }
@@ -636,7 +640,11 @@ export function honeypotRule(id: string): HoneypotRule | undefined {
 // Pure classification
 // ---------------------------------------------------------------------------
 
-/** @param signals - layout facts. @returns the ids of the rules that fire. */
+/**
+ * Fire the honeypot rule set against one field's layout facts.
+ * @param signals - layout facts read page-side.
+ * @returns the ids of the rules that fire.
+ */
 export function matchHoneypotRules(signals: HoneypotSignals): string[] {
   return HONEYPOT_RULES.filter(rule => rule.test(signals)).map(rule => rule.id)
 }
@@ -749,7 +757,11 @@ export function classifyRecord(
   return { kind: 'unknown', evidence }
 }
 
-/** @param record - one scan record. @returns the hit-test verdict (K3). */
+/**
+ * Read one record's hit-test verdict (K3).
+ * @param record - one scan record.
+ * @returns the hit-test verdict for that record.
+ */
 export function hitVerdictOf(record: CaptchaScanRecord): CaptchaHitVerdict {
   if (!record.visible) return 'not-visible'
   if (!record.inViewport) return 'not-in-viewport'
@@ -1143,13 +1155,21 @@ export function seededSource(seed: string, domain: string): () => number {
   }
 }
 
-/** @param value - raw step count. @returns it clamped into `1..DRAG_MAX_STEPS`. */
+/**
+ * Clamp a raw drag step count into the supported window.
+ * @param value - raw step count.
+ * @returns it clamped into `4..DRAG_MAX_STEPS`, or the default when absent.
+ */
 export function clampDragSteps(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DRAG_DEFAULT_STEPS
   return Math.min(Math.max(Math.trunc(value), 4), DRAG_MAX_STEPS)
 }
 
-/** @param value - raw target percent. @returns it clamped into `0..100`. */
+/**
+ * Clamp a raw target percent into `0..100`.
+ * @param value - raw target percent.
+ * @returns it clamped, or undefined when the input is not a finite number.
+ */
 export function clampTargetPct(value: number | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
   return Math.min(Math.max(value, 0), 100)
@@ -1295,7 +1315,11 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-/** @param value - a raw counter value. @returns it when it is a boolean. */
+/**
+ * Project a raw counter value when it is a boolean.
+ * @param value - a raw counter value.
+ * @returns the boolean, or undefined when the value is not one.
+ */
 export function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
@@ -1507,7 +1531,11 @@ function rectOf(value: unknown): CaptchaRect {
   return { x: num(record.x), y: num(record.y), width: num(record.width), height: num(record.height) }
 }
 
-/** Normalize one page-side record; unknown fields become honest defaults. */
+/**
+ * Normalize one page-side record; unknown fields become honest defaults.
+ * @param value - a raw, page-side scan record.
+ * @returns the normalized record the classifier reads.
+ */
 export function normalizeScanRecord(value: unknown): CaptchaScanRecord {
   const record = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>
   return {

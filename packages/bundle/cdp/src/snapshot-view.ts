@@ -24,12 +24,21 @@ export interface SnapshotDelta {
   readonly unchangedCount: number
 }
 
-/** Keep only entries whose role the weaver marked directly operable. */
+/**
+ * Keep only entries whose role the weaver marked directly operable.
+ * @param nodes - one woven model's entries.
+ * @returns the operable subset, in document order.
+ */
 export function filterInteractive(nodes: readonly CdpWovenNode[]): CdpWovenNode[] {
   return nodes.filter(node => node.interactive)
 }
 
-/** One entry with its name and value clipped to {@link COMPACT_TEXT_LIMIT}. */
+/**
+ * One entry with its name and value clipped to {@link COMPACT_TEXT_LIMIT}.
+ * @param node - one woven entry.
+ * @param limit - clip size in characters.
+ * @returns the entry with clipped text; short text survives untouched.
+ */
 export function compactNode(node: CdpWovenNode, limit: number = COMPACT_TEXT_LIMIT): CdpWovenNode {
   const clip = (text: string): string => (
     text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text
@@ -41,7 +50,12 @@ export function compactNode(node: CdpWovenNode, limit: number = COMPACT_TEXT_LIM
   }
 }
 
-/** {@link compactNode} over a whole model. */
+/**
+ * {@link compactNode} over a whole model.
+ * @param nodes - one woven model's entries.
+ * @param limit - clip size in characters.
+ * @returns every entry with clipped text.
+ */
 export function compactView(nodes: readonly CdpWovenNode[], limit: number = COMPACT_TEXT_LIMIT): CdpWovenNode[] {
   return nodes.map(node => compactNode(node, limit))
 }
@@ -49,6 +63,9 @@ export function compactView(nodes: readonly CdpWovenNode[], limit: number = COMP
 /**
  * Reduce two woven models to their delta. `previous` is the base (often the
  * previous `cdp_snapshot` of the same target key); `current` is fresh.
+ * @param previous - the base woven model.
+ * @param current - the fresh woven model.
+ * @returns the delta keyed by `ref`.
  */
 export function diffSnapshots(
   previous: readonly CdpWovenNode[],

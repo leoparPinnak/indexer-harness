@@ -1162,12 +1162,6 @@ export class CdpService {
   }
 
   /**
-   * plan13-profile: the ACTIVE profile identity for status and open results.
-   * @returns the named profile, `ephemeral` for a throwaway one, `external`
-   * for a browser DSH attached to but did not launch, or `''` when no browser
-   * is attached at all.
-   */
-  /**
    * plan16-profile-list: the named-profile inventory behind `cdp_profiles`.
    * Rows come from the disk (name-validated subdirectories, honest lock
    * reports); `active` is this session's profile identity.
@@ -1202,6 +1196,12 @@ export class CdpService {
     return this.launched !== undefined
   }
 
+  /**
+   * plan13-profile: the ACTIVE profile identity for status and open results.
+   * @returns the named profile, `ephemeral` for a throwaway one, `external`
+   * for a browser DSH attached to but did not launch, or `''` when no browser
+   * is attached at all.
+   */
   activeProfileName(): string {
     const connection = this.connection
     // A stand-in service surface may carry a connection without an endpoint;

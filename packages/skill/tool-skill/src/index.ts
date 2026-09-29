@@ -46,7 +46,11 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-/** Durable entry list mirroring the rendered catalog lines, for non-model consumers. */
+/** Durable entry list mirroring the rendered catalog lines, for non-model consumers.
+ * @param skills - the model-invocable summaries to project.
+ * @param descriptionMaxLength - the catalog description clip.
+ * @returns the durable entries, in canonical code-unit name order.
+ */
 export function catalogSourceEntries(
   skills: SkillSummary[],
   descriptionMaxLength: number,
@@ -334,6 +338,8 @@ function renderCatalogEntries(entries: SkillCatalogSource['entries']): string[] 
  * plan16-cache: the digest is SET identity — entries are canonicalized by
  * code-unit name order before hashing, so a permuted catalog never forces a
  * republish (and a pre-order-fix legacy catalog does not thrash on upgrade).
+ * @param entries - the durable catalog entries (any order).
+ * @returns the canonical sha256 hex digest.
  */
 export function digestCatalogEntries(entries: SkillCatalogSource['entries']): string {
   // JSON per entry rather than a separator character: every separator is itself

@@ -32,11 +32,16 @@ export type TabLockRelease =
   | { readonly ok: true; readonly released: TabLease }
   | { readonly ok: false; readonly reason: 'unknown-lock' | 'not-holder' }
 
-/** Clamp bounds of one lease lifetime: 1s floor, 300s ceiling. */
+/** Floor of one lease lifetime: shorter requests are lifted to it. */
 export const MIN_LOCK_TTL_MS = 1_000
+/** Ceiling of one lease lifetime: longer requests are cut to it. */
 export const MAX_LOCK_TTL_MS = 300_000
 
-/** Clamp a requested TTL into the supported window. */
+/**
+ * Clamp a requested TTL into the supported window.
+ * @param ttlMs - the requested lifetime in milliseconds.
+ * @returns the TTL clamped into {@link MIN_LOCK_TTL_MS}..{@link MAX_LOCK_TTL_MS}.
+ */
 export function clampLockTtl(ttlMs: number): number {
   if (!Number.isFinite(ttlMs)) return 60_000
   return Math.min(MAX_LOCK_TTL_MS, Math.max(MIN_LOCK_TTL_MS, Math.floor(ttlMs)))
@@ -52,6 +57,11 @@ export class TabLockRegistry {
    * Take the lease on `targetKey`, or answer `lock-held` with the current
    * holder. A lease whose `lockedUntil` has passed yields silently — the dead
    * holder is never blamed and never blocks.
+   * @param targetKey - the tab key to lease.
+   * @param holder - who is taking the lease.
+   * @param ttlMs - requested lifetime, clamped.
+   * @param now - the injected clock.
+   * @returns the granted lease, or the in-band `lock-held` refusal.
    */
   acquire(targetKey: string, holder: string, ttlMs: number, now: number): TabLockAcquire {
     const held = this.#leases.get(targetKey)
@@ -75,6 +85,10 @@ export class TabLockRegistry {
    * Give the lease back. `holder`, when given, must match the owner — an
    * unlock by a bystander answers `not-holder`. An unknown or already-released
    * id answers `unknown-lock` (double-unlock is honest data, not an error).
+   * @param lockId - the lease id to release.
+   * @param holder - the unlocking owner, checked when given.
+   * @param now - the injected clock.
+   * @returns the freed lease, or the in-band refusal.
    */
   release(lockId: string, holder: string | undefined, now: number): TabLockRelease {
     const targetKey = this.#byLockId.get(lockId)
@@ -90,13 +104,22 @@ export class TabLockRegistry {
     return { ok: true, released: held }
   }
 
-  /** The live lease on `targetKey`, or undefined when free/expired. */
+  /**
+   * The live lease on `targetKey`, or undefined when free/expired.
+   * @param targetKey - the tab key to inspect.
+   * @param now - the injected clock.
+   * @returns the live lease, or undefined.
+   */
   inspect(targetKey: string, now: number): TabLease | undefined {
     const held = this.#leases.get(targetKey)
     return held !== undefined && held.lockedUntil > now ? held : undefined
   }
 
-  /** Purge dead leases; returns how many keys were freed. */
+  /**
+   * Purge dead leases.
+   * @param now - the injected clock.
+   * @returns how many keys were freed.
+   */
   sweep(now: number): number {
     let swept = 0
     for (const lease of [...this.#leases.values()]) {

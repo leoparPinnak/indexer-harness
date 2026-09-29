@@ -2,11 +2,11 @@
 
 ## Summary
 
-Composer context control: the context-occupancy ring with the per-session compaction trigger point, the `Sıkıştır` (compact now) action, and the per-session compaction-mode settings (summarization strategy, dedicated summarization model, context budget, trigger point, compaction cap). The component occupies ui-conversation's `conversation.input.context` seat and schedules no model requests of its own.
+Composer context control: the context-occupancy ring with its per-session compaction trigger point, the `Sıkıştır` (compact now) action, and per-session compaction-mode settings (strategy, summarization model, budget, cap). It seats in ui-conversation's `conversation.input.context` and schedules no model requests.
 
-Each figure carries a scope marker: green reads "this session only" for the sliders and the dedicated strategy, blue "Global" for the chat's selected model (whose selection is deployment-wide) and for figures still following the deployment default. The deployment default for the compaction cap is editable from the General settings page through this package's `settings.general.item` row, which writes `compaction-basic.maxTokens`.
+Figures carry scope markers — green for session-only settings, blue for deployment-wide ones. The compaction-cap default is editable in General settings via this package's `settings.general.item` row (`compaction-basic.maxTokens`).
 
-Occupancy and the effective trigger point come from the `contextPressure` and `compactionPolicy` Session projections; settings save through `session.setCompactionMode` as one whole-value replace, and the compact action submits `/compact` through `remote.commands`. All copy lives in the `ui-context-control` locale dictionaries (zh, en, tr).
+Occupancy and trigger come from the `contextPressure` and `compactionPolicy` Session projections; settings save via `session.setCompactionMode`, and the compact action submits `/compact` through `remote.commands`. Copy lives in the zh/en/tr locale dictionaries.
 
 ## Model Experience
 
