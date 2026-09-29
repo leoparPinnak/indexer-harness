@@ -11,7 +11,7 @@ import WsClient from 'ws'
 import { Context } from '@deepseek-ai/cordis'
 import { createMultipartFrameParser, internals, registerSandboxRoutes, SandboxController } from '../src/sandbox.ts'
 import { startDeamon } from '../src/deamon.ts'
-import { DeamonManager } from '../src/deamon-manager.ts'
+import { DeamonManager, type DaemonStream } from '../src/deamon-manager.ts'
 
 /**
  * Deterministic stand-in for the shipped helper. It speaks the same contract —
@@ -267,6 +267,22 @@ describe('web-app sandbox bridge', () => {
       await wait(50)
     }
   }
+
+/**
+ * A stand-in's `openStream`: one HTTP request to the stand-in's target server
+ * (counting the contact) with its response as the returned frame stream. The
+ * bridge contract moved onto `DeamonManager.openStream`, so stand-ins must
+ * speak it for the late-answer scenarios to be meaningful.
+ */
+async function httpStandInStream(port: number, path: string): Promise<DaemonStream> {
+  return await new Promise<DaemonStream>((resolve, reject) => {
+    const req = request(`http://127.0.0.1:${String(port)}${path}`, (res) => {
+      resolve(Object.assign(res, { statusCode: res.statusCode ?? 0, headers: res.headers }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
 
   it('registers the sandbox and shellbox routes', async () => {
     const routes = await setupApp()
@@ -728,7 +744,11 @@ describe('web-app sandbox bridge', () => {
   it('survives a daemon that dies mid-stream', async () => {
     internals.useDaemon = true
     const daemon = await startDeamon({ port: 0, persistencePath: false })
-    const manager = new DeamonManager({ port: daemon.port, log: quietLog })
+    // The death injection below (closeAllConnections) cuts loopback HTTP
+    // sockets; the pipe happy path is pinned by 'pipes daemon frames through
+    // the bridge instead of redirecting', so this scenario deliberately rides
+    // the legacy transport its kill switch understands.
+    const manager = new DeamonManager({ port: daemon.port, log: quietLog, transport: 'http' })
     internals.daemonManager = manager
     const routes = await setupApp()
     const bridge = createServer((req, res) => {
@@ -791,6 +811,7 @@ describe('web-app sandbox bridge', () => {
     internals.useDaemon = true
     internals.daemonManager = {
       ensureRunning: async () => ({ port: 1, url: 'http://127.0.0.1:1' }),
+      openStream: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:1') },
     } as unknown as DeamonManager
 
     try {
@@ -848,6 +869,7 @@ describe('web-app sandbox bridge', () => {
         await startGate
         return { port: targetPort, url: `http://127.0.0.1:${String(targetPort)}` }
       },
+      openStream: async (path: string) => await httpStandInStream(targetPort, path),
     } as unknown as DeamonManager
     const routes = await setupApp()
     const bridge = createServer((req, res) => {
@@ -962,6 +984,11 @@ describe('web-app sandbox bridge', () => {
   })
 
   it('frames helper output as binary messages on the frame socket', async () => {
+    // The framing contract is transport-neutral; pin the legacy transport so
+    // the scene needs no home gateway lock (the pipe frame path is pinned by
+    // 'pipes daemon frames through the bridge instead of redirecting').
+    const pinned = new DeamonManager({ log: quietLog, transport: 'http' })
+    internals.daemonManager = pinned
     const routes = await setupApp()
     const bridge = await startUpgradeBridge()
     try {
@@ -980,6 +1007,10 @@ describe('web-app sandbox bridge', () => {
       await bridge.close()
       const stop = makeResponse()
       await routes.get('/api/server/sandbox/stop')!(makeRequest('POST'), stop.res)
+      // The pinned manager owns a spawned daemon child; stopping it keeps the
+      // test fork from lingering on the child's stdio past the suite.
+      await pinned.stop()
+      internals.daemonManager = undefined
     }
   }, 30000)
 
@@ -1065,6 +1096,7 @@ describe('web-app sandbox bridge', () => {
         await startGate
         return { port: targetPort, url: `http://127.0.0.1:${String(targetPort)}` }
       },
+      openStream: async (path: string) => await httpStandInStream(targetPort, path),
     } as unknown as DeamonManager
     // Registration must happen while this stand-in is the captured manager.
     await setupApp()
@@ -1106,6 +1138,7 @@ describe('web-app sandbox bridge', () => {
     const miniPort = (mini.address() as AddressInfo).port
     internals.daemonManager = {
       ensureRunning: async () => ({ port: miniPort, url: `http://127.0.0.1:${String(miniPort)}` }),
+      openStream: async (path: string) => await httpStandInStream(miniPort, path),
     } as unknown as DeamonManager
     await setupApp()
     const bridge = await startUpgradeBridge()

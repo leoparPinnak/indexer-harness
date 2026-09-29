@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-client-ui-sandbox-view": "workspace:^",
+    "@deepseek-ai/dsh-ipc-pipe": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
