@@ -8,6 +8,7 @@ import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts
 import { GoalBar } from '../src/client/GoalBar.tsx'
 import type { GoalActionResult, GoalBarActions } from '../src/client/slots.ts'
 import { zh } from '../src/client/locales.ts'
+import css from '../src/client/GoalBar.module.css'
 
 const t: Parameters<typeof GoalBar>[0]['t'] = makeTranslate(zh, commonZh)
 
@@ -34,7 +35,7 @@ function makeActions() {
 }
 
 describe('GoalBar', () => {
-  it('renders nothing while loading, absent, or when the goal is complete', () => {
+  it('renders nothing while loading or absent, and keeps a complete goal with a green-bordered strip', () => {
     const actions = makeActions()
     const loading = render(<GoalBar goal={undefined} {...actions} t={t} />)
     expect(loading.container.firstChild).toBeNull()
@@ -45,7 +46,10 @@ describe('GoalBar', () => {
     cleanup()
 
     const complete = render(<GoalBar goal={makeGoal({ phase: 'complete' })} {...actions} t={t} />)
-    expect(complete.container.firstChild).toBeNull()
+    expect(screen.getByText('已完成的目标')).toBeTruthy()
+    expect(screen.getByText('Ship the redesign')).toBeTruthy()
+    const bar = screen.getByText('已完成的目标').closest('div')
+    expect(bar?.classList.contains(css.barComplete!)).toBe(true)
   })
 
   it('active goal: goal glyph, "进行中的目标", truncated objective, edit and clear actions', () => {

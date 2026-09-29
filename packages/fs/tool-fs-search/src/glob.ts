@@ -106,8 +106,12 @@ export function parseGlobArgs(args: { pattern: string; path?: string }): GlobInp
  * @returns the complete ripgrep argument vector (excluding the binary itself).
  */
 export function buildGlobCommand(input: GlobInput): string[] {
-  // If user or model explicitly targeted a directory (e.g. node_modules in pattern or path), don't prune it
+  // If user or model explicitly targeted a directory (e.g. node_modules in pattern or path), don't prune it.
+  // VCS metadata is never a listable target: those excludes stay on even when
+  // the search root IS the VCS directory, where the paired contents glob is
+  // what keeps the internals out (see GLOB_VCS_EXCLUDES).
   const excludes = GLOB_DEFAULT_EXCLUDES.filter((name) => {
+    if (GLOB_VCS_EXCLUDES.includes(name)) return true
     if (input.pattern.includes(name)) return false
     if (input.path !== undefined && input.path.includes(name)) return false
     return true

@@ -26,11 +26,19 @@ describe('gen-tool-catalog collectToolCatalog', () => {
     const catalog = await collectToolCatalog()
     const names = catalog.flatMap(entry => entry.schemas.map(s => s.name)).sort()
     expect(names).toEqual([
-      'ask_user_question', 'bash', 'bash', 'cordis_define', 'cordis_inspect_list',
+      'ask_user_question', 'bash', 'bash',
+      'cdp_captcha', 'cdp_click', 'cdp_contexts', 'cdp_dialog', 'cdp_download', 'cdp_endpoints',
+      'cdp_eval', 'cdp_exec', 'cdp_expect', 'cdp_extract', 'cdp_files', 'cdp_fill', 'cdp_find',
+      'cdp_fingerprint', 'cdp_locate', 'cdp_lock', 'cdp_navigate', 'cdp_open', 'cdp_pdftotext',
+      'cdp_printpdf', 'cdp_profiles', 'cdp_readpdf', 'cdp_screenshot', 'cdp_scroll', 'cdp_snapshot',
+      'cdp_status', 'cdp_stealth', 'cdp_tab_close', 'cdp_tab_focus', 'cdp_tab_new', 'cdp_tabs',
+      'cdp_text', 'cdp_type', 'cdp_unlock', 'cdp_upload', 'cdp_viewport', 'cdp_wait',
+      'cordis_define', 'cordis_inspect_list',
       'cordis_inspect_query', 'cordis_inspect_self', 'cordis_run', 'cordis_stop',
-      'cordis_undefine', 'create_goal', 'edit', 'exit_plan_mode', 'get_goal', 'glob', 'grep',
+      'cordis_undefine', 'create_goal', 'edit', 'enter_plan_mode', 'exit_plan_mode', 'get_goal', 'glob', 'grep',
       'interrupt_agent', 'interrupt_agent', 'job_kill', 'job_list', 'job_output',
-      'list_agents', 'list_agents', 'list_subagent_models', 'lsp', 'present', 'pwsh', 'pwsh', 'ralph',
+      'list_agents', 'list_agents', 'list_subagent_models', 'lsp', 'net_capture', 'net_export',
+      'present', 'pwsh', 'pwsh', 'ralph',
       'read', 'read_image', 'run_code', 'schedule_create', 'schedule_delete',
       'schedule_list', 'send_message', 'send_message', 'session_event_read', 'session_event_search',
       'session_event_trace', 'session_search', 'session_trace', 'skill', 'spawn_teammate',

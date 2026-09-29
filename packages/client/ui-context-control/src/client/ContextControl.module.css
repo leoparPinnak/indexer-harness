@@ -226,7 +226,7 @@
   flex: none;
   margin-left: 6px;
   padding: 0 7px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 999px;
   corner-shape: round;
   font-size: 11px;
@@ -293,7 +293,7 @@
   width: 92px;
   height: 24px;
   padding: 0 6px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 6px;
   background: transparent;
   color: var(--dsw-alias-label-primary);

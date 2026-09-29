@@ -1,17 +1,20 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Include from '@deepseek-ai/cordis-plugin-include'
+import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
+import type { BasicCompactionConfig } from '@deepseek-ai/dsh-compaction-basic'
+import { resolveConfig } from '@deepseek-ai/dsh-compaction-basic/src/config.ts'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
+import * as yaml from 'js-yaml'
 
 let root: string | undefined
 let context: Context | undefined
@@ -137,5 +140,43 @@ describe('real Loader composition', () => {
         summarizationModel: '',
       }],
     })).rejects.toThrow(/modelPolicies\[0\].*must be set together/)
+  })
+})
+
+/** Find one row through a preset composition's nested groups. */
+function findPresetEntry(entries: readonly unknown[], id: string): { config?: unknown } | undefined {
+  for (const entry of entries) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const candidate = entry as { id?: unknown; config?: unknown }
+    if (candidate.id === id) return candidate
+    if (Array.isArray(candidate.config)) {
+      const nested = findPresetEntry(candidate.config, id)
+      if (nested !== undefined) return nested
+    }
+  }
+  return undefined
+}
+
+describe('the shipped cordis preset compaction row', () => {
+  it('passes the load-time config validation the constructor runs before any registration', async () => {
+    const source = await readFile(
+      new URL('../../../preset/agent-presets/presets/cordis/agent.cordis.yml', import.meta.url),
+      'utf8',
+    )
+    const entries = yaml.load(source, { schema: entryListSchema })
+    if (!Array.isArray(entries)) throw new TypeError('cordis preset must contain a Cordis entry list')
+
+    const row = findPresetEntry(entries, 'compaction-basic')
+    expect(row).toBeDefined()
+
+    // resolveConfig is the constructor's first act, so a key drift here fails
+    // the whole plugin tree at boot instead of registering a partial runtime.
+    // The value assertions also pin the preset's early-compaction intent: a
+    // silently dropped key would fall back to the 0.8/0.16 service defaults.
+    expect(resolveConfig(row?.config as BasicCompactionConfig)).toMatchObject({
+      thresholdRatio: 0.55,
+      retainRatio: 0.16,
+      compactionRetries: 1,
+    })
   })
 })

@@ -3,8 +3,9 @@
  * strip). A present goal shows a goal glyph, a phase label, the truncated
  * objective, and icon actions — resume when active-disarmed or paused, edit
  * (inline form in the same strip), and clear. Goal creation lives on the
- * `/goal` command, not here: loading (undefined), no goal (null), and complete
- * goals render nothing. Durable state arrives as the projected whole snapshot;
+ * `/goal` command, not here: loading (undefined) and no goal (null) render
+ * nothing, while a complete goal stays on the strip with a green border.
+ * Durable state arrives as the projected whole snapshot;
  * process-local activation arrives through the injected activation hook.
  */
 

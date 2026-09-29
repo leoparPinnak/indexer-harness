@@ -316,7 +316,7 @@
 .tunePresetBtn {
   flex: 1 1 calc(33.333% - 4px);
   padding: 4px 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: 6px;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -343,7 +343,7 @@
 .tuneInputWrap {
   display: flex;
   align-items: center;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
   padding: 4px 8px;
   background: var(--dsw-alias-bg-module-platform, rgba(0, 0, 0, 0.05));

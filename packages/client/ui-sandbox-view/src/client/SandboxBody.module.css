@@ -46,7 +46,7 @@
 .retryButton {
   padding: 6px 14px;
   border-radius: var(--dsw-radius-default, 6px);
-  border: 1px solid var(--dsw-alias-border-default);
+  border: 0.5px solid var(--dsw-alias-border-default);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
@@ -78,7 +78,7 @@
 .toolButton {
   padding: 4px 8px;
   border-radius: var(--dsw-radius-small, 4px);
-  border: 1px solid var(--dsw-alias-border-default);
+  border: 0.5px solid var(--dsw-alias-border-default);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
   font-size: 11px;
@@ -134,7 +134,7 @@
 .targetSelect {
   padding: 3px 6px;
   border-radius: var(--dsw-radius-small, 4px);
-  border: 1px solid var(--dsw-alias-border-default);
+  border: 0.5px solid var(--dsw-alias-border-default);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
   font-size: 11px;
@@ -153,7 +153,7 @@
   gap: 5px;
   padding: 3px 7px;
   border-radius: var(--dsw-radius-small, 4px);
-  border: 1px solid var(--dsw-alias-border-default);
+  border: 0.5px solid var(--dsw-alias-border-default);
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
   font-size: 11px;
@@ -166,6 +166,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  corner-shape: round;
   background: #22c55e;
   flex: none;
 }

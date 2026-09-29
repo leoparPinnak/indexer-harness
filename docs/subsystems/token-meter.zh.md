@@ -98,9 +98,17 @@ measure(session: Session, requestHeader?: EpochHeader): TokenMeasurement
  * @returns content and role-framing tokens under the fixed service heuristic.
  */
 estimateMessage(message: Message): number
+
+/**
+ * Heuristically price one request's tool schemas (instance face of the pure
+ * `estimateToolsFrom` export from `estimate.ts`).
+ * @param tools - canonical tool schemas to price without mutation.
+ * @returns heuristic tool-schema tokens; 0 when absent or empty.
+ */
+estimateTools(tools: readonly ToolSchema[] | undefined): number
 ```
 
-Types: [EpochHeader](session.zh.md) · [Message](llm-streaming.zh.md) · [Session](session.zh.md)
+Types: [EpochHeader](session.zh.md) · [Message](llm-streaming.zh.md) · [Session](session.zh.md) · [ToolSchema](tools.zh.md)
 
 Source: [`packages/llm/token-meter/src/index.ts`](../../packages/llm/token-meter/src/index.ts)
 <!-- END GENERATED cordis-surface -->

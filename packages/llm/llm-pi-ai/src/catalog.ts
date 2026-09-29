@@ -699,9 +699,15 @@ function resolveModelReasoning(
   const efforts = entry.reasoningEfforts
   if (efforts === false) return { reasoning: false }
   if (efforts === undefined) {
-    if (base?.reasoning !== undefined) return { reasoning: base.reasoning, thinkingLevelMap: (base as any).thinkingLevelMap }
-    const defaultMap: ThinkingLevelMap = { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max', off: null }
-    return { reasoning: true, thinkingLevelMap: defaultMap }
+    // An installed entry answers for its own model; a hand-declared one has no
+    // metadata to inherit, and inventing a default level map would offer
+    // controls nothing can honour — pi-ai translates `off` to omitting the
+    // reasoning option, byte-for-byte the request naming no effort already
+    // sends, so a provider whose own default is to think would keep thinking
+    // with `off` selected. Declaring the model non-reasoning leaves the seam
+    // reporting the capability unavailable instead of selling that control.
+    if (base !== undefined) return { reasoning: base.reasoning, thinkingLevelMap: base.thinkingLevelMap }
+    return { reasoning: false }
   }
   // A YAML `reasoningEfforts:` left valueless arrives as null through the
   // schema union — outside the field's declared type, hence the widening —

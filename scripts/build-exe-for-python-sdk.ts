@@ -244,12 +244,17 @@ function pnpmInvocation(args: string[]): [command: string, args: string[]] {
 
 /**
  * Render a command for logs and errors, quoting arguments with spaces.
+ *
+ * The command itself stays verbatim: it is the executable that ran, and a
+ * quoted or escaped spelling of it (`"C:\\Program Files\\nodejs\\node.exe"`)
+ * names no path that exists — the log must show the real one, whatever
+ * directory the host installed Node into.
  * @param command - the executable.
  * @param args - its arguments.
  * @returns the printable command line.
  */
 function formatCommand(command: string, args: string[]): string {
-  return [command, ...args].map(part => (part.includes(' ') ? JSON.stringify(part) : part)).join(' ')
+  return [command, ...args.map(part => (part.includes(' ') ? JSON.stringify(part) : part))].join(' ')
 }
 
 /**

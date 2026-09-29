@@ -76,6 +76,12 @@
   padding: 10px 12px;
   max-height: 420px;
   overflow: auto;
+  /* This sheet draws elevated surfaces (the filter and tool buttons on the
+     layer-2/3 rungs), so the scroller inside rebinds the thumb indirection in
+     a complete pair — a base-surface thumb on an elevated ground reads as a
+     smudge (see ui-theme styles/scrollbar.css for the rebinding contract). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   border-radius: var(--dsw-radius-small, 4px);
   border: 0.5px solid var(--dsw-alias-border-default);
   background: var(--dsw-alias-bg-layer-1);

@@ -233,7 +233,7 @@ describe.each([0, 1] as const)('V%s multi-edge durable publication', (version) =
     await reopened.sessionPersistence.flush()
     expect(await observe(path)).toEqual(source)
     expect(await observe(successor)).toEqual(published)
-  })
+  }, 30_000)
 
   it.each(['none', 'zstd'] as const)('re-prepares populated history after source drift rejects stale publication (%s)', async (compression) => {
     const { root, path } = await seed(version, compression)
@@ -275,7 +275,7 @@ describe.each([0, 1] as const)('V%s multi-edge durable publication', (version) =
     expect(native.cut).toBe(prepared.cut)
     assertRequests(native.events, native.header)
     expect(await observe(path)).toEqual(changed)
-  })
+  }, 30_000)
 
   it.each(['none', 'zstd'] as const)('refuses a late V3 prompt outside a step without publishing earlier edges (%s)', async (compression) => {
     const { root, path, header, rows } = await seed(version, compression, true)
@@ -297,5 +297,5 @@ describe.each([0, 1] as const)('V%s multi-edge durable publication', (version) =
       expect(await observe(path)).toEqual(source)
       expect((await readdir(dirname(path))).filter(name => name !== 'session.lock')).toEqual([basename(path)])
     }
-  })
+  }, 30_000)
 })

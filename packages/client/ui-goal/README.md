@@ -25,7 +25,7 @@ The Web GUI goal surface shows both the durable goal state and its current proce
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this plugin alongside `ui-conversation` and the goal domain package; the strip then appears as the second card in the composer-context stack (after Todo, before Queue) whenever the session has a goal. An armed active goal offers pause; an active-but-disarmed or paused goal offers resume; edit rewrites the objective; clear removes the goal and suppresses the strip until the projection catches up.
+Mount this plugin alongside `ui-conversation` and the goal domain package; the strip then appears as the second card in the composer-context stack (after Todo, before Queue) whenever the session has a goal. An armed active goal offers pause; an active-but-disarmed or paused goal offers resume; edit rewrites the objective; clear removes the goal and suppresses the strip until the projection catches up. A completed goal stays on the strip with a green border so its outcome remains visible.
 
 ### The command-input bubble
 
@@ -33,7 +33,7 @@ Each durable `/goal` run projects as a right-aligned user-style bubble labeled `
 
 ### Failures
 
-A rejected mutation surfaces the Remote error inline on the strip; loading, absent, completed, and successfully cleared goals render nothing.
+A rejected mutation surfaces the Remote error inline on the strip; loading, absent, and successfully cleared goals render nothing.
 
 -----
 

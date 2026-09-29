@@ -177,7 +177,10 @@ describe.skipIf(!pwshAvailable())('SandboxPwshExecutor', () => {
     const call = calls[0]
     expect(call?.policy).toEqual(RO)
     // The confined argv is the pwsh invocation, ready for a runner prefix.
-    expect(call?.argv[0]).toMatch(/pwsh(\.exe)?$/u)
+    // The executable is the suite's own resolution (the same call the
+    // pwshAvailable() gate above makes): PowerShell 7 where it exists, the
+    // documented Windows PowerShell 5.1 fallback where it does not.
+    expect(call?.argv[0]).toBe(resolvePwshPath())
     expect(call?.argv).toContain('-NonInteractive')
     expect(call?.argv.at(-1)).toContain('echo wrapped')
     expect(result.sandbox).toEqual({ mode: 'read-only', denied: false, enforcement: 'full' })

@@ -13,7 +13,7 @@ describe('Client Cordis inspect catalog', () => {
       ])
     expect(SERVICE_API.find(service => service.key === 'workspaces')?.methods.map(method => method.signature))
       .toEqual([
-        'create(input: { path: string }): Promise<WorkspaceView>',
+        'create(input: WorkspaceCreateRequest): Promise<WorkspaceView>',
         'rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>',
         'delete(workspaceId: WorkspaceId): Promise<void>',
         'archiveSession(sessionId: SessionId): Promise<void>',

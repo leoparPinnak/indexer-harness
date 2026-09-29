@@ -749,6 +749,13 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspectio
 @Remote('selectModel') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>
 
 /**
+ * Install one Session-local compaction mode.
+ * @param request - Session identity and complete next mode value.
+ * @returns the validated mode installed for the Session.
+ */
+@Remote('setCompactionMode') setCompactionMode( request: SessionSetCompactionModeRequest, ): Promise<SessionSetCompactionModeValue>
+
+/**
  * Describe every currently routable model for Host-generation selectors.
  * @returns provider-grouped models, the deployment default, and isolated provider failures.
  */

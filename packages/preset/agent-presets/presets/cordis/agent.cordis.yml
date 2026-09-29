@@ -198,8 +198,8 @@
         # Early compaction (Gemini-style fraction economics): compact at 55% of the
         # window instead of 80% — summarization runs on shorter spans (cheaper) and
         # overflow crises disappear. Retain 16% verbatim tail (head/tail protected).
-        compactionThresholdFraction: 0.55
-        retainFraction: 0.16
+        thresholdRatio: 0.55
+        retainRatio: 0.16
         compactionRetries: 1
         # Cheap auxiliary summarizer (Hermes/Gemini pattern): set BOTH fields to a
         # flash-tier route to summarize with the cheap model instead of the

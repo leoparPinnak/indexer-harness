@@ -99,21 +99,16 @@ const NS = 'llm-pi-ai'
  */
 function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>): unknown {
   return [...profiles.entries()]
-    // `displayName` rides along because the registry hands it to every selector
-    // through `providerInfo()`: a rename that did not re-register would leave
-    // the old label showing until some unrelated fact happened to change.
+    // Only what the registry captures per route: its display name (the
+    // registry hands it to every selector through `providerInfo()`, so a
+    // rename that did not re-register would leave the old label showing) and
+    // its retry policy. Model metadata is served live by the adapter, so a
+    // model-set change must not re-register — one settings write then costs
+    // one topology event, exactly like the directory's own commits.
     .map(([provider, profile]) => ({
       provider,
       displayName: profile.displayName,
       retryPolicy: profile.retryPolicy,
-      models: profile.piProvider?.getModels().map(m => ({
-        id: m.id,
-        name: m.name,
-        contextWindow: m.contextWindow,
-        maxTokens: m.maxTokens,
-        reasoning: m.reasoning,
-        input: m.input,
-      })),
     }))
     .sort((left, right) => left.provider.localeCompare(right.provider))
 }

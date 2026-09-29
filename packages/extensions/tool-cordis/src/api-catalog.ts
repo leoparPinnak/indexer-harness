@@ -1507,6 +1507,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the normalized selection installed for the Session.',
       },
       {
+        signature: '@Remote(\'setCompactionMode\') setCompactionMode( request: SessionSetCompactionModeRequest, ): Promise<SessionSetCompactionModeValue>',
+        description: 'Install one Session-local compaction mode.',
+        parameters: [{ name: 'request', description: 'Session identity and complete next mode value.' }],
+        returns: 'the validated mode installed for the Session.',
+      },
+      {
         signature: '@Remote(\'modelCatalog\') modelCatalog(): Promise<ModelCatalog>',
         description: 'Describe every currently routable model for Host-generation selectors.',
         parameters: [],
@@ -2596,6 +2602,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Heuristically price one model-visible message (instance face of the pure `estimateMessage` export from `estimate.ts`).',
         parameters: [{ name: 'message', description: 'message to price without mutation.' }],
         returns: 'content and role-framing tokens under the fixed service heuristic.',
+      },
+      {
+        signature: 'estimateTools(tools: readonly ToolSchema[] | undefined): number',
+        description: 'Heuristically price one request\'s tool schemas (instance face of the pure `estimateToolsFrom` export from `estimate.ts`).',
+        parameters: [{ name: 'tools', description: 'canonical tool schemas to price without mutation.' }],
+        returns: 'heuristic tool-schema tokens; 0 when absent or empty.',
       },
     ],
   },
@@ -3922,6 +3934,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CompactionResult',
     declaration: 'export interface CompactionResult {\n    compactionId: CompactionId;\n    sourceCommandId?: CommandId;\n    startSeq: SessionSeq;\n    summarySeq: SessionSeq;\n    endSeq: SessionSeq;\n    summary: ContentBlock[];\n    shadowedRange: {\n        start: SessionSeq;\n        end: SessionSeq;\n    };\n    shadowedSeqs: SessionSeq[];\n    shadowedTokenCount: number;\n}',
+  },
+  {
+    name: 'CompactionSessionMode',
+    declaration: 'export type CompactionSessionMode = CompactionSessionModePolicy & ({\n    summarizer: \'conversation\';\n} | {\n    summarizer: \'dedicated\';\n    provider: string;\n    model: string;\n});',
   },
   {
     name: 'CompactionTrigger',
@@ -5428,10 +5444,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionSearchExecContext {\n    signal?: AbortSignal;\n}',
   },
   {
-    name: 'SessionSearchHit',
-    declaration: 'export interface SessionSearchHit extends SessionRecord {\n    bestMatch: SessionEventSearchHit;\n}',
-  },
-  {
     name: 'SessionSearchItem',
     declaration: 'export interface SessionSearchItem {\n    readonly sessionId: SessionId;\n    readonly snippet: string;\n}',
   },
@@ -5462,6 +5474,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionSeqCursor',
     declaration: 'export type SessionSeqCursor = SessionSeq | -1;',
+  },
+  {
+    name: 'SessionSetCompactionModeRequest',
+    declaration: 'export interface SessionSetCompactionModeRequest {\n    readonly sessionId: SessionId;\n    readonly mode: CompactionSessionMode;\n}',
+  },
+  {
+    name: 'SessionSetCompactionModeValue',
+    declaration: 'export interface SessionSetCompactionModeValue {\n    readonly mode: CompactionSessionMode;\n}',
   },
   {
     name: 'SessionStartSource',

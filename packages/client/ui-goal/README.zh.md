@@ -25,7 +25,7 @@ Web GUI 的 goal 界面同时显示持久 goal 状态及当前的进程本地激
 <a id="use-this-package"></a>
 ## 使用本包
 
-与 `ui-conversation` 及 goal 领域包一起挂载本插件；只要会话存在目标，条带就会作为 composer 上下文堆栈的第二张卡片出现（位于 Todo 之后、Queue 之前）。已 armed 的 active goal 提供暂停动作；active-but-disarmed 或 paused 的 goal 提供恢复；编辑重写目标文本；清除移除目标，并在投影追上之前抑制条带。
+与 `ui-conversation` 及 goal 领域包一起挂载本插件；只要会话存在目标，条带就会作为 composer 上下文堆栈的第二张卡片出现（位于 Todo 之后、Queue 之前）。已 armed 的 active goal 提供暂停动作；active-but-disarmed 或 paused 的 goal 提供恢复；编辑重写目标文本；清除移除目标，并在投影追上之前抑制条带。已完成的目标会以绿色边框留在条带上，其结果因此保持可见。
 
 ### 指令输入气泡
 
@@ -33,7 +33,7 @@ Web GUI 的 goal 界面同时显示持久 goal 状态及当前的进程本地激
 
 ### 失败
 
-被拒绝的变更会把 Remote 错误内联呈现到条带上；加载中、无目标、已完成与成功清除的目标一律不渲染。
+被拒绝的变更会把 Remote 错误内联呈现到条带上；加载中、无目标与成功清除的目标一律不渲染。
 
 -----
 
