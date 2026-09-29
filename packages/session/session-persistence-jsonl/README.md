@@ -110,6 +110,7 @@ The default artifact is a standard concatenation of independent [Zstandard frame
 | [`src/checkpoint.ts`](src/checkpoint.ts) | File-level shadow journal: pre-image/creation recording and pure `rewindPlan` computation (blobs before journal lines) |
 | [`src/checkpoint-recorder.ts`](src/checkpoint-recorder.ts) | The tool-lifecycle bridge: duck-typed before/after taps, one journal step per writing call, failure-isolated |
 | [`src/checkpoint-mount.ts`](src/checkpoint-mount.ts) | The dir-bound recorder factory whose attach closure crosses package lines without dragging types along |
+| [`src/checkpoint-restore.ts`](src/checkpoint-restore.ts) | The rewind applier: verified blob restores, idempotent birth removals, honest per-path failures — it touches nothing outside the plan |
 | [`src/retry-jitter.ts`](src/retry-jitter.ts) | The two-phase jittered-patience utility (Hermes port). Measured note: generation's verify-the-winner already resolves publish races faster, so patience stays un-wired there — kept for genuine transient-contention seams. |
 | [`src/migration-verifier.ts`](src/migration-verifier.ts) | Worker lifecycle for staged and competing-generation verification |
 | [`src/zstd.ts`](src/zstd.ts) | Zstandard frame compression, decoding, and frame scanning |

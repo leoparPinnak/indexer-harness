@@ -36,6 +36,7 @@ function control(
   values: Record<string, unknown>,
   translate: ContextControlInjected['t'] = t,
   locked = false,
+  compact?: () => Promise<void>,
 ): { view: ReturnType<typeof render>; calls: Calls } {
   const calls: Calls = { compact: 0, saved: [] }
   const view = render(
@@ -47,7 +48,10 @@ function control(
       } as unknown as ContextControlProps}
       useProjection={(key: string) => values[key]}
       t={translate}
-      runCompact={() => { calls.compact += 1 }}
+      runCompact={compact ?? (() => {
+        calls.compact += 1
+        return Promise.resolve()
+      })}
       saveCompactionMode={(mode) => {
         calls.saved.push(mode)
         return Promise.resolve()
@@ -134,6 +138,16 @@ describe('ContextControl', () => {
     expect((locked.view.getByRole('button', { name: '压缩' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('surfaces a compact failure instead of swallowing it', async () => {
+    const failing = control(withContext(), t, false, () => Promise.reject(new Error('agent is busy')))
+    fireEvent.click(failing.view.getByRole('button', { name: '上下文已用 25%' }))
+    fireEvent.click(failing.view.getByRole('button', { name: '压缩' }))
+    await waitFor(() => {
+      expect(failing.view.container.querySelector('[role="dialog"]')!.textContent)
+        .toContain('压缩失败：agent is busy')
+    })
+  })
+
   it('commits the sliders as one settled mode write, live figures included', async () => {
     const { view, calls } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
@@ -166,22 +180,28 @@ describe('ContextControl', () => {
     })
   })
 
-  it('marks every slider session-scoped and only the chat-model strategy global', () => {
+  it('reads each field\'s scope from its default-follow state', () => {
     const { view } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
-    // Only the chat-model option reads global; the three sliders and the dedicated
-    // strategy write this session's mode and never a deployment setting.
-    expect(view.getAllByText('全局')).toHaveLength(1)
-    expect(view.getAllByText('仅本会话')).toHaveLength(4)
+    // Every slider follows the deployment default initially; only the
+    // dedicated strategy option is inherently a session-scoped choice.
+    expect(view.getAllByText('全局')).toHaveLength(4)
+    expect(view.getAllByText('仅本会话')).toHaveLength(1)
+    // Leaving the default scopes that one field to this session.
     fireEvent.change(view.getByLabelText('上下文预算（tokens）'), { target: { value: '75' } })
-    expect(view.getAllByText('全局')).toHaveLength(1)
-    expect(view.getAllByText('仅本会话')).toHaveLength(4)
+    expect(view.getAllByText('全局')).toHaveLength(3)
+    expect(view.getAllByText('仅本会话')).toHaveLength(2)
   })
 
   it('routes the dedicated strategy with its picked provider and model', async () => {
     const { view, calls } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
     fireEvent.click(view.getByLabelText(/专用摘要模型/))
+    // The empty pair is not a valid mode: nothing commits until both fields
+    // are filled.
+    await waitFor(() => { expect(view.getAllByText('仅本会话')).toHaveLength(2) })
+    await new Promise(resolve => setTimeout(resolve, 450))
+    expect(calls.saved).toHaveLength(0)
     fireEvent.change(view.getByLabelText('提供商'), { target: { value: 'big' } })
     fireEvent.change(view.getByLabelText('模型'), { target: { value: 'big-1' } })
     await waitFor(() => {
