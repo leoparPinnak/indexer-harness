@@ -164,6 +164,10 @@ const processBoundTests = [
 export default defineConfig({
   plugins: [pathsPlugin(), standardDecoratorPlugin()],
   test: {
+    // Contention-adjusted floor matching the run-gates budget doctrine
+    // (15s standard): aggregate fork contention routinely pushes ordinary
+    // cases past vitest's 5s default on shared hosts. Assertions unchanged.
+    testTimeout: 15_000,
     setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
     // .tsx: client component specs (jsdom via per-file @vitest-environment pragma).
     include: testIncludes,
