@@ -12,13 +12,15 @@
  * @module @deepseek-ai/dsh-session-persistence-jsonl/retry-jitter
  */
 
-/** The fast band: used until the elapsed time passes {@link FAST_PHASE_MS}. */
+/** Lower edge of the fast band (ms). */
 export const FAST_JITTER_MIN_MS = 20
+/** Upper edge of the fast band (ms). */
 export const FAST_JITTER_MAX_MS = 150
 /** Elapsed budget after which waits move to the slow band. */
 export const FAST_PHASE_MS = 2_000
-/** The slow band. */
+/** Lower edge of the slow band (ms). */
 export const SLOW_JITTER_MIN_MS = 250
+/** Upper edge of the slow band (ms). */
 export const SLOW_JITTER_MAX_MS = 1_000
 /** Production patience budget for one contended publish. */
 export const PUBLISH_PATIENCE_BUDGET_MS = 10_000
@@ -40,7 +42,12 @@ export const PATIENCE_PRODUCTION_SEAMS: PatienceSeams = {
   rand: Math.random,
 }
 
-/** One next-wait value from the two-phase schedule. */
+/**
+ * One next-wait value from the two-phase schedule.
+ * @param elapsedMs - elapsed patience time; selects the band.
+ * @param rand - the injected random source in `[0, 1)`.
+ * @returns the wait in milliseconds inside the band's jitter range.
+ */
 export function jitterWaitMs(elapsedMs: number, rand: () => number): number {
   const span = elapsedMs < FAST_PHASE_MS
     ? FAST_JITTER_MAX_MS - FAST_JITTER_MIN_MS
