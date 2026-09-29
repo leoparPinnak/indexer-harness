@@ -37,9 +37,6 @@ import type { JsonlCompression } from './format.ts'
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.ts'
 import { publishNewFileWin32 } from './win32.ts'
 import {
-  PUBLISH_PATIENCE_BUDGET_MS, withJitteredPatience, type PatienceSeams,
-} from './retry-jitter.ts'
-import {
   compressZstdFrame,
   createZstdFrameDecoder,
   decompressZstdPrefix,
@@ -192,10 +189,6 @@ interface JsonlGenerationInternals {
   readonly platform: NodeJS.Platform
   readonly publishNewWin32: typeof publishNewFileWin32
   readonly barrier: (phase: GenerationBarrierPhase, attempt: number) => void | Promise<void>
-  /** plan16-patience: injected schedule seams for the contended-publish patience. */
-  readonly patience?: Partial<PatienceSeams> | undefined
-  /** plan16-patience: patience budget override (default {@link PUBLISH_PATIENCE_BUDGET_MS}). */
-  readonly patienceBudgetMs?: number | undefined
 }
 
 /** Dependency overrides for an isolated generation runtime. */
