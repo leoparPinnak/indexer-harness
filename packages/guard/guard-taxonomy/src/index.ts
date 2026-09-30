@@ -153,8 +153,8 @@ function softDenyReason(category: GuardPolicyId): string {
  * @param ctx - the host context (requires the `tools` registry).
  * @param config - validated plugin config.
  */
-export function apply(ctx: Context, config: Config): void {
-  const compiled = (config.rules ?? []).map(compileRule)
+export function apply(ctx: Context, config?: Config): void {
+  const compiled = (config?.rules ?? []).map(compileRule)
 
   const verdictOf = (exec: ToolExecution): GuardVerdict | undefined => {
     let soft: GuardPolicyId | undefined
@@ -191,5 +191,3 @@ export function apply(ctx: Context, config: Config): void {
     return verdict !== undefined && verdict.class === 'hard' ? hardDenyReason(verdict.category) : undefined
   }), 'guard-taxonomy: hard-deny guard')
 }
-
-export default apply

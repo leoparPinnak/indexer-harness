@@ -848,7 +848,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/src/types.ts)
+来源：[`packages/session/session-persistence/src/retained-log-vocabulary.ts:92`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 <a id="shellboxchange--log-only"></a>
 
@@ -878,7 +878,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/deamon/src/types.ts:146`](../packages/bundle/deamon/src/types.ts)
+来源：[`packages/session/session-persistence/src/retained-log-vocabulary.ts:76`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 ### `step/*`
 

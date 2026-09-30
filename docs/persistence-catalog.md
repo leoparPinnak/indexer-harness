@@ -331,7 +331,7 @@ Source: [`packages/interaction/commands/src/types.ts:105`](../packages/interacti
 'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:192`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:199`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionmode--log-only"></a>
 
@@ -347,7 +347,7 @@ Source: [`packages/compaction/compaction/src/types.ts:192`](../packages/compacti
 'compaction/mode': CompactionSessionMode
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:216`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:223`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionprune--log-only"></a>
 
@@ -373,7 +373,7 @@ Source: [`packages/compaction/compaction/src/types.ts:216`](../packages/compacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:202`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:209`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionstart--log-only"></a>
 
@@ -388,7 +388,7 @@ Source: [`packages/compaction/compaction/src/types.ts:202`](../packages/compacti
 'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:125`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:132`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionsummary--log-only"></a>
 
@@ -449,7 +449,7 @@ Source: [`packages/compaction/compaction/src/types.ts:125`](../packages/compacti
 
 Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/compaction/compaction/src/types.ts:147`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:154`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionwindows--log-only"></a>
 
@@ -470,7 +470,7 @@ Source: [`packages/compaction/compaction/src/types.ts:147`](../packages/compacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:132`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:139`](../packages/compaction/compaction/src/types.ts)
 
 ### `deliverables/*`
 
@@ -846,7 +846,7 @@ Source: [`packages/session/session-log-deepseek/src/types.ts:81`](../packages/se
 }
 ```
 
-Source: [`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/src/types.ts)
+Source: [`packages/session/session-persistence/src/retained-log-vocabulary.ts:92`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 <a id="shellboxchange--log-only"></a>
 
@@ -876,7 +876,7 @@ Source: [`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/sr
 }
 ```
 
-Source: [`packages/bundle/deamon/src/types.ts:146`](../packages/bundle/deamon/src/types.ts)
+Source: [`packages/session/session-persistence/src/retained-log-vocabulary.ts:76`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 ### `step/*`
 

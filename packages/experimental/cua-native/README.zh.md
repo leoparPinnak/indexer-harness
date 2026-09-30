@@ -27,7 +27,7 @@ kind: "package-reference"
 
 ### 何时使用
 
-当代码需要像 Codex 的 computer-use 辅助程序那样驱动真实 Win32 桌面时——例如在 `benchmarks/gui-motor` 中做对比测量，或未来的 GUI 工具需要活动窗口状态与真实输入——就使用本包。它是两个竞争后端之一；koffi/PInvoke 的替代实现位于 `packages/bundle/deamon`。
+当代码需要像 Codex 的 computer-use 辅助程序那样驱动真实 Win32 桌面时——例如在 `protop/shellbox/gui-motor` 中做对比测量，或未来的 GUI 工具需要活动窗口状态与真实输入——就使用本包。它是两个竞争后端之一；koffi/PInvoke 的替代实现位于 `protop/shellbox/deamon`。
 
 ### 入口点
 
@@ -78,7 +78,7 @@ await backend.client.close()
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [gui-motor 基准](../../../benchmarks/gui-motor/README.zh.md) — 本后端接入的 A/B 框架及其必须满足的打分权重。
+- [gui-motor 基准](../../../protop/shellbox/gui-motor/README.zh.md) — 本后端接入的 A/B 框架及其必须满足的打分权重。
 - [`native/cua`](../../../native/cua) — 辅助程序的离线 MSVC 构建与三大子系统。
 - Codex 的 `helper_transport.js`（由 CodexGuiSpy 实测） — 本包所镜像的原始线路协议。
 

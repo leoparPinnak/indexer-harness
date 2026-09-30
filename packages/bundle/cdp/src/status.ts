@@ -3,8 +3,7 @@
  * state read that `GET /api/server/cdp/status` and the `cdp_status` model tool
  * both answer with, plus the two registrations themselves. A later phase adds a
  * mirror beside `readCdpStatus` for the case where the state lives in a separate
- * process, the way `@deepseek-ai/dsh-deamon` forwards to its helper daemon
- * before falling back to its own local path.
+ * process, forwarded to before falling back to its own local path.
  * @module @deepseek-ai/dsh-cdp/status
  */
 

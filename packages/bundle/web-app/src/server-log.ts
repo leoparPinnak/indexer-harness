@@ -4,7 +4,7 @@
  * The Web host otherwise logs only to its own console, which a headless
  * launch (a `.bat` without a visible terminal, a service wrapper) hides.
  * This installs a write-through file tee over the process console streams so
- * every line the server prints — agent loops, the shellbox daemon relay,
+ * every line the server prints — agent loops, child-service relays,
  * uncaught exceptions — also lands in `$DSH_HOME/logs/dsh-web.log`, and
  * serves the file's tail at `GET /api/server/logs` so the settings surface
  * can show it. The file outlives the process, which is what makes a crash

@@ -23,11 +23,11 @@ Move a message between two processes on one machine over a named pipe instead of
 <a id="use-this-package"></a>
 ## Use this package
 
-The common path: `@deepseek-ai/dsh-deamon` mounts the server in its helper daemon and the client in its host bridge, so commands and events cross as pipe frames while the browser keeps its HTTP and WebSocket faces.
+The common path: a host bridge mounts the client and its helper daemon mounts the server, so commands and events cross as pipe frames while the browser keeps its HTTP and WebSocket faces.
 
 ### When to choose it
 
-Choose this gateway for a same-machine hop between two dsh processes when the messages deserve a budget, a size cap, and an authenticated peer; `@deepseek-ai/dsh-deamon`'s `deamon.transport` selects it (`pipe`, the default) over the legacy loopback path (`http`, retired in D9). Reach for HTTP instead when a browser or an external tool is the caller — the pipe endpoint is private to one home and never binds a TCP port.
+Choose this gateway for a same-machine hop between two dsh processes when the messages deserve a budget, a size cap, and an authenticated peer; a caller's transport option selects it (`pipe`, the default) over the legacy loopback path (`http`, retired in D9). Reach for HTTP instead when a browser or an external tool is the caller — the pipe endpoint is private to one home and never binds a TCP port.
 
 ### Minimal configuration
 
@@ -74,7 +74,7 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [dsh-deamon](../../bundle/deamon/README.md) — the bridge and helper daemon that speak over this gateway
+- [dsh-deamon](../../../protop/shellbox/deamon/README.md) — the bridge and helper daemon that speak over this gateway
 - [dsh-host-webserver](../../host/webserver/README.md) — the HTTP face that stays for the browser
 - [Development](../../../docs/development.md) — contributor workflow and the check lanes
 
@@ -86,7 +86,7 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 - One endpoint per home and per seed: two processes on one machine share one connection target, and a fan-out from one server to several readers of the same stream is not modelled — each reader opens its own connection.
 - The transport is local only. A Windows named pipe or a unix domain socket has no cross-machine form, and nothing here negotiates TLS.
 - Caps are hard failures by design: a request over 64 KiB or a response chunk over 512 KiB closes the connection, so a caller with a bigger payload must chunk it above this layer.
-- `deamon.transport: 'http'` still serves the legacy loopback path alongside the pipe until D9 removes it; a peer that cannot mount the gateway falls back to that path and logs the downgrade.
+- `deamon.transport: 'http'` had a legacy loopback fallback retired in D9: a peer that cannot mount the gateway has no other path and must mount it.
 - The key file is plaintext on disk (mode `0600`) beside the endpoint. A deployment wanting an externally managed secret sets `DSH_GATEWAY_KEY` instead.
 - On win32 a half-closed peer cannot receive the late answer: the write side gets `EPIPE` (libuv/OS semantics — reproduced in plain Node, not an ipc-pipe bug; the POSIX unix-socket behavior is not verified here), so peers should use the protocol's `bye` message rather than a raw FIN for a clean sign-off.
 - Once the handler flushes headers the body phase carries no request budget for callers that buffer the answer with `request()`: the header-scoped budget is deliberate (a live stream must keep running), so a body that stalls leaves the caller waiting on the connection closing — extending the budget across the body phase is deferred.
@@ -97,7 +97,7 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-The wire format is exercised by `packages/ipc/ipc-pipe/tests/ipc-pipe.spec.ts`: handshake success and refusal, both size caps, the request budget, single-instance competition, half-close tolerance, and a stream that survives a reader leaving. The Deamon side pins the same transport through `packages/bundle/deamon/tests/deamon.spec.ts` and `sandbox-routes.spec.ts`.
+The wire format is exercised by `packages/ipc/ipc-pipe/tests/ipc-pipe.spec.ts`: handshake success and refusal, both size caps, the request budget, single-instance competition, half-close tolerance, and a stream that survives a reader leaving. The Deamon side pins the same transport through `protop/shellbox/deamon/tests/deamon.spec.ts` and `sandbox-routes.spec.ts`.
 
 The endpoint name follows the Hermes `control_socket.py` shape (`\\.\pipe\dsh-gateway-<homehash16>` with a unix socket fallback), but the code is written from scratch; the digest handshake follows the OMP `omp-daemon` pattern. Frames carry `timeoutMs` so the server arms the same budget the caller did, clamped to 100 ms..60 s.
 

@@ -1,8 +1,8 @@
 /**
  * plan09 T5 — the bundle's skill registration through a real Loader
  * composition: with the registry mounted, the catalog shows exactly one
- * `cdp-browser-control` candidate whose body loads (deamon's shellbox spec
- * pattern); disposing the bundle row removes the provider again; and with no
+ * `cdp-browser-control` candidate whose body loads; disposing the bundle row
+ * removes the provider again; and with no
  * `skills` service at all the plugin boots unaffected — apply never throws on
  * a missing registry (§5.3, the deamon philosophy).
  */

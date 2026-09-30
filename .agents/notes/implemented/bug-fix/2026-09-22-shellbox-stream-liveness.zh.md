@@ -34,10 +34,10 @@ Status: implemented
 
 ## 测试
 
-- `packages/bundle/deamon/tests/sandbox-routes.spec.ts` 通过真实桥接服务器钉住 pipe 帧（状态码、内容类型、multipart 分帧、JPEG 魔数）、流中途 Deamon 死亡后的存活（桥接之后仍能应答）、502/503 回退，以及最后一个观看者离开后 helper 保持存活。
-- `packages/bundle/deamon/tests/deamon.spec.ts` 与路由 spec 通过 `DEAMON_DISCOVERY_FILE` 隔离 Deamon 发现。
-- `packages/client/ui-sandbox-view/tests/sandbox-body.client.spec.tsx` 钉住失败提示之前的重试阶梯、提示之后的手动重试、测得帧率为零时的看门狗重连，以及帧率恢复后的安静稳态。
+- `protop/shellbox/deamon/tests/sandbox-routes.spec.ts` 通过真实桥接服务器钉住 pipe 帧（状态码、内容类型、multipart 分帧、JPEG 魔数）、流中途 Deamon 死亡后的存活（桥接之后仍能应答）、502/503 回退，以及最后一个观看者离开后 helper 保持存活。
+- `protop/shellbox/deamon/tests/deamon.spec.ts` 与路由 spec 通过 `DEAMON_DISCOVERY_FILE` 隔离 Deamon 发现。
+- `protop/shellbox/ui-sandbox-view/tests/sandbox-body.client.spec.tsx` 钉住失败提示之前的重试阶梯、提示之后的手动重试、测得帧率为零时的看门狗重连，以及帧率恢复后的安静稳态。
 
 ## 附录：服务器日志终端（同一会话）
 
-在线上机器验证日志文件时发现它在有流量时仍保持为空：Web 组合从不注册控制台 exporter，因此 `ctx.logger` 流量只进入 1000 条内存缓冲，从不到达 stdout tee 能抓到的进程流。`packages/bundle/web-app/src/server-log.ts` 因此把两个通道都镜像进 `$DSH_HOME/logs/dsh-web.log`（5MB 轮转、单个备份、崩溃安全的同步追加、磁盘故障时静默停用）：控制台流上的写穿透 tee 加一个 `ctx.logger.exporter()` 注册，以新在上行的方式在 `GET /api/server/logs` 提供，用 `POST /api/server/logs/clear` 清空。线上探查接着发现 daemon 中继行仍然缺失：管理器只排空 daemon 子进程的 stderr，从不读它的 stdout，中继输出滞留在一个无人读的管道里，写满就会卡住 daemon；现在 stdout 行经由日志转发。设置里的服务器日志分区（`packages/client/ui-server-logs/`，`settings.section` order 90）把该末尾新在上渲染，带实时刷新、子串过滤与清空。由 `packages/bundle/web-app/tests/server-log.spec.ts`、`packages/bundle/deamon/tests/deamon.spec.ts` 与 `packages/client/ui-server-logs/tests/server-logs.client.spec.tsx` 钉住。
+在线上机器验证日志文件时发现它在有流量时仍保持为空：Web 组合从不注册控制台 exporter，因此 `ctx.logger` 流量只进入 1000 条内存缓冲，从不到达 stdout tee 能抓到的进程流。`packages/bundle/web-app/src/server-log.ts` 因此把两个通道都镜像进 `$DSH_HOME/logs/dsh-web.log`（5MB 轮转、单个备份、崩溃安全的同步追加、磁盘故障时静默停用）：控制台流上的写穿透 tee 加一个 `ctx.logger.exporter()` 注册，以新在上行的方式在 `GET /api/server/logs` 提供，用 `POST /api/server/logs/clear` 清空。线上探查接着发现 daemon 中继行仍然缺失：管理器只排空 daemon 子进程的 stderr，从不读它的 stdout，中继输出滞留在一个无人读的管道里，写满就会卡住 daemon；现在 stdout 行经由日志转发。设置里的服务器日志分区（`packages/client/ui-server-logs/`，`settings.section` order 90）把该末尾新在上渲染，带实时刷新、子串过滤与清空。由 `packages/bundle/web-app/tests/server-log.spec.ts`、`protop/shellbox/deamon/tests/deamon.spec.ts` 与 `packages/client/ui-server-logs/tests/server-logs.client.spec.tsx` 钉住。

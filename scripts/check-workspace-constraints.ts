@@ -174,10 +174,6 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // also shares its generated FFI code through a hashed runtime chunk.
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
-  // The Deamon bridge resolves its capture helper relative to
-  // import.meta.url, and the bundled skill provider reads its manual from
-  // assets/; both ship beside the lib as published artifacts.
-  '@deepseek-ai/dsh-deamon': ['sandbox/sandbox-host.ps1', 'assets'],
   // plan09: the CDP bundle's skill provider reads its manual from assets/skill/
   // and its guide web from assets/guides/; both ship beside the lib as published
   // artifacts.

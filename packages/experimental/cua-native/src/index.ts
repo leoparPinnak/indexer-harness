@@ -3,8 +3,8 @@
  *
  * A prebuilt standalone helper (`native/cua`, native COM UIA + SendInput +
  * Windows.Graphics.Capture) speaks stdio NDJSON; this package spawns it and
- * exposes the client surface plus the `GuiBackend` adapter the gui-motor A/B
- * benchmark loads.
+ * exposes the client surface plus the `GuiBackend` adapter the parked gui-motor
+ * A/B benchmark (protop/shellbox/gui-motor) loads.
  */
 
 export {

@@ -27,7 +27,7 @@ This package is the CodexNative GUI backend: a TypeScript client that spawns the
 
 ### When to use it
 
-Reach for this package when code must drive a real Win32 desktop the way Codex's computer-use helper does — comparative measurement in `benchmarks/gui-motor`, or a future GUI tool that needs live window state and real input. It is one of the two competing backends; the koffi/PInvoke alternative lives in `packages/bundle/deamon`.
+Reach for this package when code must drive a real Win32 desktop the way Codex's computer-use helper does — comparative measurement in `protop/shellbox/gui-motor`, or a future GUI tool that needs live window state and real input. It is one of the two competing backends; the koffi/PInvoke alternative lives in `protop/shellbox/deamon`.
 
 ### Entry point
 
@@ -78,7 +78,7 @@ Success is a `{ delivered, detail }` receipt that reports what the OS actually a
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [gui-motor benchmark](../../../benchmarks/gui-motor/README.md) — the A/B harness this backend plugs into and the scoring weights it must satisfy.
+- [gui-motor benchmark](../../../protop/shellbox/gui-motor/README.md) — the A/B harness this backend plugs into and the scoring weights it must satisfy.
 - [`native/cua`](../../../native/cua) — the helper's offline MSVC build and its three subsystems.
 - Codex's `helper_transport.js` (measured by CodexGuiSpy) — the original wire protocol this package mirrors.
 

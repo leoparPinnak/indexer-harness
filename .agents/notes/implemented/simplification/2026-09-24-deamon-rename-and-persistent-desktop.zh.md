@@ -12,7 +12,7 @@ Shellbox 组合包带着第二个身份：npm 包、目录、宿主行 id、daem
 
 ## 决策
 
-- 组合包身份处处都是 DEAMON：`packages/bundle/deamon` 处的包 `@deepseek-ai/dsh-deamon`、宿主行 `id: deamon`、源文件 `src/deamon.ts` 与 `src/deamon-manager.ts`、类 `DeamonManager`/`DeamonHandle`、环境变量 `DEAMON_PORT` 与 `DEAMON_DISCOVERY_FILE`、发现文件 `deamon.json`、健康检查 `service: 'deamon'`、日志前缀 `[deamon]`，以及 dump-config 标记 `# == @deepseek-ai/dsh-deamon`。
+- 组合包身份处处都是 DEAMON：`protop/shellbox/deamon` 处的包 `@deepseek-ai/dsh-deamon`、宿主行 `id: deamon`、源文件 `src/deamon.ts` 与 `src/deamon-manager.ts`、类 `DeamonManager`/`DeamonHandle`、环境变量 `DEAMON_PORT` 与 `DEAMON_DISCOVERY_FILE`、发现文件 `deamon.json`、健康检查 `service: 'deamon'`、日志前缀 `[deamon]`，以及 dump-config 标记 `# == @deepseek-ai/dsh-deamon`。
 - Shellbox 保留为功能与表面名：`dsh-shellbox`/`dsh-sb-<session>` 桌面名、`shellbox_launch` 工具、`shellbox` skill、`app:shellbox-surface` 提示段、`ShellboxDock` 标签、`/api/server/shellbox/launch` 路由别名、冻结的 `/api/server/sandbox/*` 线协议与 `shellbox-profiles` 浏览器配置目录都不动。
 - 闲置停止已被删除：`internals.idleStopMs`、闲置计时器以及 `stream()`、`launch()`、`stop()`、`settleChild()` 里的武装/解除调用点全部删除，最后一个查看者关闭后 helper 继续采集；`publish()` 在没有客户端连接时本来就丢帧，因此那条路径上再无其他变化。
 - 桌面现在只经显式动作结束：`POST /api/server/sandbox/stop`、实例终止、管理器的关停清扫，或服务器关停；helper 崩溃仍会在同一桌面上重启 helper 并重新拉起 shell。
@@ -33,6 +33,6 @@ Shellbox 组合包带着第二个身份：npm 包、目录、宿主行 id、daem
 
 ## 测试
 
-- `packages/bundle/deamon/tests/sandbox-routes.spec.ts` 用 `keeps the helper alive after the last viewer leaves` 替换闲置回收用例：给查看者开流、关闭它、等待越过旧窗口的测试替代值（2.5 秒），断言 `isActive()` 仍为真；其余路由钉住不变。
-- `packages/bundle/deamon/tests/deamon.spec.ts` 钉住 `service: 'deamon'`、`deamon.json` 发现文件、`DEAMON_DISCOVERY_FILE` 隔离，以及经 `DeamonManager` 的 `deamon stdout:` 中继行。
-- `packages/bundle/deamon/tests/loader-composition.spec.ts` 以行 id `deamon` 启动随附补丁，`verify-config-catalog` 钉住 `# == @deepseek-ai/dsh-deamon` 一节，`profile.spec.ts` 与 `built-bin.e2e.ts` 断言 `web` profile 模板元组与 dump-config 标记。
+- `protop/shellbox/deamon/tests/sandbox-routes.spec.ts` 用 `keeps the helper alive after the last viewer leaves` 替换闲置回收用例：给查看者开流、关闭它、等待越过旧窗口的测试替代值（2.5 秒），断言 `isActive()` 仍为真；其余路由钉住不变。
+- `protop/shellbox/deamon/tests/deamon.spec.ts` 钉住 `service: 'deamon'`、`deamon.json` 发现文件、`DEAMON_DISCOVERY_FILE` 隔离，以及经 `DeamonManager` 的 `deamon stdout:` 中继行。
+- `protop/shellbox/deamon/tests/loader-composition.spec.ts` 以行 id `deamon` 启动随附补丁，`verify-config-catalog` 钉住 `# == @deepseek-ai/dsh-deamon` 一节，`profile.spec.ts` 与 `built-bin.e2e.ts` 断言 `web` profile 模板元组与 dump-config 标记。

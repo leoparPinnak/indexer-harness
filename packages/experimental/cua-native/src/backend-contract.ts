@@ -1,5 +1,5 @@
 /**
- * Structural twin of `benchmarks/gui-motor/src/backend.ts`.
+ * Structural twin of `protop/shellbox/gui-motor/src/backend.ts`.
  *
  * A package source file cannot import that benchmark module directly: the
  * package project compiles with `rootDir: src` and TS6059 rejects sources

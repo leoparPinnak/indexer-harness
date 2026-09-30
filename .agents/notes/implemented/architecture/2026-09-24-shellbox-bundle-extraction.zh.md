@@ -10,10 +10,10 @@ Shellbox——显示在右侧边栏的隔离私有 Windows 桌面——原本在
 
 ## 决策
 
-- `packages/bundle/deamon`（npm 名 `@deepseek-ai/dsh-deamon`，与根同版本，`type: module`）是该功能的唯一归属：`src/index.ts`（插件外壳与 `app:shellbox-surface` 提示段）、`src/sandbox.ts`（十二条冻结的 `/api/server/sandbox/*` 路由与 `/api/server/sandbox/ws` 升级）、`src/deamon.ts` 与 `src/deamon-manager.ts`、`sandbox/sandbox-host.ps1` 及 `sandbox/PROTOCOL.md`、位于 `assets/shellbox.md` 的 skill 正文、四个 spec 文件，以及本包自己的 `cordis.patch.yml`。
+- `protop/shellbox/deamon`（npm 名 `@deepseek-ai/dsh-deamon`，与根同版本，`type: module`）是该功能的唯一归属：`src/index.ts`（插件外壳与 `app:shellbox-surface` 提示段）、`src/sandbox.ts`（十二条冻结的 `/api/server/sandbox/*` 路由与 `/api/server/sandbox/ws` 升级）、`src/deamon.ts` 与 `src/deamon-manager.ts`、`sandbox/sandbox-host.ps1` 及 `sandbox/PROTOCOL.md`、位于 `assets/shellbox.md` 的 skill 正文、四个 spec 文件，以及本包自己的 `cordis.patch.yml`。
 - 抽取之后 web-app 不再持有任何 shellbox 知识：没有补丁行、没有依赖、没有源码或测试文件；`packages/bundle/web-app/cordis.patch.yml` 不会再点名该功能。
 - 组合包的补丁承载宿主行（`id: deamon`，其 `config` 重述 `surfaceContext: true`，因为补丁会整体替换目标行的 `config`）与 `ui-sandbox-view` 客户端行，两行点名的每个包都是本组合包自己的依赖——这正是组合包自引用行规则的要求。
-- 随附的 web profile 模板列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-deamon`，全新 web profile 无需额外步骤即可启动该功能；桌面 profile 通过 `dsh plugin` 按需添加，记在包 README 的“已知限制与延期工作”一节。
+- `web` profile 模板在本决策发布时列出了该组合包；[2026-09-30 的退役](../simplification/2026-09-30-shellbox-retired-to-protop.zh.md)又把该功能从随附模板中移除，因此新建 profile 默认不带它；桌面 profile 通过 `dsh plugin` 按需添加，记在包 README 的“已知限制与延期工作”一节。
 - 交付走 profile 组合包机制：接收方用 `dsh plugin --profile <name> add <spec>` 安装 `pnpm pack` 产出的 tarball（或注册表名、路径），`dsh --profile web --dump-config` 会把挂载的层标记为 `# == @deepseek-ai/dsh-deamon`。
 - 不存在“系统提示里的插件列表”通道，因此手册随插件经四个载体发布：内置 `shellbox` skill 承载读自包旁 `assets/shellbox.md` 的完整指南，裁剪后的 `app:shellbox-surface` 段为模型定向并以加载该 skill 的指示收尾，`shellbox_launch` 工具描述承载启动概要，双语 README 服务维护者与接收方。
 - Host 半边对 `@deepseek-ai/dsh-client-connection` 做仅类型导入（devDependency 加 tsconfig 项目引用）以解析 `ctx.connection`；组合 spec 的 Loader 模块映射为客户端行提供空 apply 模块，因为 Host 程序不能导入纯 Client 包的源码（TS6307）。
@@ -30,5 +30,5 @@ Shellbox——显示在右侧边栏的隔离私有 Windows 桌面——原本在
 
 ## 测试
 
-- `packages/bundle/deamon/tests/loader-composition.spec.ts` 通过真实 Loader 启动随附的 `cordis.patch.yml`：每一行都到达已启动状态，十二条冻结路由与查看者升级挂载成功，该段位于 `getSectionOrder('WEB_SURFACE') + 5`，其文本保留定向事实，而组合出的 `surfaceContext: false` 会让该段不出现。
-- `packages/bundle/deamon/tests/skill.spec.ts` 钉住内置手册的注册、正文来源与列表面貌；`packages/bundle/deamon/tests/sandbox-routes.spec.ts` 钉住路由契约；`packages/bundle/deamon/tests/deamon.spec.ts` 钉住 Deamon 生命周期与发现隔离。
+- `protop/shellbox/deamon/tests/loader-composition.spec.ts` 通过真实 Loader 启动随附的 `cordis.patch.yml`：每一行都到达已启动状态，十二条冻结路由与查看者升级挂载成功，该段位于 `getSectionOrder('WEB_SURFACE') + 5`，其文本保留定向事实，而组合出的 `surfaceContext: false` 会让该段不出现。
+- `protop/shellbox/deamon/tests/skill.spec.ts` 钉住内置手册的注册、正文来源与列表面貌；`protop/shellbox/deamon/tests/sandbox-routes.spec.ts` 钉住路由契约；`protop/shellbox/deamon/tests/deamon.spec.ts` 钉住 Deamon 生命周期与发现隔离。

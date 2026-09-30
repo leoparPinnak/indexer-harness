@@ -620,36 +620,6 @@ export interface Config {
 
 来源：[`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
 
-<a id="deepseek-aidsh-deamon"></a>
-
-## `@deepseek-ai/dsh-deamon`
-
-需要：`webServer`
-
-```ts config-catalog
-/** Plugin config: composed deployment settings for the Shellbox feature. */
-export interface Config {
-  /**
-   * Register the model-visible surface context (the `app:shellbox-surface`
-   * prompt section). A non-interactive layer can turn it off when its user is
-   * not in the GUI, so the orientation text would be false.
-   */
-  surfaceContext: boolean
-  /**
-   * How the bridge reaches the Deamon: `pipe` (the default) speaks the home's
-   * named-pipe gateway, `http` keeps the legacy loopback path that D9 removes.
-   * Both transports stay mounted while the shift lasts, and a gateway the
-   * bridge cannot reach downgrades that session to `http` with a logged reason.
-   */
-  transport: DeamonTransport
-}
-
-/** How the bridge reaches the daemon: the named-pipe gateway, or loopback HTTP. */
-export type DeamonTransport = 'pipe' | 'http'
-```
-
-来源：[`packages/bundle/deamon/src/index.ts:35`](../packages/bundle/deamon/src/index.ts)
-
 <a id="deepseek-aidsh-e2b"></a>
 
 ## `@deepseek-ai/dsh-e2b`
@@ -3676,7 +3646,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
-- `@deepseek-ai/dsh-client-ui-sandbox-view`（[`packages/client/ui-sandbox-view/src/index.ts`](../packages/client/ui-sandbox-view/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-server-logs`（[`packages/client/ui-server-logs/src/index.ts`](../packages/client/ui-server-logs/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-session`（[`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts)）

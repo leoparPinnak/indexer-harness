@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { fileURLToPath } from 'node:url'
 
-import type { GuiBackend } from '../../../../benchmarks/gui-motor/src/backend.ts'
+import type { GuiBackend } from '../../../../protop/shellbox/gui-motor/src/backend.ts'
 import {
   codexNativeBackendIdentity,
   codexNativeCapabilities,

@@ -193,8 +193,8 @@ export function apply(ctx: Context, config: Config): Promise<void> {
 
   // plan09: the skill registry belongs to profiles that mount it; the bundle
   // mounts on the webServer alone, so registration waits here instead of
-  // holding the whole plugin back (deamon's shellbox pattern). This is also
-  // the first read of guideAssetsDir: empty resolves the published assets/.
+  // holding the whole plugin back (deferred-registration pattern). This is
+  // also the first read of guideAssetsDir: empty resolves the published assets/.
   ctx.inject(['skills'], (skillCtx) => {
     skillCtx.skills.registerProvider(() => createCdpSkillProvider(
       config.guideAssetsDir,

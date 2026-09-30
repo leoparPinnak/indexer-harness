@@ -9,7 +9,7 @@
  *                   reports the black miss sentinel for desktop regions).
  *
  * The helper spawns once at construction so the benchmark samples steady-state
- * round trips, never spawn cost (see benchmarks/gui-motor/README.md).
+ * round trips, never spawn cost (see protop/shellbox/gui-motor/README.md).
  */
 
 import { CuaHelperClient, type CuaInputOutcome, type CuaWindowInfo, type CuaWindowRef } from './client.ts'

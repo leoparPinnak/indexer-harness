@@ -2814,7 +2814,7 @@ export class CdpService {
     if (this.proxy?.isListening) return { active: true, port: this.proxy.port }
     const epoch = this.proxyEpoch
     // plan04-fix2: idle-port scan. The configured port can be permanently
-    // occupied in a shared environment (live: the Shellbox Edge holds 9333),
+    // occupied in a shared environment (another local service can sit on 9333),
     // so try it plus the next few loopback ports and take the first bind that
     // succeeds. Port 0 already means "any free port" — one attempt only.
     const configured = this.serviceOptions.proxyListenPort ?? 9333
