@@ -30,6 +30,7 @@ diagnostic turns).
   `cdp_pdftotext`, `cdp_files`, `cdp_tab_new`, `cdp_tab_close`, `cdp_tab_focus`,
   `cdp_scroll`, `cdp_dialog`, `cdp_upload`, `cdp_text`, `cdp_expect`,
   `cdp_endpoints`, `cdp_contexts`, `cdp_fill`, `cdp_find`, `cdp_extract`,
+  `cdp_deep_click`, `cdp_raw`, `cdp_describe`,
   `cdp_locate`, `cdp_stealth`, `cdp_fingerprint`, `cdp_captcha`, `cdp_lock`,
   `cdp_unlock`, `cdp_profiles` — prefer them over hand-rolled
   `cdp_eval` equivalents; the bundle's tool catalog carries their parameters and
@@ -126,9 +127,12 @@ Skipping step 2 or 6 is the documented cause of every incident in
 | Read or compute page state (`location.href`, form values, `textContent`, counts) | `cdp_eval` (read) | targetId; expression must RETURN a value, not mutate | `Eval result: …` (+ `truncated`) | empty result → expression threw (wrap in `try{…}catch(e){return 'ERR:'+e.message}` — today's channel can swallow throws) or result exceeded the 16 KiB budget (`truncated: true`) → narrow the expression |
 | **Hold on — prefer `cdp_eval` over `cdp_click`/`cdp_type` when:** the target is hidden/`display:none`, covered, coordinate-ambiguous, or you only need a value | `cdp_eval` | — | — | if you chose eval to "click" something, you are about to hand-roll click logic: instead take a snapshot and reconsider §3 rows below |
 | Click a known element | `cdp_click` | fresh `cdp_snapshot` ref → converted to viewport x/y; element visible (not `display:none`) | `Click dispatched successfully.` | **`ok:true` proves nothing about the click landing.** Always VERIFY (§2.6). If verification fails: wrong coords (stale ref → re-snapshot), covered element (cookie banner/overlay → dismiss first), or hidden element (narrow viewport → check `innerWidth`) |
-| Type into a form field with verification | `cdp_fill` | a fresh snapshot ref (or locator DSL) | value applied + read-back `post` | `ok:false` with a revert → native setters refused; fallback `insertText` reported the honest reason; re-focus and retry per the §1 "visual loop" discipline (measure again, never retry blind) |
+| Type into a form field with verification | `cdp_fill` | a fresh snapshot ref (or locator DSL) | value applied + read-back `post` | `ok:false` with a revert → native setters refused; fallback `insertText` reported the honest reason; re-focus and retry per the §1 "visual loop" discipline (measure again, never retry blind). `force:true` writes past an actionability refusal (a loading overlay's "hit-target blocked"); the failures stay measured in `actionability` and the outcome says `forced:true` |
+| Deep-find + trusted-click an element the light-DOM ladder cannot see (web components/shadow roots — Google-console-style pages answer "0 candidates" to everything) | `cdp_deep_click` | css/ariaLabel/role+name/text (pierceShadow **defaults true**) | `target` + `actionability` + `hit` (what got clicked) | `ok:false` + reason; ambiguous → `candidates` + warning, pick with `nth`; "click not delivered" → the tab is hidden from input: `cdp_tab_focus` then retry (window may stay off-screen) |
+| Speak raw CDP — cookies, storages, any domain no purpose-built tool covers | `cdp_raw` | `method` + JSON `params` string (+ `targetId` for page-scope; omit for browser-scope) | `result` = JSON string of the raw reply (`Network.getAllCookies` = decrypted jar in ONE call, no file-lock wrestling) | `Browser.close`/`Target.disposeBrowserContext` **REFUSE** (house law S7 — user browsers and profile storage never die on the agent's initiative; `cdp_tab_close` remains the deliberate per-tab tool). Protocol errors ride `reason` — confirm with a purpose-built reader afterwards |
+| Describe what is AT a point and around it, in DOM words (the model-eyes fallback) | `cdp_describe` | `x`,`y` (+ `radius`, default 80) | `node` (tag/role/name/rect/chain) + `neighbors` (≤12 boxes with visible texts) + `hitChain` | DOM-SEMANTIC, explicitly **not OCR**: a picture without markup still needs an eye (or a vision-capable model). Pair with `cdp_screenshot`; for the real look-then-prove loop see §1's visual loop |
 | Query elements / project fields | `cdp_find` → `cdp_extract` | snapshot refs or a query + field spec | candidates / projected rows with `missing` | `matched: 0 → ok:false` (find) or `data: []` + `missing` (extract) → the query did not match; widen the query or re-snapshot (SPA re-renders invalidate refs) |
-| Type into the page | `cdp_type` | a focused element that actually receives input | `Typed N characters.` | verification read-back shows 0 chars → wrong focus target or React-controlled input swallowed it; click the field explicitly first, re-focus, retype; for bulk/structured writes prefer `cdp_eval` with native setters or purpose-built fill tools when available |
+| Type into the page | `cdp_type` | a focused element that actually receives input | `Typed N characters.` | verification read-back shows 0 chars → wrong focus target or React-controlled input swallowed it; click the field explicitly first, re-focus, retype. Cadence typing is DURATION-bounded (~30 s / 4000 chars at 18–70 ms/char) — a full form field fits, an essay does not: long/structured bodies belong to `cdp_fill` (instant native setter) |
 | Wait for an element, or for the page to settle | `cdp_wait` | `strategy` — one of `css` (default), `aria-label`, `text`, `visible`, `network-idle`, `navigation`, `url`; `selector`/`url` carries the value, `timeoutMs` defaults to 10000 | `Waited <ms>: strategy=…, <selector> condition met.` | timeout is **in-band `ok:false` + `reason`, never a throw**. `text` resolves through the ladder `aria-label → role+name → tag+text → innerText`, so a miss names the exhausted ladder instead of failing silently. **Presence ≠ visibility:** a `display:none` node passes `css` — use `strategy:'visible'` when you need it *usable*, and `url` (regex) / `network-idle` when you need the *page* rather than an element. |
 | Wait for async work / API responses | `net_capture` (+ `cdp_wait` for DOM) | proxy active (`cdp_status`) | captured exchanges with status/duration | `total: 0` or proxy inactive → capture listener not up; check `cdp_status.proxy.active`, and remember navigation can change a target's URL mid-flight (`/json` is an event-driven inventory, not a snapshot) |
 | Whole-traffic report / host grouping | `net_export` | some traffic captured | totals + host groups | all zeros → nothing captured yet; perform the user action first, export after |
@@ -168,7 +172,7 @@ pick the one whose failure you can verify (§4).
 > **Extracting data, not driving one control?** The rows above choose a tool for a
 > single interaction. For scraping — a repeated structure, a table, a multi-page
 > loop, a "did I get it all?" check — load `guides/09-scraping-master.md`: it
-> carries the full 39-tool inventory, the measured `cdp_extract` spec contract
+> carries the full 42-tool inventory, the measured `cdp_extract` spec contract
 > (`count` / `complete` / `missing` / `truncatedFields`), and proven recipes. The
 > two non-negotiables it adds: **always project a `count` field** so you know the
 > real total behind a `limit`, and **stop a pagination loop on identity change**,
@@ -232,6 +236,38 @@ these rules the tools already guarantee for you, and what to do about sliders.
   the first (single connection slot today).
 - Headless launches use a fresh profile → sites like Google may reject sign-in
   ("browser not secure"); prefer headed + existing profile for logged-in flows.
+- **NEVER copy an existing profile (`User Data` / profile dir) to bootstrap a
+  debuggable instance.** A copied profile does NOT carry the session: OAuth /
+  device-bound cookies are bound to the original profile — the copy loses them
+  and every auth-backed page demands login again ("oturum düşer"); the churn can
+  also disturb the ORIGINAL's session. Incident **2026-09-30 02:46:49 +03:00**
+  (lesson stamped on request): signed-in `Default` ("Leopar") profile → temp
+  `--user-data-dir` copy → straight to `/login`; copy destroyed afterwards.
+  Correct paths
+  instead: drive the **already running** browser on its debug port (ask the user
+  WHICH window is theirs — do not guess from tab contents), or have the user log
+  in once in the window you control.
+- Attaching to a stock running Chrome (started without `--remote-debugging-port`)
+  is not possible retroactively on modern Chrome, and a debug-enabled instance
+  must start with a NON-default `--user-data-dir` from the beginning — which is
+  exactly why that instance cannot borrow a logged-in profile by copying it
+  (see the bullet above). **Evidence (2026-09-30 02:46:49 +03:00):** a live
+  listener scan over all `chrome.exe` processes showed a stock-profile browser
+  binds NO port — `Get-NetTCPConnection -State Listen` owned by chrome.exe
+  returned only dsh/temp/headless instances. "Send a debug request to the
+  already-running process" is therefore not a thing: if the port scan finds
+  nothing, report that and switch to driving a visible browser the user names.
+- **NEVER silently close/kill the USER's personal interactive browser — tabs,
+  windows or processes — under blanket authority.** Even when "restart with the
+  debug flag" is the only technical way in, that destroys their live session:
+  say it in ONE line and wait for their word. Restarts must pass
+  `--restore-last-session`. Incident **2026-09-30 02:50:01 +03:00** (stamped on
+  user demand): Leopar tree (99 processes) killed + relaunched with debug on the
+  same profile; session restored but the surprise tab loss was a discretion
+  failure — the user's "request the debug permission" meant trigger a permission
+  step, not "do the restart yourself". Rule of thumb: if an action would visibly
+  destroy something the user is LOOKING at, one-line confirm first — closable
+  tabs are not "files and resources" from the granted list.
 - The `targetId` parameter is optional everywhere and silently falls back to the
   active/first page. Treat omitting it as a mutation hazard.
 
@@ -248,8 +284,11 @@ Relative to this skill's base directory (`<base>/…`):
 - `guides/06-adapters.md` — site adapter profiles.
 - `guides/07-human-interaction.md` — aiming, measuring, sliders, and the
   verification-challenge boundary.
-- `guides/09-scraping-master.md` — the full 39-tool parameter/output/error
+- `guides/09-scraping-master.md` — the full 42-tool parameter/output/error
   inventory plus the evidence-learned rules, when one job needs many tools.
+- `guides/11-derin-tarama.md` — gölge-DOM gerçekleri, atomik güvenilir tık
+  (`cdp_deep_click`), ham CDP (`cdp_raw`), zorla yazma (`cdp_fill(force)`) ve
+  görmek-yerine-tarif (`cdp_describe`): bilinmeyen tuzakların üç kanunu.
 - `guides/10-skill-mimarisi.md` — **the network itself**: a per-tool "what next"
   table, 14 named end-to-end flows (F1–F14), and the polymorphism clusters that
   say which of several equivalent paths to take. Load this when you know *what*

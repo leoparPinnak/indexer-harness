@@ -362,3 +362,4 @@ technically available, and name the obstacle.
 - [Protocol Core](01-protocol-core.md#protocol-core-architecture) — transport and session details behind the tools.
 - [Scraping Master](09-scraping-master.md#web-kazıma-ustalığı--mevcut-araç-setinin-tam-kullanım-kılavuzu) — the 36-tool inventory, `cdp_captcha`'s full parameter contract, and the 17 evidence-learned rules this page's discipline is drawn from.
 - [Skill Architecture](10-skill-mimarisi.md#2-akiş-haritasi--14-iş-akışı) — the same material as **named tool chains**: F4 (find → act → verify), F5 (the visual loop), F7 (scan → drive → verify), F8 (slider), F13 (blocked-page diagnosis) — plus the `ok:false` triage ladder in `10-skill-mimarisi.md` §3.7.
+- [Derin Tarama](11-derin-tarama.md) — ölçme disiplininin gölgedeki kuzeni: ölç→dön→tık yarışında koordinat eskimesi, `cdp_deep_click`'in atomik çözümü, `force` yazması ve "görme yoksa tarif et" düzeni.

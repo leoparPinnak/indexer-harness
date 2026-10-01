@@ -48,6 +48,9 @@ export type TextMatchMode = 'exact' | 'contains'
  * AND filters. `ref`/`frame` are intentionally absent until plan 08.
  */
 export interface LocatorSpec {
+  /** plan16: descend into open shadow roots while resolving (light-DOM ladders
+   *  are blind to web-component pages); `cdp_deep_click` defaults this true. */
+  pierceShadow?: boolean | undefined
   css?: string | undefined
   ariaLabel?: string | undefined
   /** ARIA role; requires {@link name}. */
@@ -65,6 +68,8 @@ export interface LocatorSpec {
 
 /** Shape of the model-facing argument maps the tools hand to {@link locatorSpecFromArgs}. */
 export interface LocatorArgs {
+  /** plan16: pierce open shadow roots while resolving (see {@link LocatorSpec.pierceShadow}). */
+  pierceShadow?: boolean | undefined
   css?: string | undefined
   ariaLabel?: string | undefined
   role?: string | undefined
@@ -146,7 +151,7 @@ export interface ActionResolveSuccess {
   targetId: string
   url: string
   /** Viewport-space centre of the target's client rect (CSS pixels). */
-  point: { x: number, y: number }
+  point: { x: number; y: number }
   matched: number
   strategy: string
   target: ResolvedTarget
@@ -174,7 +179,10 @@ export interface ReadTextOptions {
   maxChars?: number | undefined
 }
 
-/** Envelope `cdp_text` returns; only `ok` is required. Optional keys omit `| undefined` to match the tool-runtime inference under exactOptionalPropertyTypes. */
+/**
+ * Envelope `cdp_text` returns; only `ok` is required. Optional keys omit
+ * `| undefined` to match the tool-runtime inference under exactOptionalPropertyTypes.
+ */
 export interface TextOutcome {
   ok: boolean
   matched: number
@@ -219,7 +227,10 @@ export interface ExpectOptions {
   targetId?: string | undefined
 }
 
-/** Envelope `cdp_expect` returns; only `ok` is required. Optional keys omit `| undefined` to match the tool-runtime inference under exactOptionalPropertyTypes. */
+/**
+ * Envelope `cdp_expect` returns; only `ok` is required. Optional keys omit
+ * `| undefined` to match the tool-runtime inference under exactOptionalPropertyTypes.
+ */
 export interface ExpectOutcome {
   ok: boolean
   check: ExpectCheck
@@ -326,6 +337,7 @@ export function locatorSpecFromArgs(args: LocatorArgs): LocatorSpec {
   if (args.textMatch === 'exact' || args.textMatch === 'contains') spec.textMatch = args.textMatch
   if (typeof args.nth === 'number' && Number.isInteger(args.nth) && args.nth >= 0) spec.nth = args.nth
   if (typeof args.scope === 'string' && args.scope !== '') spec.scope = args.scope
+  if (args.pierceShadow === true) spec.pierceShadow = true
   return spec
 }
 
@@ -457,9 +469,26 @@ export function locatorPageCore(): string {
       const h = norm(hay);
       return mode === 'contains' ? h.indexOf(n) !== -1 : h === n;
     };
+    const useDeep = spec.pierceShadow === true;
+    const deepAll = (root, sel) => {
+      const list = [];
+      const stack = [root];
+      while (stack.length) {
+        const r = stack.pop();
+        let found = [];
+        try { found = r.querySelectorAll(sel); } catch (e) { found = []; }
+        for (let i = 0; i < found.length && list.length <= MAX_CAND; i++) list.push(found[i]);
+        let all = [];
+        try { all = r.querySelectorAll('*'); } catch (e) { all = []; }
+        for (let i = 0; i < all.length; i++) {
+          if (all[i] && all[i].shadowRoot) stack.push(all[i].shadowRoot);
+        }
+      }
+      return list;
+    };
     const roots = [];
     if (spec.scope) {
-      const found = document.querySelectorAll(spec.scope);
+      const found = useDeep ? deepAll(document, spec.scope) : Array.from(document.querySelectorAll(spec.scope));
       for (let i = 0; i < found.length; i++) roots.push(found[i]);
       if (roots.length === 0) {
         out.reason = 'scope not found: ' + spec.scope;
@@ -469,6 +498,14 @@ export function locatorPageCore(): string {
       roots.push(document);
     }
     const collect = (selector) => {
+      if (useDeep) {
+        const list = [];
+        for (let i = 0; i < roots.length && list.length <= MAX_CAND; i++) {
+          const found = deepAll(roots[i], selector);
+          for (let j = 0; j < found.length && list.length <= MAX_CAND; j++) list.push(found[j]);
+        }
+        return list;
+      }
       const list = [];
       for (let i = 0; i < roots.length && list.length <= MAX_CAND; i++) {
         const found = roots[i].querySelectorAll(selector);
@@ -704,13 +741,121 @@ export function locatorPageCore(): string {
     if (target.visible && !topmost) failures.push('hit-target blocked: topmost element at center is ' + (coveredBy || 'unknown'));
     out.target = target;
     out.actionability = { attached, visible: target.visible, stable, enabled: target.enabled, inViewport: target.inViewport, hitTarget: topmost, failures };
-  `;
+  `
 }
 
 /**
  * Point evidence for coordinate clicks: whatever sits at (x, y) plus the page
  * URL, as one JSON string. Read-only and best-effort.
  */
+/**
+ * plan16: page-side neighbourhood probe behind `cdp_describe` — the honest
+ * stand-in for "what is in this picture": the node at the point, the boxes
+ * around it (radius in CSS px), and the visible text each box carries. This is
+ * DOM-SEMANTIC description, explicitly not OCR: a picture without markup can
+ * still only be judged by eye (or by a vision-capable model).
+ * Returns one JSON string like the other builders.
+ */
+export function buildDescribeExpression(x: number, y: number, radius: number): string {
+  const px = Number.isFinite(x) ? x : 0
+  const py = Number.isFinite(y) ? y : 0
+  const pr = Number.isFinite(radius) && radius > 0 ? radius : 80
+  return String.raw`(() => {
+  const out = { ok: false, url: String(location.href) };
+  try {
+    const X = ${String(px)}, Y = ${String(py)}, R = ${String(pr)};
+    const MAX_ITEM = 12, MAX_TEXT = 120;
+    const cut = (s, n) => { const v = String(s === null || s === undefined ? '' : s); return v.length > n ? v.slice(0, n) : v; };
+    const rectOf = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left * 100) / 100, y: Math.round(r.top * 100) / 100, width: Math.round(r.width * 100) / 100, height: Math.round(r.height * 100) / 100 }; };
+    const roleOf = (el) => {
+      const explicit = el.getAttribute && el.getAttribute('role');
+      if (explicit !== null && explicit !== undefined && explicit.trim() !== '') return explicit.trim().split(/\s+/)[0] || '';
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'button') return 'button';
+      if (tag === 'a' && el.hasAttribute('href')) return 'link';
+      if (tag === 'input') { const t = (el.getAttribute('type') || 'text').toLowerCase(); return t === 'checkbox' ? 'checkbox' : t === 'radio' ? 'radio' : 'textbox'; }
+      if (tag === 'textarea' || tag === 'select') return 'textbox';
+      return '';
+    };
+    const nameOf = (el) => cut((el.getAttribute && el.getAttribute('aria-label')) || String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(), MAX_TEXT);
+    const hit = document.elementFromPoint(X, Y);
+    const stack = document.elementsFromPoint(X, Y).slice(0, 6);
+    const node = hit === null ? null : {
+      tag: hit.tagName.toLowerCase(),
+      id: String(hit.id || ''),
+      role: roleOf(hit),
+      name: nameOf(hit),
+      rect: rectOf(hit),
+      chain: (function () {
+        const out = []; let el = hit;
+        while (el !== null && out.length < 5) { out.push(el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')); el = el.parentElement || el.getRootNode ? (el.parentElement || null) : null; }
+        return out;
+      })(),
+    };
+    const box = { x: X - R, y: Y - R, width: R * 2, height: R * 2 };
+    const intersects = (r) => !(r.x + r.width < box.x || r.x > box.x + box.width || r.y + r.height < box.y || r.y > box.y + box.height);
+    const neighbors = [];
+    const all = document.querySelectorAll('*');
+    for (let i = 0; i < all.length && neighbors.length < MAX_ITEM; i++) {
+      const el = all[i];
+      const r = rectOf(el);
+      if (r.width <= 0 || r.height <= 0 || !intersects(r)) continue;
+      if (el.tagName.toLowerCase() === 'html' || el.tagName.toLowerCase() === 'body') continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      neighbors.push({ tag: el.tagName.toLowerCase(), role: roleOf(el), name: nameOf(el), rect: r, pointer: cs.cursor === 'pointer' });
+    }
+    out.ok = true;
+    out.point = { x: X, y: Y, radius: R };
+    out.node = node;
+    out.hitChain = stack.map((el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : ''));
+    out.neighbors = neighbors;
+  } catch (error) {
+    out.ok = false;
+    out.reason = 'describe script failed: ' + (error && error.message ? error.message : String(error));
+  }
+  return JSON.stringify(out);
+})()`
+}
+
+/** Parsed shape behind {@link buildDescribeExpression} (plan16 neighbourhood probe). */
+export interface DescribeReply {
+  ok: boolean
+  url: string
+  reason?: string | undefined
+  point?: { x: number; y: number; radius: number } | undefined
+  node?: {
+    tag: string
+    id: string
+    role: string
+    name: string
+    rect: LocatorRect
+    chain: string[]
+  } | undefined
+  hitChain?: string[] | undefined
+  neighbors?: Array<{
+    tag: string
+    role: string
+    name: string
+    rect: LocatorRect
+    pointer: boolean
+  }> | undefined
+}
+
+/**
+ * Parse one describe evaluation. Returns undefined for errors/malformed JSON —
+ * the same never-invent posture as {@link parseEvidenceReply}.
+ */
+export function parseDescribeReply(raw: string): DescribeReply | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as DescribeReply
+  } catch {
+    // malformed reply — caller reports the honest undefined
+  }
+  return undefined
+}
+
 export function buildPointExpression(x: number, y: number): string {
   return String.raw`(() => {
   try {
@@ -932,7 +1077,9 @@ export function asLocatorReply(record: Record<string, unknown>): LocatorReply | 
     ...(typeof record.hint === 'string' ? { hint: record.hint } : {}),
     ...(typeof record.warning === 'string' ? { warning: record.warning } : {}),
     ...(record.target !== undefined && record.target !== null ? { target: asTarget(record.target) } : {}),
-    ...(record.actionability !== undefined && record.actionability !== null ? { actionability: asActionability(record.actionability) } : {}),
+    ...(record.actionability !== undefined && record.actionability !== null
+      ? { actionability: asActionability(record.actionability) }
+      : {}),
   }
 }
 

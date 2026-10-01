@@ -65,8 +65,13 @@ export interface InputBounds {
 /** Production bounds; every field is a positive integer. */
 export const DEFAULT_INPUT_BOUNDS: InputBounds = {
   maxPathSteps: 40,
-  maxDurationMs: 2_000,
-  maxCharacters: 2_000,
+  // plan16: 2s capped realistic typing at ~17 characters ("typed 17 of 28") —
+  // the drain was the DURATION bound, not the character bound. 30s gives a
+  // human-cadence burst room for a full form field (~500–1000 chars at the
+  // documented 18–70ms/char cadence) while every op stays bounded. Long
+  // bodies still route to cdp_fill (instant native setter), by design.
+  maxDurationMs: 30_000,
+  maxCharacters: 4_000,
   maxScrollSteps: 24,
 }
 

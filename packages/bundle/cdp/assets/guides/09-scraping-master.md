@@ -1,6 +1,6 @@
 # Web Kazıma Ustalığı — Mevcut Araç Setinin Tam Kullanım Kılavuzu
 
-Bu rehber, `packages/bundle/cdp/src/tools.ts` içinde kayıtlı **39 aracın tamamını**
+Bu rehber, `packages/bundle/cdp/src/tools.ts` içinde kayıtlı **42 aracın tamamını**
 (%100) bir veri kazıma işinde nasıl kullanacağını anlatır. Her bölüm **ölçülmüş**
 bir kanıta dayanır: kılavuzdaki sayıların, hata metinlerinin ve reçetelerin
 tamamı canlı `cdp_*` çağrılarıyla doğrulanmıştır — kanıt kaydı ve
@@ -21,7 +21,7 @@ kullanırım ve aldığımın gerçekten tam olduğunu nasıl anlarım?"*
 ## İçindekiler
 
 1. [§1 Kapsam](#1-kapsam-ne-zaman-uygulanır-ne-zaman-uygulanmaz)
-2. [§2 Araç envanteri](#2-arac-envanteri--38-aracın-tamamı)
+2. [§2 Araç envanteri](#2-arac-envanteri--42-aracın-tamamı)
 3. [§3 Kanıtla öğrenilmiş kurallar](#3-kanıtla-öğrenilmiş-kurallar)
 4. [§4 Reçeteler](#4-reçeteler)
 5. [§4.10 Kanıt kaydı ve doğrulanmayan iddialar](#410-kanıt-kaydı-ve-doğrulanmayan-iddialar)
@@ -68,21 +68,21 @@ taramaya devam et. Sonucu SKILL.md §2.7 adımıyla kullanıcıya ilet.
 
 ---
 
-## 2. ARAÇ ENVANTERİ — 38 aracın tamamı
+## 2. ARAÇ ENVANTERİ — 42 aracın tamamı
 
-`tools.ts` içinde kayıtlı toplam **39** araç vardır: **37 `cdp_*` + 2 `net_*`**
+`tools.ts` içinde kayıtlı toplam **42** araç vardır: **40 `cdp_*` + 2 `net_*`**
 (`net_capture` #10, `net_export` #11). Kaynak sıra numaraları aşağıda verilmiştir.
 
 > **Sayım denetimi (plan17-skillweb ile yeniden ölçüldü).** Bu bölümdeki
-> envanter, `tools.ts` içindeki `// 1.` … `// 39.` kayıt satırlarından **programatik
-> olarak** türetildi ve `docs/tool-catalog.md` ile çapraz doğrulandı: 39 kaydın
-> **39'u da** katalogda bir şema bölümü olarak duruyor. `cdp_locate` **#36**'dır ve
-> **kayıtlıdır**; canlı oturumda 39 aracın tamamı görünür.
+> envanter, `tools.ts` içindeki `// 1.` … `// 42.` kayıt satırlarından **programatik
+> olarak** türetildi ve `docs/tool-catalog.md` ile çapraz doğrulandı: 42 kaydın
+> **42'si de** katalogda bir şema bölümü olarak duruyor. `cdp_locate` **#36**'dır ve
+> **kayıtlıdır**; canlı oturumda 42 aracın tamamı görünür.
 >
 > Bu not, daha önce burada yazan iki bayat iddiayı **düzeltir**: (a) "`cdp_locate`
 > çalışan derlemede kayıtlı değil" — **yanlış**, kayıtlı; (b) "`src/index.ts:110`
 > sayım hatası" — o satır **plan09-fix ile zaten düzeltilmiş**, bugün
-> *"39 tools in all — 37 `cdp_*` plus `net_capture` and `net_export`"* diyor
+> *"42 tools in all — 40 `cdp_*` plus `net_capture` and `net_export`"* diyor
 > ([§4.10](#410-kanıt-kaydı-ve-doğrulanmayan-iddialar)).
 >
 > **Kural:** bu envanterdeki hiçbir sayıya güvenme — `tools.ts`'i oku ya da
@@ -296,6 +296,25 @@ Kazımanın birincil aracı. Tam sözleşme §3 ve §4'te.
 - **NE ZAMAN KULLANMA:** `check:'enabled'`'ı bir "daha veri var mı" sinyali
   olarak kullanma — **ölçülmüş olarak güvenilmez** (bkz. yukarıdaki kanıt).
 
+### 2.2b `cdp_describe` (#42) — Bölgeyi DOM-dilinde tarif (gözün yedeği)
+
+- **Ne zaman:** Görme yok ya da yetmiyor; "şu noktada/şu bölgede ne var?" sorusu
+  cevapsız kalmışken. Görsel döngünün (`cdp_screenshot` → model → `cdp_locate`)
+  model ayağı eksikse bu, şeffaf ikamesidir.
+- **Parametre:** `x`, `y` (zorunlu), `radius` (varsayılan 80), `targetId`.
+- **Çıktı:** `note` (dürüst sınır: DOM-semantic, **OCR değil**), `point`,
+  `node` (tag/rol/ad/rect + atalar), `hitChain` (kompozit vuruş yolu),
+  `neighbors` (≤12 komşu kutu, görünür metinleriyle).
+- **Hata okuması:** sayfa cevap veremezse/seçici gölgede kaybolursa `ok:false` +
+  `reason` (uydurma yok); tam metin yerine 120 karakterlik kesilmiş adlar gelir.
+
+Görsel okuyamayan model için **dürüst telafi**: (x,y) noktasındaki düğümü,
+kompozit vuruş zincirini (`hitChain`) ve r yarıçapındaki ≤12 komşu kutuyu görünür
+metinleriyle verir. **OCR DEĞİLDİR** ve öyle sunulmaz — yazısız bir görseli yine
+göz (veya gören bir model) yargılar; bu araç "ekranda ne var, nerede duruyor,
+üstünde ne yazıyor" sorusunu DOM gerçeğiyle cevaplar. `cdp_screenshot` →
+`cdp_describe` → `cdp_locate` → `cdp_click` = görsel döngünün yazılı hâli.
+
 ### 2.3 Girdi ve etkileşim
 
 #### `cdp_click` (#7) — Onaylı tek aktivasyon
@@ -378,6 +397,34 @@ Kazımanın birincil aracı. Tam sözleşme §3 ve §4'te.
   varken sayfa kapsamlı araçlar `dialog-open` ile **reddedilir**. Kazımada
   `beforeunload` çıkarsa önce `cdp_dialog` ile cevap ver, sonra kazımaya dön.
 - **NE ZAMAN KULLANMA:** `alert`/`confirm` yoksa hiç.
+
+#### `cdp_deep_click` (#40) — Atomik bul-ölç-güvenilir-tık, gölge delici
+
+- **Ne zaman:** Hedef gölgede (web bileşeni / shadow root) ya da `cdp_click`'in
+  merdiveni "0 candidates" demişse; ayrıca ölç–dön–tık yarışından yılmışsan.
+- **Parametre:** `css` | `ariaLabel` | `role`+`name` | `text` (merdiven aynı),
+  `nth`, `scope`, `pierceShadow` (**varsayılan `true`**; `false` = yalnız ışık-DOM),
+  `timeoutMs`, `targetId`. Koordinat/`ref` YOK — bu araç kimliği arayıp kendi
+  taze merkezini kendi bulur.
+- **Çıktı:** `pierced`, `matched`/`strategy`, `target` (taze kutu + ad),
+  `actionability` (altı eksen), `hit` (neye tıklandığı), `targetId`/`url`.
+- **Hata okuması:** `not found` → `candidates` + `reason` (tek değilse `nth` zorunlu);
+  `click not delivered` → sekme girdiden gizli: `cdp_tab_focus` (pencere ekran dışı
+  kalabilir) sonra tekrar; dialog çıkarsa `cdp_dialog` ile önce onu cevapla.
+
+`cdp_click`'in gerçek giriş dağıtımı + **açık gölgeleri delen** çözücü
+(`pierceShadow`): alt-bileşen sayfalarında (Google Console klasik vaka) merdivenin
+"0 candidates" cevabına son verir. Eski kabustu **öl→dön→tık(x,y) turu** —
+koordinatların yarışta eskimesi yüzünden iki kez yanlış noktaya vurmuştu; bu araç
+üç adımı TEK çağrısında yapar (koordinat yok = eskime yok).
+
+#### `cdp_fill` (#30) — yeni `force` kipi
+
+`force: true`, eylem-yapılabilirlik reddinin ÜZERİNDEN yazar: "hit-target blocked:
+topmost element at center is div" (yükleme perdesi) yazmayı tıkarken native
+setter zaten çalışıyordu. Kandırmaca yok: eksenler ÖLÇÜLMEYE devam eder
+(`actionability` alanı dolu gelir), zarf `forced: true` ile damgalanır ve render
+"[forced: actionability failures bypassed]" der.
 
 ### 2.4 Görsel, PDF ve dosya
 
@@ -510,6 +557,22 @@ Kazımanın birincil aracı. Tam sözleşme §3 ve §4'te.
   edilir ve uyarılır**; "0 hatalı tıklama" anlamına gelmez.
 
 ---
+
+### 2.5b `cdp_raw` (#41) — Ham CDP kapısı (ve tek ev kuralı)
+
+- **Ne zaman:** Amaca ait araç kapsamıyorsa — `Network.getAllCookies` (çözülmüş
+  çerez dökümü tek çağrıda: geceki `Login Data`/`Cookies` kilit düellosuna —
+  kopya-al, yedek-modlu robocopy, süre aşımı — hiç gerek kalmadan), `Storage.*`,
+  `Target.*`, aklına gelen her protokol adımı. Sonra işi sahibi araçla oku.
+- **Parametre:** `method` (CDP adı), `params` (JSON nesne dizesi; boş = {}),
+  `targetId` (var → sayfa oturumu/sayfa kapsamlı yöntemler; yok → tarayıcı kapsamı).
+- **Çıktı:** `result` = ham cevabın `JSON.stringify`'ı; `method`/`targetId` yankıları.
+- **Hata okuması:** `params` geçersiz JSON ise `ok:false` + ayrıştırma gerekçesi;
+  protokol reddi gerekçe satırına biner; **ev kuralı (S7):** `Browser.close` ve
+  `Target.disposeBrowserContext` reddedilir ("user browsers and profile storage
+  never die without the user's explicit word"); tek sekmelik kasıtlı kapatma
+  `cdp_tab_close`'un işi. Ham güç tek başına kanıt sayılmaz: sonuç, işin sahibi
+  araçla (Kural 4) **doğrulanır**.
 
 ## 3. Kanıtla öğrenilmiş kurallar
 
@@ -1217,3 +1280,4 @@ kancası, son sayfada bilinçli no-op "Sonraki sayfa").
   uçtan uca kombinasyonlar.
 - [Input and Stealth](02-input-and-stealth.md#human-like-input-and-stealth) —
   Bézier hareket, yazma temposu, stealth yamaları.
+- [Derin Tarama](11-derin-tarama.md) — gölge delen atomik tık, ham CDP kapısı (S7 ev kuralı), `force` yazması ve bölge tarifi: envanterdeki 2.2b/2.3/2.5b maddelerinin kök kaynağı.

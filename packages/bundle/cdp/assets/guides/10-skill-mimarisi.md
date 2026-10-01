@@ -1,7 +1,7 @@
 # Skill Mimarisi — Ağ Haritası, Akışlar ve Polimorfizm
 
 Bu rehber **katalog değildir**. Katalog zaten var: `09-scraping-master.md` §2
-39 aracın tamamını parametreleri, çıktıları ve hata sinyalleriyle anlatır;
+42 aracın tamamını parametreleri, çıktıları ve hata sinyalleriyle anlatır;
 SKILL.md §3 ise her araç için tek satırlık bir karar satırı taşır.
 
 Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
@@ -11,7 +11,7 @@ Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
 
 Üç bölüm:
 
-- **§1 Araç → sonraki araç tablosu** — 39 aracın her biri için *öncesi* ve
+- **§1 Araç → sonraki araç tablosu** — 42 aracın her biri için *öncesi* ve
   *sonrası*. Spiderweb'in kenarıdır: model nereye çıktığını bilir.
 - **§2 Akış haritası (14 iş akışı)** — hangi araçlar **birlikte** bir iş yapar,
   sırayla ve hangi rehberde. Spiderweb'in örgüsüdür.
@@ -23,12 +23,12 @@ Bu rehber, o ikisinin **arasında kalan boşluğu** doldurur:
 
 ## İçindekiler
 
-- [§1 Araç → sonraki araç tablosu (39/39)](#1-arac--sonraki-arac-3939)
+- [§1 Araç → sonraki araç tablosu (42/42)](#1-arac--sonraki-arac-4242)
 - [§2 Akış haritası — 14 iş akışı](#2-akış-haritası--14-iş-akışı)
 - [§3 Polimorfizm kümeleri — 9 küme](#3-polimorfizm-kümeleri--aynı-iş-birden-çok-yol)
 - [§4 Model için tek sayfalık çalışma düzeni](#4-model-için-tek-sayfalık-çalışma-düzeni)
 
-## 1. ARAÇ → SONRAKİ ARAÇ (39/39)
+## 1. ARAÇ → SONRAKİ ARAÇ (42/42)
 
 **`öncesi`** = o aracı besleyen araç. **`sonrası`** = çağrıdan sonra mantıklı olan
 tek adım. **`◦`** = zorunlu, **`·`** = olası.
@@ -74,6 +74,9 @@ tek adım. **`◦`** = zorunlu, **`·`** = olası.
 | 37 | `cdp_lock` | `cdp_tabs` (hedef seç) | yazma sırası → `cdp_unlock` |
 | 38 | `cdp_unlock` | `cdp_lock` (iş bitti) | serbest oturum |
 | 39 | `cdp_profiles` | `cdp_status` (envanter) | `cdp_open` (profile:…) ◦ · `cdp_status` |
+| 40 | `cdp_deep_click` | `cdp_describe` · `cdp_screenshot` | `cdp_expect` ◦ · `cdp_describe` (ne değişti) |
+| 41 | `cdp_raw` | — (bilinçli tek ham çağrı) | kullandığın amacın okuma aracı ◦ · `cdp_expect` |
+| 42 | `cdp_describe` | `cdp_screenshot` · `cdp_snapshot` | `cdp_locate` ◦ · `cdp_deep_click` |
 
 > **Kural:** Tablodaki `sonrası` sütunu **isteğe bağlı bir öneridir**, zorunlu bir
 > adım değil — ama "şimdi ne yapacağım" sorusunun cevabıdır. Boş bırakılan tek
@@ -272,7 +275,7 @@ Her küme: **yollar** · **varsayılan** · **ne zaman geçersin**.
 | # | Yol | Ne zaman tercih edilir |
 |---|---|---|
 | 1 | `cdp_snapshot` → `ref` | Yapıyı **keşfediyorsun**; sayfayı tanımıyorsun |
-| 2 | `cdp_find({ selector })` | Bir CSS karşılığı **vardır** — en ucuz yol |
+| 2 | `cdp_find({ selector })` *(varsayılan)* | Bir CSS karşılığı **vardır** — en ucuz yol |
 | 3 | `cdp_find({ css })` | `selector` ile aynı; `cdp_click`/`cdp_text` sözdizimiyle uyum istersen |
 | 4 | `cdp_find({ role, name })` | Erişilebilirlik ağacı doğru (`button`, `link`, `cell`, `row`) |
 | 5 | `cdp_find({ ariaLabel })` | Yalnız `aria-label` taşıyan ikon-only düğmeler |
@@ -294,7 +297,7 @@ Her küme: **yollar** · **varsayılan** · **ne zaman geçersin**.
 
 **Rehber:** 07 §1 · §1b · 03 · 09 §2.2
 
-### 3.2 Sayfayı bekleme — 5 yol
+### 3.2 Sayfayı bekleme — 8 yol
 
 | # | Yol | Ne zaman |
 |---|---|---|
@@ -368,8 +371,15 @@ bir **ölçümdür**, varsayımın değil.
 
 ### 3.6 Tıklama adresleme — 7 yol
 
-`x/y` · `ref` · `css` · `ariaLabel` · `role`+`name` · `text`(+`textMatch`) ·
-`scope`+`nth`
+**Adresleme modları (7 — çağrı başına TEK mod):**
+
+1. `ref` *(varsayılan)* — `cdp_snapshot`/`cdp_find` çıktısındaki kararlı kimlik
+2. `css` — kararlı seçici varsa eşdeğer en ucuz yol
+3. `role` + `name` — erişilebilirlik ağacı doğruysa (`button`, `link`, `cell`, `row`)
+4. `ariaLabel` — yalnız `aria-label` taşıyan ikon-only düğmeler
+5. `text` (+`textMatch: "exact"|"contains"`) — tekil görünen metin
+6. `scope` + `nth` — aynı metin birden çok kez geçiyorsa
+7. `x/y` — yalnız F5 görsel döngüsünden sonra, `cdp_locate` doğrulaması geçtiğinde
 
 **Kural:** bir çağrıda **tek adresleme modu**. `x/y` ile locator birlikte verilirse
 `cdp_click` **reddeder** (`pass either coordinates or a locator, not both`).
@@ -379,7 +389,7 @@ bir **ölçümdür**, varsayımın değil.
 ### 3.7 Hata teşhisi merdiveni — `ok:false` aldığında
 
 ```
-1) Zarfı oku: ok:false + reason + candidates      ← çoğu cevap buradadır, HATA DEĞİLDİR
+1) Zarfı oku *(varsayılan)*: ok:false + reason + candidates ← çoğu cevap buradadır, HATA DEĞİLDİR
 2) cdp_expect ile yeniden ölç                     ← başarısız assertion veridir, panik sebebi değil
 3) cdp_status                                    ← bağlantı / proxy / hedef kayması
 4) cdp_endpoints                                 ← "araç var mı, ben göremiyorum"
@@ -417,7 +427,7 @@ Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** �
 
 | Yol | Ne zaman |
 |---|---|
-| `cdp_expect` | **En ucuz** — metin/durum iddiası |
+| `cdp_expect` *(varsayılan)* | **En ucuz** — metin/durum iddiası |
 | `cdp_screenshot` | Görsel kanıt (rapor, "gördüğünü kanıtla") |
 | `cdp_readpdf`/`cdp_pdftotext` | Doküman kanıtı |
 | `net_export` | Trafik kanıtı (kimin ne konuştuğu) |
@@ -446,7 +456,7 @@ Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** �
 
 - [Guide Map](00-map.md#cdp-guide-map) — tüm rehberlerin indeksi.
 - [Scraping Master](09-scraping-master.md#web-kazıma-ustalığı--mevcut-araç-setinin-tam-kullanım-kılavuzu)
-  — 39 aracın tam parametre/çıktı/hata envanteri ve kanıtla öğrenilmiş 17 kural.
+  — 42 aracın tam parametre/çıktı/hata envanteri ve kanıtla öğrenilmiş 17 kural.
 - [Human Interaction](07-human-interaction.md#human-interaction-and-verification-challenges)
   — ölçme disiplini, görsel döngü, slider protokolü ve **Layer C** araç rolleri.
 - [DOM and Evaluation](03-dom-and-eval.md#dom-weaving-and-script-evaluation) —
@@ -459,3 +469,4 @@ Kilit `Singleton*` bulunursa `cdp_open` **sessizce geçici profile düşmez** �
   Bézier hareket, yazma temposu, stealth yamaları.
 - [Site Adapters](06-adapters.md#polymorphic-site-adapters) — hazır site profilleri.
 - [Protocol Core](01-protocol-core.md#protocol-core-architecture) — taşıma katmanı.
+- [Derin Tarama](11-derin-tarama.md) — §1'deki satır 40–42'nin arkasındaki tuzaklar: gölge körü merdiven, sahte tık, yazım bütçesi (üçü de kanıtlı vakalarıyla).

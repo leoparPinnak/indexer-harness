@@ -111,7 +111,8 @@ function cdpStatusPrompt(): string {
     // and counted the net tools twice — plan16-lock/list bring the totals to 39
     // tools in all, of which 37 are `cdp_*` and 2 are the net pair. Naming a
     // count that drifts out of date is worse than naming none, so the sentence states the split.
-    + '- The CDP extension drives Chromium-based browsers over the Chrome DevTools Protocol: 39 tools in all — 37 `cdp_*` plus `net_capture` and `net_export`.\n'
+    // plan16: derin tarama üçlüsü (cdp_deep_click/cdp_raw/cdp_describe) sayıyı 42'ye çekti.
+    + '- The CDP extension drives Chromium-based browsers over the Chrome DevTools Protocol: 42 tools in all — 40 `cdp_*` plus `net_capture` and `net_export`.\n'
     + '- Call `cdp_status` for the installed version, the live target count, and the proxy state; the CDP tab in the right sidebar shows the same state.\n'
     + '- `cdp_exec` runs page code with a guaranteed error envelope and optional post-condition; prefer it over `cdp_eval` when the outcome must be verified.\n'
     + '- Large payloads spill to a file: when `cdp_text`/`cdp_exec`/`cdp_extract` overflow a 12k-char budget the answer carries `spill` with the path and a head+tail envelope — read focused sections with `cdp_files`.\n'
@@ -125,6 +126,8 @@ function cdpStatusPrompt(): string {
     + '- After `cdp_navigate`, wait for readiness with `cdp_wait` (selector/visible/text/network-idle/navigation strategies) before evaluating or clicking.\n'
     // plan02: human-like input + locator DSL.
     + '- Prefer the locator DSL (`mode: "locator"`) on `cdp_click`/`cdp_fill` over raw coordinates; `cdp_fill` writes values with native setters + change/input events and verifies the result (K1-K9 in the skill guide).\n'
+    // plan16: the deep scan trio — shadow piercing, raw CDP, region description.
+    + '- Web-component (shadow-DOM) pages hide from light-DOM ladders ("0 candidates" on a page that visibly has the button): `cdp_deep_click` pierces open shadow roots AND delivers the trusted click atomically (pierceShadow defaults true; `cdp_click`/`cdp_fill` accept the flag too). `cdp_fill` with `force:true` writes past a stuck loading overlay (forced:true, full `actionability` stays reported); `cdp_describe` answers "what is at/near this point" in DOM words (not OCR); `cdp_raw` speaks plain CDP for uncovered domains (`Network.getAllCookies` = decrypted jar in one call) and refuses `Browser.close`/`Target.disposeBrowserContext` by house law.\n'
     // plan08: snapshots carry stable refs for follow-up reads.
     // plan09-fix: this cited `cdp_read`, which is not a tool in this bundle — a
     // name the model cannot call. The refs feed cdp_snapshot itself, the
@@ -140,7 +143,7 @@ function cdpStatusPrompt(): string {
     + '- `cdp_screenshot`/`cdp_viewport`/`cdp_printpdf`/`cdp_download` cover capture, media and file outcomes; `cdp_tabs` family manages targets; `cdp_text`/`cdp_expect` assert page state in-band.\n'
     // plan14: the visual loop — DOM analysis failed? look at the picture, then
     // ask what is at the point BEFORE clicking. Look and act stay separate.
-    + '- DOM analysis could not solve it? Do not write a script — look at the picture: `cdp_screenshot` → the model names a point → `cdp_locate` (DOM\'da ne olduğunu sormak için `cdp_locate`; görsel akış: `cdp_screenshot` → model → `cdp_locate` → `cdp_click`) proves what is there → `cdp_click({x,y})` acts. An empty point answers `ok:false` + `nearest`, so a wrong aim is corrected, not clicked.\n'
+    + '- DOM analysis could not solve it? Do not write a script — look at the picture: `cdp_screenshot` → the model names a point → `cdp_locate` (DOM\'da ne olduğunu sormak için `cdp_locate`; görsel akış: `cdp_screenshot` → model → `cdp_locate` → `cdp_click`) proves what is there → `cdp_click({x,y})` acts. An empty point answers `ok:false` + `nearest`, so a wrong aim is corrected, not clicked. No vision at all? `cdp_describe(x,y)` states the DOM truth of the point and its neighbours.\n'
 }
 
 /** Mount the CDP service, REST routes, model tools, and the prompt section. */
@@ -198,7 +201,7 @@ export function apply(ctx: Context, config: Config): Promise<void> {
   ctx.inject(['skills'], (skillCtx) => {
     skillCtx.skills.registerProvider(() => createCdpSkillProvider(
       config.guideAssetsDir,
-      (message) => skillCtx.logger.warn(message),
+      message => skillCtx.logger.warn(message),
     ))
   })
 
@@ -352,6 +355,24 @@ export {
   type LaunchedBrowser,
   type BrowserLaunchOptions,
 } from './launch.ts'
+
+/* plan17-port-survey: the parallel pre-launch scan, the occupied-port diagnosis,
+   and the operator `userNotice` that rides back on the same call. */
+export {
+  scanLoopbackPorts,
+  detectCdpInstances,
+  buildPortAllocationNotice,
+  surveyBeforeLaunch,
+  defaultPortScanInternals,
+  SCAN_RANGE_START,
+  SCAN_RANGE_END,
+  SCAN_CONNECT_TIMEOUT_MS,
+  PROBE_TIMEOUT_MS,
+  type PortScanResult,
+  type PortScanInternals,
+  type PortAllocationNotice,
+  type CdpInstance,
+} from './port-scan.ts'
 
 export {
   HumanInput,

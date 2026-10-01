@@ -38,6 +38,14 @@ import {
   type CdpViewport,
 } from './snapshot.ts'
 import { launchBrowser, type LaunchedBrowser, type BrowserLaunchOptions } from './launch.ts'
+/* plan17-port-survey: the parallel pre-launch scan, the occupied-port diagnosis
+   and the operator `userNotice` that rides back on the same call. */
+import {
+  scanLoopbackPorts,
+  detectCdpInstances,
+  buildPortAllocationNotice,
+  type PortAllocationNotice,
+} from './port-scan.ts'
 /* plan13-profile: named, durable user-data directories (`$DSH_HOME/profiles/<name>`)
    plus the honest lock report a second browser on the same profile must get. */
 import {
@@ -142,6 +150,9 @@ import {
   buildFocusCheckExpression,
   buildLocatorExpression,
   buildPointExpression,
+  buildDescribeExpression,
+  parseDescribeReply,
+  type DescribeReply,
   clampMaxChars,
   clampWaitTimeout,
   evaluateExpect,
@@ -331,7 +342,12 @@ export interface PrintToPdfOptions {
   readonly scale?: number | undefined
   readonly printBackground?: boolean | undefined
   /** Margins in inches. */
-  readonly marginIn?: { top?: number | undefined; bottom?: number | undefined; left?: number | undefined; right?: number | undefined } | undefined
+  readonly marginIn?: {
+    top?: number | undefined
+    bottom?: number | undefined
+    left?: number | undefined
+    right?: number | undefined
+  } | undefined
   /** e.g. `'1-3,5'`. */
   readonly pageRanges?: string | undefined
   readonly targetId?: string | undefined
@@ -462,6 +478,12 @@ export interface CdpOpenResult {
    * locations + PATH). Absent together with {@link executablePath}.
    */
   browserKind?: string
+  /**
+   * plan17-port-survey: what the parallel pre-launch scan found, and the notice
+   * the operator must be shown verbatim. Absent whenever this call did not
+   * launch a browser — a bare attach did not allocate a port.
+   */
+  portAllocation?: PortAllocationNotice
   /** Why the live session was kept instead of the requested port. */
   note?: string
   /**
@@ -664,7 +686,7 @@ export class CdpService {
   private lastViewport: ViewportObservation | undefined
   private lastViewportAt = 0
   // plan06: set only by an explicit cdp_viewport call; probe source 'override' hinges on it.
-  private viewportOverride: { width: number, height: number, deviceScaleFactor: number, mobile: boolean } | undefined
+  private viewportOverride: { width: number; height: number; deviceScaleFactor: number; mobile: boolean } | undefined
   private capture: ScreenshotCapture | undefined
   // plan06: captures serialize on one queue so two concurrent clips never overlap (plan 7.9).
   private captureQueue: Promise<unknown> = Promise.resolve()
@@ -741,13 +763,13 @@ export class CdpService {
       // so an untouched status payload stays byte-identical to the static read.
       ...(this.lastViewport !== undefined
         ? {
-            viewport: {
-              width: this.lastViewport.width,
-              height: this.lastViewport.height,
-              deviceScaleFactor: this.lastViewport.deviceScaleFactor,
-              source: this.lastViewport.source,
-            },
-          }
+          viewport: {
+            width: this.lastViewport.width,
+            height: this.lastViewport.height,
+            deviceScaleFactor: this.lastViewport.deviceScaleFactor,
+            source: this.lastViewport.source,
+          },
+        }
         : {}),
     }
   }
@@ -988,7 +1010,7 @@ export class CdpService {
             targets: 0,
             connectionId: '',
             reused: false,
-            reason: profileLockedMessage(requested.profile!, resolved, lock),
+            reason: profileLockedMessage(requested.profile ?? '', resolved, lock),
             reasonCode: 'PROFILE_LOCKED',
             profileDir: resolved,
           }
@@ -1080,6 +1102,7 @@ export class CdpService {
     }
 
     let launched: LaunchedBrowser | undefined
+    let portAllocation: PortAllocationNotice | undefined
     let launchedProfile = profileDir
     if (endpoint === undefined) {
       // plan04-proxy: a fresh browser must RIDE the capture proxy or nothing
@@ -1090,13 +1113,13 @@ export class CdpService {
       await this.ensureProxy()
       const proxyArgs = this.proxy?.isListening === true
         ? [
-            // MITM needs the flags: the proxy signs leaf certs with the
-            // local CA (net/ca.ts), which a fresh profile does not trust.
-            // plan07: only while the proxy is open. Loopback (CDP itself,
-            // local fixtures) keeps Chromium's implicit proxy bypass.
-            `--proxy-server=http://127.0.0.1:${String(this.proxy.port)}`,
-            '--ignore-certificate-errors',
-          ]
+          // MITM needs the flags: the proxy signs leaf certs with the
+          // local CA (net/ca.ts), which a fresh profile does not trust.
+          // plan07: only while the proxy is open. Loopback (CDP itself,
+          // local fixtures) keeps Chromium's implicit proxy bypass.
+          `--proxy-server=http://127.0.0.1:${String(this.proxy.port)}`,
+          '--ignore-certificate-errors',
+        ]
         : []
       // plan07: launch flags join the same profile story (G1/G26). The Set
       // dedupes identical flags; distinct caller flags stay and come last, so
@@ -1124,7 +1147,17 @@ export class CdpService {
           : {}),
         extraArgs,
       }
+      // plan17-port-survey: the pre-launch survey starts BEFORE the browser
+      // does, so it reports the machine as it was rather than as this launch
+      // left it. The allocation itself stays atomic — the OS picked the port via
+      // --remote-debugging-port=0 — so a TOCTOU race cannot occur.
+      const portSurvey = scanLoopbackPorts()
       launched = await launchBrowser(launchOpts)
+      portAllocation = await buildPortAllocationNotice(
+        await portSurvey,
+        await detectCdpInstances((await portSurvey).occupiedPorts),
+        launched.port,
+      )
       // plan07: this browser carries the profile's launch flags (G1/G26).
       this.stealthLaunchApplied = true
       endpoint = launched.websocketUrl
@@ -1158,6 +1191,8 @@ export class CdpService {
             : (requested.managed === true ? 'managed' : 'system'),
         }
         : {}),
+      // plan17-port-survey: the survey + notice, only when this call launched.
+      ...(portAllocation !== undefined ? { portAllocation } : {}),
     }
   }
 
@@ -1830,7 +1865,7 @@ export class CdpService {
   private async viewportMutation(
     session: PageSession,
     connection: CdpConnection,
-    next: { readonly width: number, readonly height: number, readonly deviceScaleFactor: number, readonly mobile: boolean } | undefined,
+    next: { readonly width: number; readonly height: number; readonly deviceScaleFactor: number; readonly mobile: boolean } | undefined,
   ): Promise<ViewportApplyOutcome> {
     // plan15-viewport: arm BEFORE the dispatch so the two counter reads bracket
     // the change; an arm that could not be installed is absence of evidence,
@@ -1922,7 +1957,7 @@ export class CdpService {
       send: (method, params, sessionId) => this.requireConnection().send(method, params, sessionId),
       getPageSession: targetId => this.getPageSession(targetId),
       isViewportOverrideActive: () => this.viewportOverride !== undefined,
-      onViewportObserved: observation => {
+      onViewportObserved: (observation) => {
         this.lastViewport = observation
         this.lastViewportAt = Date.now()
       },
@@ -2320,7 +2355,7 @@ export class CdpService {
    * @param targetId - optional target id.
    * @returns the CSS-pixel viewport, or undefined when it could not be read.
    */
-  async readViewport(targetId?: string): Promise<{ width: number, height: number } | undefined> {
+  async readViewport(targetId?: string): Promise<{ width: number; height: number } | undefined> {
     const session = await this.getPageSession(targetId)
     try {
       const evaluation = await session.evaluate(
@@ -2330,7 +2365,7 @@ export class CdpService {
       if (evaluation.error !== undefined || !evaluation.hasValue || evaluation.value === '') return undefined
       const parsed: unknown = JSON.parse(evaluation.value)
       if (parsed === null || typeof parsed !== 'object') return undefined
-      const record = parsed as { width?: unknown, height?: unknown }
+      const record = parsed as { width?: unknown; height?: unknown }
       if (typeof record.width === 'number' && typeof record.height === 'number') {
         return { width: record.width, height: record.height }
       }
@@ -2385,7 +2420,7 @@ export class CdpService {
 
   /** plan03: one-line candidates summary carried by a refused resolution. */
   private candidateSummary(): string {
-    const rows = (this.registry?.targets() ?? []).slice(0, 10).map((t) =>
+    const rows = (this.registry?.targets() ?? []).slice(0, 10).map(t =>
       `${t.type} "${t.title || '(no title)'}" ${t.url || 'about:blank'} [${t.targetId}]`)
     return rows.length > 0 ? rows.join(' | ') : 'no tracked targets'
   }
@@ -2768,7 +2803,7 @@ export class CdpService {
    * silent `Captured 0 of 0`.
    * @returns whether the listener is up, its port, and the bind error if not.
    */
-  async ensureProxy(): Promise<{ active: boolean, port?: number | undefined, error?: string | undefined }> {
+  async ensureProxy(): Promise<{ active: boolean; port?: number | undefined; error?: string | undefined }> {
     if (this.proxy?.isListening) return { active: true, port: this.proxy.port }
     const epoch = this.proxyEpoch
     // plan04-fix2: idle-port scan. The configured port can be permanently
@@ -3087,7 +3122,7 @@ export class CdpService {
    * the browser reports no isolated contexts at all).
    * @returns context rows, default first.
    */
-  async listContexts(): Promise<Array<{ contextId: string, isDefault: boolean, targets: number }>> {
+  async listContexts(): Promise<Array<{ contextId: string; isDefault: boolean; targets: number }>> {
     const connection = this.requireConnection()
     let ids: string[] = []
     try {
@@ -3878,6 +3913,57 @@ export class CdpService {
     return parseFocusCheckReply(evaluation.value)
   }
 
+  /* plan16 — the deep probe and the raw escape hatch (`cdp_describe` /
+     `cdp_raw`), plus `pierceShadow` plumbing shared with the locator DSL. */
+
+  /**
+   * plan16: the neighbourhood probe behind `cdp_describe` — the honest
+   * stand-in for "ekranda ne var?": the node at the point, its composed hit
+   * chain, and the boxes around it with the visible text each carries. This is
+   * DOM-SEMANTIC description and explicitly NOT OCR; a picture without markup
+   * still needs an eye (or a vision-capable model) to judge.
+   * @param x - viewport CSS x of the point.
+   * @param y - viewport CSS y of the point.
+   * @param radius - neighbourhood radius in CSS pixels (default 80).
+   * @param targetId - optional target id.
+   * @returns the parsed region reply, or undefined when the page could not answer.
+   */
+  async describeRegion(x: number, y: number, radius = 80, targetId?: string): Promise<DescribeReply | undefined> {
+    const session = await this.getPageSession(targetId)
+    const evaluation = await session.evaluate(buildDescribeExpression(x, y, radius), { timeoutMs: 3_000 })
+    if (evaluation.error !== undefined || !evaluation.hasValue || evaluation.value === '') return undefined
+    return parseDescribeReply(evaluation.value)
+  }
+
+  /**
+   * plan16: raw CDP passthrough — the escape hatch for domains no
+   * purpose-built tool covers (`Network.getAllCookies`, `Storage.*`, …). With
+   * a `targetId` the call routes through that page's flattened session;
+   * without one it goes browser-scope. Raw power carries one house law (S7):
+   * `Browser.close` and `Target.disposeBrowserContext` refuse — user browsers
+   * and profile storage never die without the user's explicit word;
+   * `cdp_tab_close` remains the deliberate per-tab tool.
+   * @param method - CDP method, e.g. `Network.getAllCookies`.
+   * @param params - protocol parameters.
+   * @param targetId - optional page target to scope the call through.
+   * @returns the raw `result` payload of the reply.
+   */
+  async raw(method: string, params: Record<string, unknown>, targetId?: string): Promise<unknown> {
+    const connection = this.connection
+    if (connection === undefined) throw new Error('cdp: no active connection')
+    if (method === 'Browser.close' || method === 'Target.disposeBrowserContext') {
+      throw new Error(
+        `cdp_raw: ${method} is refused (house law S7: user browsers and profile storage never die `
+        + 'without the user\'s explicit word; use cdp_tab_close for a deliberate per-tab close)',
+      )
+    }
+    if (targetId !== undefined) {
+      const session = await this.getPageSession(targetId)
+      return await connection.send(method, params, session.sessionId)
+    }
+    return await connection.send(method, params)
+  }
+
   /* plan02 wave 2 (Faz 2/3) — fill, the pre-click resolve, and network-idle. */
 
   /**
@@ -3976,7 +4062,7 @@ export class CdpService {
     for (;;) {
       const session = await this.getPageSession(targetId)
       const evaluation = await session.evaluate(
-        buildFillExpression(spec, { value, clear, verify }),
+        buildFillExpression(spec, { value, clear, verify, force: options.force === true }),
         { awaitPromise: true, timeoutMs: FILL_EVAL_TIMEOUT_MS },
       )
       const run = parseFillReply(evaluation, resolved)
@@ -4314,7 +4400,7 @@ export class CdpService {
     }
     const connection = this.connection
     const sessionId = liveSession.sessionId
-    const resolve = async (match: FindMatch): Promise<{ evidence?: RefEvidence, failure?: string }> => {
+    const resolve = async (match: FindMatch): Promise<{ evidence?: RefEvidence; failure?: string }> => {
       try {
         const evidence = await resolveRefOn(connection, sessionId, match.ref, documentRoot, { index })
         return { evidence: { ...evidence, targetId: resolvedTarget } }
@@ -4830,7 +4916,7 @@ export class CdpService {
 
     // The locator DSL decides WHICH slider; a ref/css/role+name answer supplies
     // the near box so a page with several tracks still addresses the right one.
-    let near: { x: number, y: number, width: number, height: number } | undefined
+    let near: { x: number; y: number; width: number; height: number } | undefined
     if (command.spec !== undefined) {
       const problem = validateLocatorSpec(command.spec)
       if (problem !== undefined) return fail(`cdp_captcha: ${problem}`)
@@ -4856,7 +4942,7 @@ export class CdpService {
       ...(command.thumbSelector !== undefined ? { thumbSelector: command.thumbSelector } : {}),
       ...(near !== undefined ? { near } : {}),
     }
-    const measure = async (): Promise<{ geometry: SliderGeometry | null, declared?: number, reason?: string }> => {
+    const measure = async (): Promise<{ geometry: SliderGeometry | null; declared?: number; reason?: string }> => {
       const evaluation = await session.evaluate(buildDragMeasureExpression(hints), { timeoutMs: 5_000 })
       if (!evaluation.hasValue || evaluation.value === '') {
         return { geometry: null, reason: 'cdp_captcha: the slider measurement produced no value' }
@@ -4904,7 +4990,7 @@ export class CdpService {
     // K2: a FRESH re-measure right before the release. T6 §3.4 — a window
     // resize between plan and release moved the track and the first drag landed
     // on 74 instead of the declared 72.
-    const retarget = async (): Promise<{ x: number, y: number } | null> => {
+    const retarget = async (): Promise<{ x: number; y: number } | null> => {
       const fresh = await measure()
       if (fresh.geometry === null) {
         warnings.push('pre-release re-measure failed — released at the planned coordinate')
@@ -5204,7 +5290,7 @@ export interface LocateOutcome {
   /** Closest element to an empty point — the aim correction. */
   nearest?: LocateNearest
   /** Viewport size in CSS pixels at probe time. */
-  viewport?: { width: number, height: number }
+  viewport?: { width: number; height: number }
 }
 
 /** plan08 §4.3: options for {@link CdpService.extract}. */
@@ -5272,7 +5358,7 @@ export interface ExtractOutcome {
   /** Extra caution lines (limit applied, visibleOnly removed …). */
   warnings?: string[]
   /** Where the data came from. */
-  source?: { nodes: number, totalNodes: number }
+  source?: { nodes: number; totalNodes: number }
   /** True when the spec's `limit` capped a larger match set. */
   limitApplied?: boolean
   /** Spec/validation failure detail when `ok` is false. */

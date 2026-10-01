@@ -32,7 +32,11 @@ import type { PageEvaluation } from './page.ts'
 export const FILL_DEFAULT_TIMEOUT_MS = 5_000
 
 /** Reason prefixes that make a fill attempt final instead of pollable. */
-const FILL_FATAL = /^(file inputs|element cannot be filled|no option matches|fill script failed|evaluation failed|locator script failed|locator reply exceeded|page returned no|unparseable|malformed|no locator given|scope not found)/
+const FILL_FATAL = new RegExp(
+  '^(file inputs|element cannot be filled|no option matches|fill script failed|evaluation failed'
+  + '|locator script failed|locator reply exceeded|page returned no|unparseable|malformed'
+  + '|no locator given|scope not found)',
+)
 
 /**
  * True when a failure reason can never improve with another attempt —
@@ -71,6 +75,14 @@ export interface FillOptions {
   verify?: boolean
   timeoutMs?: number
   targetId?: string
+  /**
+   * plan16: write even when the actionability axes fail (a spinner overlay or a
+   * hit-test quirk like "hit-target blocked" stops `cdp_fill` cold while the
+   * native setter would have been fine). Failures stay MEASURED and reported
+   * in `actionability`; the outcome carries `forced: true` so the bypass is
+   * visible, never silent.
+   */
+  force?: boolean
 }
 
 /** Envelope `cdp_fill` returns; `ok`, `action`, and `length` are required. */
@@ -78,6 +90,8 @@ export interface FillOutcome {
   ok: boolean
   action: 'fill'
   length: number
+  /** plan16: true when the write happened with `force` (actionability bypassed, still reported). */
+  forced?: boolean
   matched?: number
   strategy?: string
   candidates?: LocatorCandidate[]
@@ -103,7 +117,8 @@ export interface FillRenderInput {
   ok: boolean
   strategy?: string | undefined
   matched?: number | undefined
-  target?: { tag: string, id?: string | undefined, name?: string | undefined, role?: string | undefined } | undefined
+  forced?: boolean | undefined
+  target?: { tag: string; id?: string | undefined; name?: string | undefined; role?: string | undefined } | undefined
   post?: FillPostReport | undefined
   reason?: string | undefined
 }
@@ -216,11 +231,13 @@ export function parseFillReply(evaluation: PageEvaluation, targetId: string): Fi
 export function buildFillExpression(spec: LocatorSpec, options: FillOptions & { value: string }): string {
   const clear = options.clear !== false
   const verify = options.verify !== false
+  const force = options.force === true
   return String.raw`(async () => {
   const spec = ${JSON.stringify(spec)};
   const value = ${JSON.stringify(options.value)};
   const clear = ${clear ? 'true' : 'false'};
   const verify = ${verify ? 'true' : 'false'};
+  const force = ${force ? 'true' : 'false'};
   const MAX_NAME = 160;
   const MAX_TEXT = 4000;
   const MAX_CAND = 51;
@@ -236,7 +253,7 @@ ${locatorPageCore()}
     // whole fill script ("Identifier 'failures' has already been declared").
     // A nested block lets the fill body shadow core names legally.
     const failures = (out.actionability && out.actionability.failures) || [];
-    if (failures.length > 0) {
+    if (failures.length > 0 && force !== true) {
       out.ok = false;
       out.reason = 'not actionable: ' + failures.join('; ');
       return JSON.stringify(out);
@@ -350,8 +367,8 @@ ${locatorPageCore()}
  */
 export function buildFillReadExpression(kind: 'value' | 'contenteditable'): string {
   const read = kind === 'value'
-    ? `String(el.value === null || el.value === undefined ? '' : el.value)`
-    : `String(el.textContent || '')`
+    ? 'String(el.value === null || el.value === undefined ? \'\' : el.value)'
+    : 'String(el.textContent || \'\')'
   return String.raw`(() => {
   try {
     const el = document.activeElement;
@@ -365,7 +382,7 @@ export function buildFillReadExpression(kind: 'value' | 'contenteditable'): stri
 }
 
 /** Extract the fallback read-back value; undefined when the probe failed. */
-export function parseFillRead(evaluation: PageEvaluation): { url: string, actual?: string } | undefined {
+export function parseFillRead(evaluation: PageEvaluation): { url: string; actual?: string } | undefined {
   if (evaluation.error !== undefined || !evaluation.hasValue || evaluation.value === '') return undefined
   let parsed: unknown
   try {
@@ -470,7 +487,7 @@ export function renderFill(value: FillRenderInput, written?: string): string {
   const verified = post?.checked === true
     ? `; verified: ${post.passed ? 'value matches' : `value differs (actual "${post.actual}")`}`
     : ''
-  return `Filled ${subject} with "${payload}" (strategy=${strategy}, matched=${matched})${verified}.`
+  return `Filled ${subject} with "${payload}" (strategy=${strategy}, matched=${matched})${verified}${value.forced === true ? ' [forced: actionability failures bypassed, see actionability]' : ''}.`
 }
 
 /** Internal: re-exported so service.ts's poll loop shares the same budget knobs. */

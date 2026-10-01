@@ -53,3 +53,4 @@ resolves to an element found only by its box answers `ok:true` with
 - [Workflow Combos](05-workflow-combos.md#workflow-and-automation-combos) — how snapshot weaving and bounded evaluation are composed into end-to-end jobs.
 - [Scraping Master](09-scraping-master.md#22-okuma-ve-çıkarma--kazımanın-omurgası) — `cdp_snapshot`/`cdp_eval`/`cdp_extract`/`cdp_exec` sözleşmeleri ve 17 kanıtlı kural.
 - [Skill Architecture](10-skill-mimarisi.md#31-bir-öğeyi-bulma--9-yol) — snapshot ref, `cdp_find` ve görsel döngü arasındaki **geçiş kuralları** (`10-skill-mimarisi.md` §3.1).
+- [Derin Tarama](11-derin-tarama.md) — merdivenin gölge körü oluşu (`pierceShadow`) ve atomik bul-ölç-tık: bu probun gördüğü boşluğun nasıl kapatılacağı.

@@ -147,7 +147,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         switchTo: { type: 'number', description: 'The chosen live port from a needsChoice table; switches to it explicitly.' },
         // plan13-profile: the durable session. Omit for a throwaway profile.
         profile: { type: 'string', description: "Named persistent profile under $DSH_HOME/profiles (e.g. 'assistant'); the signed-in session survives restarts." },
-        managed: { type: 'boolean', description: "Launch on the DSH-owned pinned browser in $DSH_HOME/browser (strict: no system fall-back; a miss refuses honestly). Ignored when executablePath is given." },
+        managed: { type: 'boolean', description: 'Launch on the DSH-owned pinned browser in $DSH_HOME/browser (strict: no system fall-back; a miss refuses honestly). Ignored when executablePath is given.' },
       },
       output: {
         schema: {
@@ -192,6 +192,31 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             reason: { type: 'string', description: 'Why the call did nothing at all.' },
             reasonCode: { type: 'string', enum: ['INVALID_PROFILE_NAME', 'PROFILE_LOCKED'] },
             profileDir: { type: 'string', description: 'The absolute profile directory a refusal concerns.' },
+            // plan17-port-survey: the launch-time port survey and its notice.
+            portAllocation: {
+              type: 'object',
+              description: 'The parallel pre-launch port survey; present only when THIS call launched a browser. Relay userNotice to the user verbatim.',
+              additionalProperties: false,
+              properties: {
+                scannedRange: { type: 'string', required: true, description: 'The surveyed loopback port range, e.g. "9222-9250".' },
+                detectedOccupiedPorts: { type: 'array', required: true, items: { type: 'integer' }, description: 'Ports already occupied when the launch started.' },
+                activeCdpInstances: {
+                  type: 'array',
+                  required: true,
+                  description: 'Which occupied ports actually speak CDP, and with which browser.',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      port: { type: 'integer', required: true },
+                      browser: { type: 'string', required: true },
+                    },
+                  },
+                },
+                assignedPort: { type: 'integer', required: true, description: 'The port the new browser came up on, chosen atomically by the OS.' },
+                userNotice: { type: 'string', required: true, description: 'Mandatory notice to relay to the user exactly as written.' },
+              },
+            },
           },
         },
         render: (_args, val) => {
@@ -202,7 +227,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             return [{
               type: 'text',
               text: `No decision made — ${String(rows.length)} live browser endpoint(s) found; nothing was opened or closed.`
-                + `\nAsk the user which one to use, then call cdp_open again with switchTo/endpoint/profile:`
+                + '\nAsk the user which one to use, then call cdp_open again with switchTo/endpoint/profile:'
                 + rows.map(row => `\n  ${row.active ? '*' : ' '} port=${String(row.port)} profile=${row.profile === '' ? '(unknown)' : row.profile}`
                   + ` kind=${row.kind} ${row.attached ? 'attached' : 'not attached'} targets=${String(row.targets)}`
                   + `${row.browser !== '' ? ` ${row.browser}` : ''}`).join(''),
@@ -225,7 +250,14 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
               // plan16-managed: name what actually ran and how it was chosen.
               + (typeof val.browserKind === 'string' ? ` [${val.browserKind}: ${String(val.executablePath ?? '?')}]` : '')
               // plan04-F6: surface the kept-session verdict when the request differed.
-              + ('note' in val && val.note !== undefined ? ` ${String(val.note)}` : ''),
+              + ('note' in val && val.note !== undefined ? ` ${String(val.note)}` : '')
+              // plan17-port-survey: the notice is MANDATORY — relay it verbatim,
+              // so the port allocation is reported without costing another call.
+              + (val.portAllocation !== undefined
+                ? `\n${val.portAllocation.userNotice}`
+                  + `\nscanned=${val.portAllocation.scannedRange} occupied=[${val.portAllocation.detectedOccupiedPorts.join(', ')}]`
+                  + ` assigned=${String(val.portAllocation.assignedPort)}`
+                : ''),
           }]
         },
       },
@@ -262,6 +294,19 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           // plan16-managed: what actually launched, when this call launched.
           ...(res.executablePath !== undefined
             ? { executablePath: res.executablePath, ...(res.browserKind !== undefined ? { browserKind: res.browserKind } : {}) }
+            : {}),
+          // plan17-port-survey: the survey + mandatory notice ride on this call.
+          ...(res.portAllocation !== undefined
+            ? {
+              portAllocation: {
+                scannedRange: res.portAllocation.scannedRange,
+                detectedOccupiedPorts: [...res.portAllocation.detectedOccupiedPorts],
+                activeCdpInstances: res.portAllocation.activeCdpInstances
+                  .map(instance => ({ port: instance.port, browser: instance.browser })),
+                assignedPort: res.portAllocation.assignedPort,
+                userNotice: res.portAllocation.userNotice,
+              },
+            }
             : {}),
         }
       },
@@ -419,7 +464,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         ref: { type: 'string', description: 'Snapshot ref to verify in this call; adds ref/staleRef/refRect to the answer.' },
         // plan16-view: payload lenses over the same woven model.
         interactive: { type: 'boolean', description: 'Keep only interactive entries (buttons, links, fields…); nodeCount stays the woven total.' },
-        compact: { type: 'boolean', description: `Clip names/values to 80 chars — smaller payload, identical refs.` },
+        compact: { type: 'boolean', description: 'Clip names/values to 80 chars — smaller payload, identical refs.' },
         includeDiff: { type: 'boolean', description: 'Diff against the previous cdp_snapshot of the same target key: the nodes list narrows to what changed and a diff block carries the full delta (a rename shows as removed+added since the ref carries the name).' },
       },
       output: {
@@ -622,8 +667,18 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             ? {
               diff: {
                 base: previous !== undefined ? 'previous' : 'none',
-                added: (delta?.added ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
-                removed: (delta?.removed ?? []).map(n => ({ ref: n.ref, role: n.role, name: n.name, ...(n.value !== undefined ? { value: n.value } : {}) })),
+                added: (delta?.added ?? []).map(n => ({
+                  ref: n.ref,
+                  role: n.role,
+                  name: n.name,
+                  ...(n.value !== undefined ? { value: n.value } : {}),
+                })),
+                removed: (delta?.removed ?? []).map(n => ({
+                  ref: n.ref,
+                  role: n.role,
+                  name: n.name,
+                  ...(n.value !== undefined ? { value: n.value } : {}),
+                })),
                 changed: (delta?.changed ?? []).map(ch => ({ ref: ch.ref, role: ch.role, name: ch.name, was: ch.was })),
                 unchangedCount: delta?.unchangedCount ?? 0,
               },
@@ -907,6 +962,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         nth: { type: 'integer', description: '0-based candidate index; required when more than one element matches.' },
         scope: { type: 'string', description: 'CSS selector bounding the whole search.' },
         timeoutMs: { type: 'number', description: 'Locator resolve budget in ms (default 5000, max 30000).' },
+        pierceShadow: { type: 'boolean', description: 'Descend into open shadow roots while resolving (plan16; web-component pages are invisible to light-DOM ladders).' },
         targetId: { type: 'string', description: 'Target id (defaults to active tab).' },
       },
       output: {
@@ -984,7 +1040,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           const centre = centerOf(evidence.rect, viewport?.width, viewport?.height)
           const hit = await service.describePoint(centre.x, centre.y, targetId).catch(() => undefined)
           // plan05 branch 2: a dialog opened mid-click must fail the call.
-          const refDelivery = await service.guardPageDialog(targetId, async () => await service.click({ x: centre.x, y: centre.y }, targetId))
+          const refDelivery = await service.guardPageDialog(targetId,
+            async () => await service.click({ x: centre.x, y: centre.y }, targetId))
           // F1 (T3/T6): a ref click may only report success for a DELIVERED event.
           if (refDelivery?.delivered === false) {
             return {
@@ -1005,10 +1062,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             ...(evidence.renamed !== undefined ? { refNote: renameNote(evidence.renamed) } : {}),
             ...(hit !== undefined
               ? {
-                  targetId: hit.targetId,
-                  url: hit.url,
-                  ...(hit.hit !== undefined ? { hit: hit.hit } : {}),
-                }
+                targetId: hit.targetId,
+                url: hit.url,
+                ...(hit.hit !== undefined ? { hit: hit.hit } : {}),
+              }
               : {}),
           }
         }
@@ -1069,10 +1126,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             actionability: resolution.actionability,
             ...(evidence !== undefined
               ? {
-                  targetId: evidence.targetId,
-                  url: evidence.url,
-                  ...(evidence.hit !== undefined ? { hit: evidence.hit } : {}),
-                }
+                targetId: evidence.targetId,
+                url: evidence.url,
+                ...(evidence.hit !== undefined ? { hit: evidence.hit } : {}),
+              }
               : { targetId: resolution.targetId, url: resolution.url }),
           }
         }
@@ -1116,10 +1173,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           ok: true,
           ...(evidence !== undefined
             ? {
-                targetId: evidence.targetId,
-                url: evidence.url,
-                ...(evidence.hit !== undefined ? { hit: evidence.hit } : {}),
-              }
+              targetId: evidence.targetId,
+              url: evidence.url,
+              ...(evidence.hit !== undefined ? { hit: evidence.hit } : {}),
+            }
             : {}),
         }
       },
@@ -1238,10 +1295,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             ...(evidence.renamed !== undefined ? { refNote: renameNote(evidence.renamed) } : {}),
             ...(focus !== undefined
               ? {
-                  targetId: focus.targetId,
-                  url: focus.url,
-                  ...(focus.focused !== undefined ? { focused: focus.focused } : {}),
-                }
+                targetId: focus.targetId,
+                url: focus.url,
+                ...(focus.focused !== undefined ? { focused: focus.focused } : {}),
+              }
               : {}),
           }
         }
@@ -1265,10 +1322,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             : {}),
           ...(focus !== undefined
             ? {
-                targetId: focus.targetId,
-                url: focus.url,
-                ...(focus.focused !== undefined ? { focused: focus.focused } : {}),
-              }
+              targetId: focus.targetId,
+              url: focus.url,
+              ...(focus.focused !== undefined ? { focused: focus.focused } : {}),
+            }
             : {}),
         }
       },
@@ -1335,7 +1392,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           const seam: WaitSeam = {
             // plan02: byte-compat with the legacy contract — same call, raw timeout.
             waitForSelector: (selector, timeout) => session.waitForSelector(selector, timeout),
-            waitForLoad: (timeout) => session.waitForLoad(timeout),
+            waitForLoad: timeout => session.waitForLoad(timeout),
             currentUrl: () => session.url(),
             expectCheck: (check, spec, timeout) => service.expectCheck({ check, spec, timeoutMs: timeout, targetId }),
             networkIdle: (timeout, idle) => service.waitNetworkIdle(timeout, idle, targetId),
@@ -1385,10 +1442,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           // plan04-FAZ7: never dress an impossible capture up as `0 of 0`.
           ? [{ type: 'text', text: `Capture unavailable: ${String(val.reason)}` }]
           : [{
-              type: 'text',
-              text: `Captured ${String(val.returned)} of ${String(val.total)} exchanges:\n`
+            type: 'text',
+            text: `Captured ${String(val.returned)} of ${String(val.total)} exchanges:\n`
                 + val.exchanges.map(e => `[${e.method}] ${e.url} -> ${String(e.status)} (${String(e.durationMs)}ms)`).join('\n'),
-            }],
+          }],
       },
       execute: async (args) => {
         // plan04-FAZ7: make sure the interceptor can listen before reporting;
@@ -1462,10 +1519,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           // plan04-FAZ7: an impossible export is reported, not summarized as 0.
           ? [{ type: 'text', text: `Capture unavailable: ${String(val.reason)}` }]
           : [{
-              type: 'text',
-              text: `Traffic Summary: ${String(val.totalExchanges)} exchanges, ${String(val.totalBodyBytes)} body bytes across ${String(val.hosts.length)} hosts:\n`
+            type: 'text',
+            text: `Traffic Summary: ${String(val.totalExchanges)} exchanges, ${String(val.totalBodyBytes)} body bytes across ${String(val.hosts.length)} hosts:\n`
                 + val.hosts.map(h => `${h.host || '(local)'}: ${String(h.exchanges)} requests, ${String(h.totalBodyBytes)} bytes`).join('\n'),
-            }],
+          }],
       },
       execute: async () => {
         // plan04-FAZ7: same honest gate as net_capture — try to bind first.
@@ -2053,7 +2110,15 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
               encoding,
               ...(typeof args.maxBytes === 'number' ? { maxBytes: args.maxBytes } : {}),
             })
-            return { ok: true, op, path: result.path, content: result.content, encoding: result.encoding, bytes: result.bytes, truncated: result.truncated }
+            return {
+              ok: true,
+              op,
+              path: result.path,
+              content: result.content,
+              encoding: result.encoding,
+              bytes: result.bytes,
+              truncated: result.truncated,
+            }
           }
           case 'write': {
             if (typeof args.content !== 'string') throw new Error('cdp: write: content is required')
@@ -2173,7 +2238,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
       },
       // plan01 §5.5: service.exec envelopes every expected failure mode
       // (§3.5); only truly unexpected internal errors reach the pipeline.
-      execute: async (args) => spillTextField('cdp_exec', 'result', await service.exec({
+      execute: async args => spillTextField('cdp_exec', 'result', await service.exec({
         expression: args.expression,
         ...(typeof args.targetId === 'string' ? { targetId: args.targetId } : {}),
         ...(args.awaitPromise === true ? { awaitPromise: true } : {}),
@@ -2213,7 +2278,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `active: ${val.activeTargetId ?? 'none'}).`,
         }],
       },
-      execute: (args) => service.createTab({
+      execute: args => service.createTab({
         ...(typeof args.url === 'string' && args.url !== '' ? { url: args.url } : {}),
         ...(typeof args.focus === 'boolean' ? { focus: args.focus } : {}),
       }),
@@ -2249,7 +2314,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `${val.browserClosed ? '.' : ' (browser refused the close; tab still open).'}`,
         }],
       },
-      execute: (args) => service.closeTab({
+      execute: args => service.closeTab({
         ...(typeof args.targetId === 'string' && args.targetId !== '' ? { targetId: args.targetId } : {}),
         ...(args.force === true ? { force: true } : {}),
         ...(args.confirmActive === true ? { confirmActive: true } : {}),
@@ -2286,7 +2351,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `${val.activated ? '' : ' (browser focus not requested)'} (${String(val.pageCount)} pages).`,
         }],
       },
-      execute: (args) => service.focusTab(args.targetId, args.activateBrowser !== false),
+      execute: args => service.focusTab(args.targetId, args.activateBrowser !== false),
     })), 'cdp: cdp_tab_focus tool')
 
     // 23. cdp_scroll (plan03)
@@ -2301,8 +2366,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           type: 'string',
           description: 'wheel (default) | pagedown | pageup | top | bottom | anchor | selector.',
         },
-        x: { type: 'number', description: "Pointer X for wheel mode (default: viewport centre)." },
-        y: { type: 'number', description: "Pointer Y for wheel mode (default: viewport centre)." },
+        x: { type: 'number', description: 'Pointer X for wheel mode (default: viewport centre).' },
+        y: { type: 'number', description: 'Pointer Y for wheel mode (default: viewport centre).' },
         selector: { type: 'string', description: "CSS selector to scroll into view (mode 'selector')." },
         anchor: { type: 'string', description: "Element id or name to jump to (mode 'anchor')." },
         smooth: { type: 'boolean', description: "Use behavior:'smooth' for anchor/selector/top/bottom." },
@@ -2432,7 +2497,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             : `cdp_dialog failed [${val.error?.code ?? 'unknown'}]: ${val.error?.message ?? 'unknown error'}`,
         }],
       },
-      execute: async (args) => await service.dialog({
+      execute: async args => await service.dialog({
         ...(typeof args.action === 'string' && args.action !== ''
           ? { action: args.action as 'list' | 'accept' | 'dismiss' | 'policy' }
           : {}),
@@ -2517,7 +2582,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             : `cdp_upload failed [${val.error?.code ?? 'unknown'}]: ${val.error?.message ?? 'unknown error'}`,
         }],
       },
-      execute: async (args) => await service.upload({
+      execute: async args => await service.upload({
         files: Array.isArray(args.files)
           ? args.files.filter((entry): entry is string => typeof entry === 'string')
           : [],
@@ -2883,6 +2948,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         nth: { type: 'integer', description: '0-based candidate index; REQUIRED when more than one element matches.' },
         scope: { type: 'string', description: 'CSS selector bounding the whole search.' },
         value: { type: 'string', required: true, description: 'Value to write into the element.' },
+        force: { type: 'boolean', description: 'Write even when actionability fails (e.g. "hit-target blocked" by a loading overlay); failures stay measured in `actionability` and the outcome carries forced:true (plan16).' },
+        pierceShadow: { type: 'boolean', description: 'Descend into open shadow roots while resolving (plan16).' },
         clear: { type: 'boolean', description: 'Replace the current value (default true); false appends.' },
         verify: { type: 'boolean', description: 'Read the value back after writing (default true).' },
         timeoutMs: { type: 'number', description: 'Resolve + write budget in ms (default 5000, max 30000).' },
@@ -2903,6 +2970,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             actionability: LOCATOR_ACTIONABILITY_SCHEMA,
             post: FILL_POST_SCHEMA,
             fallbackUsed: { type: 'boolean', description: 'True when Input.insertText was needed after a reverted write.' },
+            forced: { type: 'boolean', description: 'True when the write happened with force (actionability failures bypassed, still reported).' },
             targetId: { type: 'string' },
             url: { type: 'string' },
             reason: { type: 'string' },
@@ -2922,12 +2990,16 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         }
         const targetId = typeof args.targetId === 'string' ? args.targetId : undefined
         // plan05: manual dialog guard (fill is not part of dialog.ts's guarded list).
-        return await service.guardPageDialog(targetId, async () => await service.fill(spec, args.value, {
+        const outcome = await service.guardPageDialog(targetId, async () => await service.fill(spec, args.value, {
           clear: args.clear !== false,
           verify: args.verify !== false,
           ...(typeof args.timeoutMs === 'number' ? { timeoutMs: args.timeoutMs } : {}),
           ...(targetId !== undefined ? { targetId } : {}),
+          force: args.force === true,
         }))
+        // plan16: the actionability bypass is VISIBLE — only a successful
+        // forced write stamps `forced`, never a plain failure.
+        return outcome.ok && args.force === true ? { ...outcome, forced: true } : outcome
       },
     })), 'cdp: cdp_fill tool')
 
@@ -3715,5 +3787,279 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         })
       },
     })), 'cdp: cdp_locate tool')
+
+    // 40. cdp_deep_click (plan16: atomic find → measure → trusted click, shadow-piercing by default)
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_deep_click',
+      description: 'Atomically find an element THROUGH open shadow roots and deliver a trusted click at its fresh '
+        + 'centre: one call replaces the fragile measure → round-trip → click(x,y) dance whose coordinates go stale '
+        + '(plan16). Google-Console-style web-component pages answer here where the light-DOM ladder says "0 '
+        + 'candidates". Same locator DSL as cdp_click (css > ariaLabel > role+name > text ladder); pierceShadow '
+        + 'defaults TRUE (set false for a pure light-DOM probe). Ambiguity still refuses with candidates — bring nth.',
+      parameters: {
+        css: { type: 'string', description: 'CSS selector; pierces shadow roots when searching.' },
+        ariaLabel: { type: 'string', description: 'Match the aria-label attribute (normalized comparison).' },
+        role: { type: 'string', description: 'ARIA role to match (requires name).' },
+        name: { type: 'string', description: 'Accessible name; only used together with role.' },
+        text: { type: 'string', description: 'Visible text resolved through the ladder aria-label > role+name > tag+text > innerText.' },
+        textMatch: { type: 'string', enum: ['exact', 'contains'] as const, description: 'How text compares (default exact).' },
+        nth: { type: 'integer', description: '0-based candidate index; REQUIRED when more than one element matches.' },
+        scope: { type: 'string', description: 'CSS selector bounding the whole search.' },
+        pierceShadow: { type: 'boolean', description: 'Descend into open shadow roots (default true; pass false to probe light DOM only).' },
+        timeoutMs: { type: 'number', description: 'Locator resolve budget in ms (default 5000, max 30000).' },
+        targetId: { type: 'string', description: 'Target id (defaults to active tab).' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            mode: { type: 'string', enum: ['locator'], description: 'Always locator — deep_click has no coordinate mode.' },
+            pierced: { type: 'boolean', description: 'True when the ladder descended into shadow roots.' },
+            matched: { type: 'integer' },
+            strategy: { type: 'string' },
+            candidates: LOCATOR_CANDIDATES_SCHEMA,
+            target: LOCATOR_TARGET_SCHEMA,
+            actionability: LOCATOR_ACTIONABILITY_SCHEMA,
+            hit: HIT_INFO_SCHEMA,
+            targetId: { type: 'string' },
+            url: { type: 'string' },
+            reason: { type: 'string', description: 'Failure line for ok:false (not found, ambiguous, or delivery refused).' },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.ok === false && typeof val.reason === 'string'
+            ? `Deep-click failed: ${val.reason}`
+            : `Deep-clicked via locator (strategy=${String(val.strategy ?? 'none')}, matched=${String(val.matched ?? 0)}, pierced=${String(val.pierced === true)}).`
+            + (val.hit !== undefined && val.hit !== null
+              ? `\nhit: ${String((val.hit as { tag?: string }).tag ?? '?')} [${String((val.hit as { name?: string }).name ?? '')}]`
+              : ''),
+        }],
+      },
+      execute: async (args) => {
+        const targetId = typeof args.targetId === 'string' ? args.targetId : undefined
+        const spec = locatorSpecFromArgs(args)
+        // plan16: pierce by default; an explicit false is honoured.
+        spec.pierceShadow = args.pierceShadow !== false
+        const invalid = validateLocatorSpec(spec)
+        if (invalid !== undefined) return { ok: false, mode: 'locator' as const, pierced: spec.pierceShadow === true, reason: invalid }
+        const resolution = await service.resolveForAction(spec, targetId, typeof args.timeoutMs === 'number' ? args.timeoutMs : undefined)
+        if (!resolution.ok) {
+          return {
+            ok: false,
+            mode: 'locator' as const,
+            pierced: spec.pierceShadow === true,
+            matched: resolution.matched,
+            strategy: resolution.strategy,
+            candidates: resolution.candidates,
+            reason: resolution.reason,
+            targetId: resolution.targetId,
+            url: resolution.url,
+          }
+        }
+        const hit = await service.describePoint(resolution.point.x, resolution.point.y, targetId).catch(() => undefined)
+        const delivery = await service.guardPageDialog(targetId,
+          async () => await service.click({ x: resolution.point.x, y: resolution.point.y }, targetId))
+        if (delivery?.delivered === false) {
+          return {
+            ok: false,
+            mode: 'locator' as const,
+            pierced: spec.pierceShadow === true,
+            matched: resolution.matched,
+            strategy: resolution.strategy,
+            target: resolution.target,
+            actionability: resolution.actionability,
+            reason: 'click not delivered: no click event reached the page (target hidden or in the background?) — activate the tab with cdp_tab_focus and retry',
+            targetId: resolution.targetId,
+            url: resolution.url,
+          }
+        }
+        return {
+          ok: true,
+          mode: 'locator' as const,
+          pierced: spec.pierceShadow === true,
+          matched: resolution.matched,
+          strategy: resolution.strategy,
+          candidates: [],
+          target: resolution.target,
+          actionability: resolution.actionability,
+          ...(hit?.hit !== undefined ? { hit: hit.hit } : {}),
+          targetId: resolution.targetId,
+          url: resolution.url,
+        }
+      },
+    })), 'cdp: cdp_deep_click tool')
+
+    // 41. cdp_raw (plan16: the raw CDP escape hatch with the S7 house law)
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_raw',
+      description: 'Send ONE raw CDP command through the bridge — the escape hatch for domains no purpose-built tool '
+        + 'covers (Network.getAllCookies, Storage.*, Target.getTargets, …). With targetId the call rides that page\u2019s '
+        + 'flattened session (page-scope methods); without it, browser-scope. One house law (S7): Browser.close and '
+        + 'Target.disposeBrowserContext REFUSE — user browsers and profile storage never die without the user\u2019s '
+        + 'explicit word; cdp_tab_close remains the deliberate per-tab tool. Power tool: verify with a purpose-built '
+        + 'reader afterwards.',
+      parameters: {
+        method: { type: 'string', required: true, description: 'CDP method name, e.g. Network.getAllCookies.' },
+        params: { type: 'string', description: 'Protocol params as a JSON object string, e.g. {"url":"https://x"} (empty = {}).' },
+        targetId: { type: 'string', description: 'Page target to scope the call through (page-scope methods); omit for browser-scope.' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            method: { type: 'string', required: true },
+            result: { type: 'string', description: 'JSON.stringify of the raw result payload.' },
+            targetId: { type: 'string' },
+            reason: { type: 'string', description: 'Failure line for ok:false (house-law refusal, parse error, or protocol error).' },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.ok === false && typeof val.reason === 'string'
+            ? `Raw CDP refused: ${val.reason}`
+            : `Raw CDP ${String(val.method)} answered.`,
+        }],
+      },
+      execute: async (args) => {
+        const method = String(args.method)
+        const targetId = typeof args.targetId === 'string' && args.targetId !== '' ? args.targetId : undefined
+        let params: Record<string, unknown> = {}
+        if (typeof args.params === 'string' && args.params.trim() !== '') {
+          try {
+            const parsed: unknown = JSON.parse(args.params)
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              return { ok: false, method, reason: 'params must be a JSON object (got a non-object JSON value)' }
+            }
+            params = parsed as Record<string, unknown>
+          } catch (error) {
+            return { ok: false, method, reason: `params is not valid JSON: ${(error as Error)?.message ?? 'parse failed'}` }
+          }
+        }
+        try {
+          const result = await service.raw(method, params, targetId)
+          let json: string
+          try {
+            json = JSON.stringify(result ?? null)
+          } catch {
+            json = '"[unserializable reply]"'
+          }
+          return { ok: true, method, result: json, ...(targetId !== undefined ? { targetId } : {}) }
+        } catch (error) {
+          return { ok: false, method, reason: (error as Error)?.message ?? 'raw CDP failed' }
+        }
+      },
+    })), 'cdp: cdp_raw tool')
+
+    // 42. cdp_describe (plan16: the neighbourhood probe — see, but in DOM words)
+    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+      name: 'cdp_describe',
+      description: 'Describe what is AT a point and around it, in DOM words: the node at the point (tag/role/name/rect '
+        + 'plus a short ancestry chain), its composed hit chain, and up to 12 neighbouring boxes with their visible '
+        + 'texts. This is DOM-SEMANTIC description — explicitly NOT OCR: a picture without markup still needs an eye '
+        + '(or a vision-capable model) to judge. Pair with cdp_screenshot (visual loop) and cdp_locate (probe vs act).',
+      parameters: {
+        x: { type: 'number', required: true, description: 'Viewport CSS x of the point.' },
+        y: { type: 'number', required: true, description: 'Viewport CSS y of the point.' },
+        radius: { type: 'number', description: 'Neighbourhood radius in CSS px (default 80).' },
+        targetId: { type: 'string', description: 'Target id (defaults to active tab).' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ok: { type: 'boolean', required: true },
+            url: { type: 'string', required: true },
+            targetId: { type: 'string' },
+            note: { type: 'string', required: true, description: 'Always states the honest scope: DOM-semantic, not OCR.' },
+            point: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                x: { type: 'number', required: true },
+                y: { type: 'number', required: true },
+                radius: { type: 'number', required: true },
+              },
+            },
+            node: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                tag: { type: 'string', required: true },
+                id: { type: 'string', required: true },
+                role: { type: 'string', required: true },
+                name: { type: 'string', required: true, description: 'Visible/accessible text, cut at 120 chars.' },
+                rect: {
+                  type: 'object', required: true, additionalProperties: false,
+                  properties: {
+                    x: { type: 'number', required: true }, y: { type: 'number', required: true },
+                    width: { type: 'number', required: true }, height: { type: 'number', required: true },
+                  },
+                },
+                chain: { type: 'array', items: { type: 'string' }, required: true, description: 'tag#id ancestry, node first.' },
+              },
+            },
+            hitChain: { type: 'array', items: { type: 'string' }, description: 'Composed hit test top→bottom at the point (id-carrying tags).' },
+            neighbors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  tag: { type: 'string', required: true },
+                  role: { type: 'string', required: true },
+                  name: { type: 'string', required: true },
+                  pointer: { type: 'boolean', required: true, description: 'cursor:pointer — an interactive hint.' },
+                  rect: {
+                    type: 'object', required: true, additionalProperties: false,
+                    properties: {
+                      x: { type: 'number', required: true }, y: { type: 'number', required: true },
+                      width: { type: 'number', required: true }, height: { type: 'number', required: true },
+                    },
+                  },
+                },
+              },
+            },
+            reason: { type: 'string', description: 'Failure line for ok:false (page refused the probe).' },
+          },
+        },
+        render: (_args, val) => [{
+          type: 'text',
+          text: val.ok === false && typeof val.reason === 'string'
+            ? `Describe failed: ${val.reason}`
+            : 'Region described (DOM-semantic, not OCR):\n'
+              + `point (${String((val.point as { x?: number } | undefined)?.x ?? '?')},${String((val.point as { y?: number } | undefined)?.y ?? '?')}) r=${String((val.point as { radius?: number } | undefined)?.radius ?? '?')} · `
+              + `node: ${String((val.node as { tag?: string } | undefined)?.tag ?? '?')} "${String((val.node as { name?: string } | undefined)?.name ?? '')}" · `
+              + `neighbors: ${String((val.neighbors ?? []).length)}`,
+        }],
+      },
+      execute: async (args) => {
+        const targetId = typeof args.targetId === 'string' ? args.targetId : undefined
+        const note = 'DOM-semantic description; not OCR'
+        const x = Number(args.x)
+        const y = Number(args.y)
+        const radius = typeof args.radius === 'number' ? args.radius : 80
+        const reply = await service.describeRegion(x, y, radius, targetId).catch(() => undefined)
+        if (reply === undefined) {
+          return { ok: false, url: '', note, reason: 'page did not answer the region probe (hidden target or refused evaluation)' }
+        }
+        return {
+          ok: reply.ok === true,
+          url: reply.url,
+          ...(targetId !== undefined ? { targetId } : {}),
+          note,
+          ...(reply.point !== undefined ? { point: reply.point } : {}),
+          ...(reply.node !== undefined ? { node: reply.node } : {}),
+          ...(reply.hitChain !== undefined ? { hitChain: reply.hitChain } : {}),
+          ...(reply.neighbors !== undefined ? { neighbors: reply.neighbors } : {}),
+          ...(typeof reply.reason === 'string' ? { reason: reply.reason } : {}),
+        }
+      },
+    })), 'cdp: cdp_describe tool')
   })
 }

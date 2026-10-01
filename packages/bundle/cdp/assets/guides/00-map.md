@@ -12,12 +12,14 @@ The extension source is located in `packages/bundle/cdp`.
 - [Workflow Combos](05-workflow-combos.md#workflow-and-automation-combos) — end-to-end task automation and browser worker orchestration in `packages/bundle/cdp/src/service.ts`.
 - [Site Adapters](06-adapters.md#polymorphic-site-adapters) — polymorphic data-driven site profiles and semantic selectors in `packages/bundle/cdp/src/adapters.ts`.
 - [Human Interaction and Verification Challenges](07-human-interaction.md#human-interaction-and-verification-challenges) — measure-before-you-click discipline, what the tools already guarantee, slider handling without a drag tool, and the first-party-only challenge boundary.
-- [Web Scraping Mastery](09-scraping-master.md#web-kazıma-ustalığı--mevcut-araç-setinin-tam-kullanım-kılavuzu) — the full 36-tool inventory, evidence-learned rules, and proven recipes for single-page extraction, table diagnosis, multi-page loops, and completeness discipline.
-- [Skill Architecture](10-skill-mimarisi.md#skill-mimarisi--ağ-haritası-akışlar-ve-polimorfizm) — the **network** itself: a 36-tool "what do I do next" table, 14 end-to-end flows (F1–F14), and 9 polymorphism clusters that say which path is preferred and when to switch.
+- [Web Scraping Mastery](09-scraping-master.md#web-kazıma-ustalığı--mevcut-araç-setinin-tam-kullanım-kılavuzu) — the full 42-tool inventory, evidence-learned rules, and proven recipes for single-page extraction, table diagnosis, multi-page loops, and completeness discipline.
+- [Skill Architecture](10-skill-mimarisi.md#skill-mimarisi--ağ-haritası-akışlar-ve-polimorfizm) — the **network** itself: a 42-tool "what do I do next" table, 14 end-to-end flows (F1–F14), and 9 polymorphism clusters that say which path is preferred and when to switch.
+- [Derin Tarama](11-derin-tarama.md) — gölge-DOM gerçekleri, atomik güvenilir tık (`cdp_deep_click`), ham CDP (`cdp_raw`), zorla yazma (`cdp_fill(force)`) ve görmek-yerine-tarif (`cdp_describe`): bilinmeyen tuzakların üç kanunu.
 
 ## See also
 
 - [Protocol Core](01-protocol-core.md#protocol-core-architecture) — low-level transport and session details.
 - [Site Adapters](06-adapters.md#polymorphic-site-adapters) — specialized automation profiles.
 - [Human Interaction](07-human-interaction.md#layer-c-verification-challenge-roles) — how to aim, approach, and report honestly.
-- [Skill Architecture](10-skill-mimarisi.md#1-araç--sonraki-araç-3939) — start here when you know *what* to do but not *which chain* of tools gets you there.
+- [Derin Tarama](11-derin-tarama.md) — gölgedeki düğmeyi bulup gerçek tıkı basmak ve ham CDP konuşmak: bilinmeyen tuzaklar burada.
+- [Skill Architecture](10-skill-mimarisi.md#1-araç--sonraki-araç-4242) — start here when you know *what* to do but not *which chain* of tools gets you there.

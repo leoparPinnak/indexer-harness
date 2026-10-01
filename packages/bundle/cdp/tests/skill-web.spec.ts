@@ -34,7 +34,7 @@ const TOOLS_FILE = join(BUNDLE, 'src', 'tools.ts')
  * Each tool is announced by a `// N. name` numbering comment, which is also the
  * ordinal the guides cite.
  */
-async function registeredTools(): Promise<{ ordinal: number, name: string }[]> {
+async function registeredTools(): Promise<{ ordinal: number; name: string }[]> {
   const src = await readFile(TOOLS_FILE, 'utf8')
   const found = [...src.matchAll(/^\s*\/\/ (\d+)\. ((?:cdp|net)_[a-z_]+)/gm)]
   expect(found.length, 'tools.ts numbering comments vanished — this suite reads the tool list from them').toBeGreaterThan(0)
@@ -68,13 +68,13 @@ const TOOL_NAME = /\b((?:cdp|net)_[a-z_]+)\b/g
 describe('plan17-skillweb — skill network contract', () => {
   // ---- KAPSAM ------------------------------------------------------------
 
-  it('registers exactly 39 tools and the guides say so', async () => {
+  it('registers exactly 42 tools and the guides say so', async () => {
     const tools = await registeredTools()
-    expect(tools).toHaveLength(39)
-    expect(tools.filter(t => t.name.startsWith('cdp_'))).toHaveLength(37)
+    expect(tools).toHaveLength(42)
+    expect(tools.filter(t => t.name.startsWith('cdp_'))).toHaveLength(40)
     expect(tools.filter(t => t.name.startsWith('net_'))).toHaveLength(2)
     const body = await skillBody()
-    expect(body, 'the tool count in the body is a claim that must match tools.ts').toMatch(/\b39\b/)
+    expect(body, 'the tool count in the body is a claim that must match tools.ts').toMatch(/\b42\b/)
   })
 
   it('names every registered tool in the injected skill body (1-hop access)', async () => {
@@ -82,12 +82,12 @@ describe('plan17-skillweb — skill network contract', () => {
     const missing = (await registeredTools())
       .filter(t => !new RegExp(`\\b${t.name}\\b`).test(body))
       .map(t => `${t.ordinal}. ${t.name}`)
-    expect(missing, `these tools never appear in SKILL.md — the agent cannot select them`).toEqual([])
+    expect(missing, 'these tools never appear in SKILL.md — the agent cannot select them').toEqual([])
   })
 
   it('documents every registered tool with parameters AND a failure signature', async () => {
     const guides = await guideBodies()
-    const under = (await registeredTools()).filter(t => {
+    const under = (await registeredTools()).filter((t) => {
       const section = toolSection([...guides.values()].join('\n'), t.name)
       const hasParams = /Parametre|PARAMETRELER|parameters?\*?\*?:/i.test(section)
       const hasFailure = /hata|error|reason|ok:false|in-band|bant içi|başarısız|FAIL|throw|NE ZAMAN KULLANMA/i.test(section)

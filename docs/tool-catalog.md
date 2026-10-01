@@ -42,7 +42,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-cdp` | `cdp_captcha`, `cdp_click`, `cdp_contexts`, `cdp_dialog`, `cdp_download`, `cdp_endpoints`, `cdp_eval`, `cdp_exec`, `cdp_expect`, `cdp_extract`, `cdp_files`, `cdp_fill`, `cdp_find`, `cdp_fingerprint`, `cdp_locate`, `cdp_lock`, `cdp_navigate`, `cdp_open`, `cdp_pdftotext`, `cdp_printpdf`, `cdp_profiles`, `cdp_readpdf`, `cdp_screenshot`, `cdp_scroll`, `cdp_snapshot`, `cdp_status`, `cdp_stealth`, `cdp_tab_close`, `cdp_tab_focus`, `cdp_tab_new`, `cdp_tabs`, `cdp_text`, `cdp_type`, `cdp_unlock`, `cdp_upload`, `cdp_viewport`, `cdp_wait`, `net_capture`, `net_export` | `ctx.tools`, `ctx.webServer (route registration seam)`, `ctx.systemPrompt (prompt section, opportunistic)`, `ctx.skills (skill provider, opportunistic)` | `tool/call`, `tool/result` | - | The CDP bundle ships 36 model-facing tools (34 `cdp_*` plus `net_capture`/`net_export`) under a `bundle/cdp` leaf (outside the `tool-*` completeness glob) and mounts on the webServer surface alone; skills and systemPrompt registration are opportunistic injects, so a bare-context boot still harvests every schema. `cdp_status` reflects installed version/targets/proxy and the active browser profile; `cdp_open` discovers existing endpoints and asks which profile to use before attaching or launching. `cdp_exec` prefers a guaranteed error envelope over `cdp_eval`; `cdp_captcha` detects, drives and verifies first-party challenges without ever crossing a third-party provider; stealth tools harden the client (detection posture) and do not bypass third-party CAPTCHA providers. |
+| `@deepseek-ai/dsh-cdp` | `cdp_captcha`, `cdp_click`, `cdp_contexts`, `cdp_deep_click`, `cdp_describe`, `cdp_dialog`, `cdp_download`, `cdp_endpoints`, `cdp_eval`, `cdp_exec`, `cdp_expect`, `cdp_extract`, `cdp_files`, `cdp_fill`, `cdp_find`, `cdp_fingerprint`, `cdp_locate`, `cdp_lock`, `cdp_navigate`, `cdp_open`, `cdp_pdftotext`, `cdp_printpdf`, `cdp_profiles`, `cdp_raw`, `cdp_readpdf`, `cdp_screenshot`, `cdp_scroll`, `cdp_snapshot`, `cdp_status`, `cdp_stealth`, `cdp_tab_close`, `cdp_tab_focus`, `cdp_tab_new`, `cdp_tabs`, `cdp_text`, `cdp_type`, `cdp_unlock`, `cdp_upload`, `cdp_viewport`, `cdp_wait`, `net_capture`, `net_export` | `ctx.tools`, `ctx.webServer (route registration seam)`, `ctx.systemPrompt (prompt section, opportunistic)`, `ctx.skills (skill provider, opportunistic)` | `tool/call`, `tool/result` | - | The CDP bundle ships 36 model-facing tools (34 `cdp_*` plus `net_capture`/`net_export`) under a `bundle/cdp` leaf (outside the `tool-*` completeness glob) and mounts on the webServer surface alone; skills and systemPrompt registration are opportunistic injects, so a bare-context boot still harvests every schema. `cdp_status` reflects installed version/targets/proxy and the active browser profile; `cdp_open` discovers existing endpoints and asks which profile to use before attaching or launching. `cdp_exec` prefers a guaranteed error envelope over `cdp_eval`; `cdp_captcha` detects, drives and verifies first-party challenges without ever crossing a third-party provider; stealth tools harden the client (detection posture) and do not bypass third-party CAPTCHA providers. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2452,6 +2452,10 @@ Click on viewport coordinates using realistic human-like pointer motion and timi
       "type": "number",
       "description": "Locator resolve budget in ms (default 5000, max 30000)."
     },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots while resolving (plan16; web-component pages are invisible to light-DOM ladders)."
+    },
     "targetId": {
       "type": "string",
       "description": "Target id (defaults to active tab)."
@@ -2483,6 +2487,102 @@ Manage isolated browser contexts in the active browser: list contexts with their
       "description": "With action:'open', the initial URL of the new tab (required)."
     }
   }
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_deep_click`
+
+Atomically find an element THROUGH open shadow roots and deliver a trusted click at its fresh centre: one call replaces the fragile measure → round-trip → click(x,y) dance whose coordinates go stale (plan16). Google-Console-style web-component pages answer here where the light-DOM ladder says "0 candidates". Same locator DSL as cdp_click (css > ariaLabel > role+name > text ladder); pierceShadow defaults TRUE (set false for a pure light-DOM probe). Ambiguity still refuses with candidates — bring nth.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "css": {
+      "type": "string",
+      "description": "CSS selector; pierces shadow roots when searching."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; REQUIRED when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots (default true; pass false to probe light DOM only)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Locator resolve budget in ms (default 5000, max 30000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  }
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_describe`
+
+Describe what is AT a point and around it, in DOM words: the node at the point (tag/role/name/rect plus a short ancestry chain), its composed hit chain, and up to 12 neighbouring boxes with their visible texts. This is DOM-SEMANTIC description — explicitly NOT OCR: a picture without markup still needs an eye (or a vision-capable model) to judge. Pair with cdp_screenshot (visual loop) and cdp_locate (probe vs act).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "x": {
+      "type": "number",
+      "description": "Viewport CSS x of the point."
+    },
+    "y": {
+      "type": "number",
+      "description": "Viewport CSS y of the point."
+    },
+    "radius": {
+      "type": "number",
+      "description": "Neighbourhood radius in CSS px (default 80)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  },
+  "required": [
+    "x",
+    "y"
+  ]
 }
 ```
 
@@ -2827,6 +2927,14 @@ Fill a form field through the locator DSL: resolve the element (css > aria-label
       "type": "string",
       "description": "Value to write into the element."
     },
+    "force": {
+      "type": "boolean",
+      "description": "Write even when actionability fails (e.g. \"hit-target blocked\" by a loading overlay); failures stay measured in `actionability` and the outcome carries forced:true (plan16)."
+    },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots while resolving (plan16)."
+    },
     "clear": {
       "type": "boolean",
       "description": "Replace the current value (default true); false appends."
@@ -3148,6 +3256,35 @@ Named-profile inventory and lifecycle for the persistent signed-in browser profi
       "description": "stop: the profile to stop; defaults to the active one. Refused in-band when it is not the active profile."
     }
   }
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+### `cdp_raw`
+
+Send ONE raw CDP command through the bridge — the escape hatch for domains no purpose-built tool covers (Network.getAllCookies, Storage.*, Target.getTargets, …). With targetId the call rides that page’s flattened session (page-scope methods); without it, browser-scope. One house law (S7): Browser.close and Target.disposeBrowserContext REFUSE — user browsers and profile storage never die without the user’s explicit word; cdp_tab_close remains the deliberate per-tab tool. Power tool: verify with a purpose-built reader afterwards.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "method": {
+      "type": "string",
+      "description": "CDP method name, e.g. Network.getAllCookies."
+    },
+    "params": {
+      "type": "string",
+      "description": "Protocol params as a JSON object string, e.g. {\"url\":\"https://x\"} (empty = {})."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Page target to scope the call through (page-scope methods); omit for browser-scope."
+    }
+  },
+  "required": [
+    "method"
+  ]
 }
 ```
 
