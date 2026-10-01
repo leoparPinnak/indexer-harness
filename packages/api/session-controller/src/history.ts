@@ -3,6 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Deque } from '@deepseek-ai/dsh-deque'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
+import type { CompactionStreamFrame } from '@deepseek-ai/dsh-compaction/types'
 import {
   isAppendSurfaceEvent,
   SessionLogOffset,
@@ -127,9 +128,15 @@ export class SessionHistoryController {
         readonly frame: SessionAssistantStreamFrame
         readonly ordinal: number
       }
+      | {
+        readonly type: 'compaction-stream'
+        readonly frame: CompactionStreamFrame
+        readonly ordinal: number
+      }
     >()
     let snapshotCursor: SessionSeqCursor | undefined
     let assistantStreamOrdinal = 0
+    let compactionStreamOrdinal = 0
     let wake: (() => void) | undefined
     const notify = (): void => {
       const resume = wake
@@ -172,6 +179,17 @@ export class SessionHistoryController {
         })
         notify()
       }, { global: true })
+    const disposeCompactionStream = request.compactionStream !== true
+      ? undefined
+      : this.ctx.on('compaction/stream', (frame) => {
+        if (frame.sessionId !== target) return
+        buffered.pushBack({
+          type: 'compaction-stream',
+          frame,
+          ordinal: ++compactionStreamOrdinal,
+        })
+        notify()
+      }, { global: true })
     const onAbort = (): void => { notify() }
     signal.addEventListener('abort', onAbort, { once: true })
     try {
@@ -187,8 +205,10 @@ export class SessionHistoryController {
       // The accumulator snapshot and this watermark are synchronous. Frames
       // through the cut are represented or superseded by that baseline,
       // including larger revisions from a retired Agent; later revision
-      // resets reach Client continuity validation.
+      // resets reach Client continuity validation. Compaction frames have no
+      // reconnect baseline: their cut simply suppresses pre-snapshot frames.
       const assistantStreamOrdinalCut = assistantStreamOrdinal
+      const compactionStreamOrdinalCut = compactionStreamOrdinal
       yield {
         type: 'snapshot',
         header: wireHeader(source.header),
@@ -222,6 +242,12 @@ export class SessionHistoryController {
           }
           continue
         }
+        if (item.type === 'compaction-stream') {
+          if (item.ordinal > compactionStreamOrdinalCut) {
+            yield { type: 'compaction-stream', frame: item.frame }
+          }
+          continue
+        }
         const expectedSeq = SessionSeq(nextOffset)
         if (item.event.seq < expectedSeq) continue
         if (item.event.seq !== expectedSeq) {
@@ -236,6 +262,7 @@ export class SessionHistoryController {
       disposeCreated()
       disposeEvent()
       disposeAssistantStream?.()
+      disposeCompactionStream?.()
     }
   }
 

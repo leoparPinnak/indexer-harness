@@ -31,6 +31,7 @@ const modeSchema = zod.union([
     contextBudgetTokens: tokenFigure.optional(),
     thresholdTokens: tokenFigure.optional(),
     maxTokens: tokenFigure.optional(),
+    keepLatestImages: zod.number().int().min(0).optional(),
   }),
   zod.object({
     summarizer: zod.literal('dedicated'),
@@ -39,6 +40,7 @@ const modeSchema = zod.union([
     contextBudgetTokens: tokenFigure.optional(),
     thresholdTokens: tokenFigure.optional(),
     maxTokens: tokenFigure.optional(),
+    keepLatestImages: zod.number().int().min(0).optional(),
   }),
 ]) as unknown as ZodType<CompactionSessionMode>
 
@@ -46,6 +48,7 @@ const stateSchema: ZodType<CompactionPolicyState> = zod.object({
   mode: modeSchema.nullable(),
   route: zod.object({ provider: zod.string(), model: zod.string() }).nullable(),
   modelCapacity: tokenFigure.nullable(),
+  keepLatestImages: zod.number().int().min(0).optional(),
 }) as unknown as ZodType<CompactionPolicyState>
 
 const viewSchema: ZodType<CompactionPolicyView> = zod.object({
@@ -68,8 +71,20 @@ function applyCompactionPolicy(
   event: SessionEvent,
 ): CompactionPolicyState {
   switch (event.type) {
-    case 'compaction/mode':
-      return { ...state, mode: event.data }
+    case 'compaction/mode': {
+      // Whole-value replace: a write without the window clears any older one,
+      // so the mirror drops the stale key instead of inheriting it.
+      const { keepLatestImages: _cleared, ...prior } = state
+      return {
+        ...prior,
+        mode: event.data,
+        // Mirrored verbatim under the shared contract name the pricing
+        // consumers read (`stateOf(session,'compactionPolicy')?.keepLatestImages`).
+        ...event.data.keepLatestImages === undefined
+          ? {}
+          : { keepLatestImages: event.data.keepLatestImages },
+      }
+    }
     case 'request/context':
       return {
         ...state,

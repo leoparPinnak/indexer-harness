@@ -1,5 +1,5 @@
 import type {
-  SessionAssistantSettlementEntry, SessionEventLikeEntry, SessionTransientEventEntry,
+  AssistantLiveChunkEvent, SessionAssistantSettlementEntry, SessionEventLikeEntry, SessionTransientEventEntry,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
 import type {
@@ -253,8 +253,13 @@ export class ConversationNodeAssembler implements ConversationViewSnapshotStore 
     entry?: SessionAssistantSettlementEntry,
   ): ConversationPublication {
     this.revised.clear()
-    const retired = [...this.inputs.values()].filter((candidate): candidate is SessionTransientEventEntry => (
+    // Assistant settlement retires only ASSISTANT transients; live compaction
+    // frames retire through their own terminal phase, never an attempt id.
+    const retired = [...this.inputs.values()].filter((
+      candidate,
+    ): candidate is SessionTransientEventEntry & { readonly event: AssistantLiveChunkEvent } => (
       candidate.type === 'transient'
+      && candidate.event.type === 'assistant/live-chunk'
       && candidate.event.data.attemptId === attemptId
     ))
     const retiredSeqs = new Set(retired.map(candidate => candidate.event.seq))

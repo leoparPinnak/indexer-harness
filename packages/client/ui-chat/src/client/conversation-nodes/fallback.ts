@@ -16,7 +16,9 @@ declare module '../contract/chat-nodes.ts' {
 export const unknownFallbackDefinition: ConversationNodeDefinition<UnknownSurfaceNode> = {
   kind: 'unknown-surface',
   target: 'chat',
-  match: event => event.type !== 'assistant/live-chunk' && isAppendSurfaceEvent(event)
+  match: event => event.type !== 'assistant/live-chunk'
+    && event.type !== 'compaction/live-chunk'
+    && isAppendSurfaceEvent(event)
     ? { id: String(event.seq), role: 'start' }
     : null,
   start: (_context, match) => ({

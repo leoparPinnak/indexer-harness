@@ -221,6 +221,13 @@ export interface PiImageRequestContext {
   resolveImageAccess: ImageAttachmentAccessResolver
   /** Request-level bound on base64-encoded image payload; omission leaves every image in place. */
   maxRequestImageBytes?: number
+  /**
+   * Route-level image-count bound. Beyond it the oldest images become text
+   * placeholders, so a growing session stops exceeding upstream caps such as
+   * "At most 8 image(s) may be provided in one prompt". Omission leaves the
+   * count unbounded.
+   */
+  maxImagesPerRequest?: number
   /** Route pixel and raw encoded-byte budgets. */
   requestImagePolicy?: ImageRequestPolicy
 }
@@ -270,7 +277,7 @@ async function toPiContextWithImages(
   images: PiImageRequestContext,
   onReplayDegrade?: (reason: string) => void,
 ): Promise<PiContext> {
-  const { attachments, resolveImageAccess, maxRequestImageBytes } = images
+  const { attachments, resolveImageAccess, maxRequestImageBytes, maxImagesPerRequest } = images
   const requestImagePolicy = images.requestImagePolicy ?? {
     maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
     maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
@@ -280,6 +287,7 @@ async function toPiContextWithImages(
   const requestMessages = offloadRequestImagesWithPolicy(split.messages, {
     representation: 'base64',
     ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
+    ...maxImagesPerRequest === undefined ? {} : { maxImages: maxImagesPerRequest, countQuantum: 1 },
     byteQuantum: 1,
     byteLength: ref => Math.min(ref.bytes, requestImagePolicy.maxBytes),
     placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
@@ -288,6 +296,7 @@ async function toPiContextWithImages(
   const exactMessages = offloadRequestImagesWithPolicy(requestMessages, {
     representation: 'base64',
     ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
+    ...maxImagesPerRequest === undefined ? {} : { maxImages: maxImagesPerRequest, countQuantum: 1 },
     byteQuantum: 1,
     byteLength: ref => (requestImages.get(ref.attachmentId) as RequestImageAttachment).bytes,
     placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),

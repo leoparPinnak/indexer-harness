@@ -194,6 +194,11 @@ const compaction = (over: Partial<CompactionSummaryNode> = {}): CompactionSummar
   summaryEventSeq: 7,
   shadowedItemCount: 16,
   shadowedTokenCount: 11_309,
+  contextTotalTokens: 312_000,
+  provider: 'geminigatawey',
+  model: 'gemini-3.8-flash-medium',
+  replacementTokenCount: 2_113,
+  reductionRatio: 0.81,
   windows: null,
   ...over,
 })

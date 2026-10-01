@@ -173,6 +173,27 @@ export interface ToolResultNode {
 }
 
 /**
+ * Live presentation of the running summarizer calls, folded from transient
+ * `compaction/live-chunk` frames. Deltas accumulate per `call`; a new call
+ * resets the text accumulators while the panel tracks the outgoing request's
+ * `maxTokens`.
+ */
+export interface CompactionLiveView {
+  /** Transaction identity shared with the durable `compaction/*` bracket. */
+  compactionId: string
+  /** Lifecycle phase of the newest summarize call. */
+  phase: 'requested' | 'streaming' | 'done' | 'failed' | 'cancelled'
+  /** Summarizer call the newest frame belongs to. */
+  call: { stage: 'window' | 'merge' | 'summary'; index: number; total: number | null }
+  /** Generation cap sent with the in-flight request; null before the first frame. */
+  maxTokens: number | null
+  /** Accumulated reasoning text of the tracked call. */
+  reasoning: string
+  /** Accumulated raw summary output of the tracked call. */
+  output: string
+}
+
+/**
  * One compaction lifecycle marker, anchored at the checkpoint's own log
  * position once it lands and at its windowed-run notice before that. The
  * conversation it shadowed on the model surface stays in the transcript above
@@ -189,8 +210,9 @@ export interface CompactionSummaryNode {
   time: number
   /** Lifecycle phase derived from the loaded evidence: `running` before the
    *  transaction settles, `landed` at a replacement checkpoint, `failed` at a
-   *  `compaction/end` that records an error and lands nothing. */
-  status: 'running' | 'landed' | 'failed'
+   *  `compaction/end` that records an error and lands nothing, `cancelled` at
+   *  the NEUTRAL operator-stop close (never presented as a failure). */
+  status: 'running' | 'landed' | 'failed' | 'cancelled'
   /** Summary text from the checkpoint's cited `compaction/summary` event; null when
    *  the window cut left that event outside (the marker is then not expandable). */
   summary: string | null
@@ -200,9 +222,28 @@ export interface CompactionSummaryNode {
   shadowedItemCount: number | null
   /** Estimated token price of the replaced items, or null when the summary event is unavailable or malformed. */
   shadowedTokenCount: number | null
+  /**
+   * Session context size in tokens at the moment compaction opened — the
+   * "going in" figure. Present from `compaction/start`, so a still-running row
+   * already shows it; null when that event is outside the window.
+   */
+  contextTotalTokens: number | null
+  /** Provider route that wrote (or is writing) the summary, or null when unannounced. */
+  provider: string | null
+  /** Model that wrote (or is writing) the summary, or null when unannounced. */
+  model: string | null
+  /** Token price of the framed replacement checkpoint, or null before it is priced. */
+  replacementTokenCount: number | null
+  /**
+   * Share of the shadowed context removed, in [0, 1], computed host-side so every
+   * client shows one number. Null until the replacement is priced.
+   */
+  reductionRatio: number | null
   /** Window count of a windowed map-reduce run, or null when the run was one-shot
    *  or its `compaction/windows` notice is outside the window. */
   windows: number | null
+  /** Live streaming presentation while the run is in flight, from transient frames. */
+  live?: CompactionLiveView
 }
 
 /**

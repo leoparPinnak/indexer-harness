@@ -6,8 +6,10 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { CompactionEngine, ManualCompactionError } from '@deepseek-ai/dsh-compaction'
-import type { CompactionPolicyState, CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction'
+import { CompactionEngine, CompactionId, ManualCompactionError } from '@deepseek-ai/dsh-compaction'
+import type {
+  CompactionPolicyState, CompactionResult, CompactionStreamFrame, CompactionTrigger,
+} from '@deepseek-ai/dsh-compaction'
 import type { TokenMeter } from '@deepseek-ai/dsh-token-meter'
 import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import { CONTEXT_WINDOW_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
@@ -32,7 +34,7 @@ import {
 } from './region.ts'
 import { compactionPolicyProjection } from './policy-projection.ts'
 import { summarizeWithLlm } from './summarizer.ts'
-import type { SummarizationInput, SummaryResult } from './summarizer.ts'
+import type { SummarizationInput, SummarizerLiveSink, SummaryConfig, SummaryResult } from './summarizer.ts'
 import type {
   BasicCompactionConfig,
   ModelCompactPolicyConfig,
@@ -55,6 +57,7 @@ type RegionSummarize = (
   agent: Agent,
   signal?: AbortSignal,
   onWindows?: (windows: number) => void,
+  live?: SummarizerLiveSink,
 ) => Promise<SummaryResult>
 
 /** Resolve the exact provider/model durably routed for the latest request. */
@@ -66,6 +69,28 @@ function routedTarget(
     return undefined
   }
   return { provider: config.provider, model: config.model }
+}
+
+/**
+ * Report a still-open compaction bracket as busy, before any range decision.
+ * A prior attempt that appended `compaction/start` without reaching its
+ * `compaction/end` owns the session until a seed boundary makes it stale.
+ * @param session - session whose durable log holds the open bracket, if any.
+ * @throws ManualCompactionError with code `busy` while one is open.
+ */
+function assertNoOpenManualCompaction(session: Session): void {
+  // Existing Session history read; migration deferred — this reads the durable
+  // bracket state, which no projection currently folds.
+  // oxlint-disable-next-line typescript/no-deprecated
+  const events = session.snapshotEvents()
+  let open = false
+  for (const event of events) {
+    if (event.type === 'compaction/start') open = true
+    else if (event.type === 'compaction/end' || event.type === 'session/end-seed') open = false
+  }
+  if (open) {
+    throw new ManualCompactionError('busy', 'manual compaction: compaction lock is already active')
+  }
 }
 
 /** Resolve the conversation target used to select an optional policy override. */
@@ -150,6 +175,8 @@ export class BasicCompactionEngine extends CompactionEngine {
   private settingsResolved: ResolvedConfig | undefined
 
   private readonly warnedPressureConfigTargets = new Set<string>()
+  /** Live compaction transactions by identity, for operator cancellation. */
+  private readonly activeCompactions = new Map<CompactionId, AbortController>()
   private readonly overflowRetries = new WeakMap<Agent, number>()
   private readonly overflowAgents = new WeakMap<Session, Agent>()
 
@@ -209,6 +236,8 @@ export class BasicCompactionEngine extends CompactionEngine {
           const result = await this.compactIfNeeded(agent, 'pressure', signal)
           if (result !== null) logResult(result, 'step pressure')
         } catch (error: unknown) {
+          // Operator stop of an automatic run is neutral: no warning, no retry.
+          if (error instanceof ManualCompactionError && error.code === 'cancelled') return next()
           if (error instanceof TargetPressureConfigError) {
             if (this.warnedPressureConfigTargets.has(error.targetKey)) return next()
             this.warnedPressureConfigTargets.add(error.targetKey)
@@ -289,6 +318,7 @@ export class BasicCompactionEngine extends CompactionEngine {
    * @param agent - supplies routed-model history, fallback model, and session id.
    * @param signal - optional cancellation forwarded to the adapter.
    * @param onWindows - optional map-phase notice forwarded to the summarizer.
+   * @param live - optional per-call live-update sink forwarded to the summarizer.
    * @returns safe text summary blocks, the exact final call envelope and
    *   output, and intermediate calls when the windowed pipeline ran.
    */
@@ -297,20 +327,51 @@ export class BasicCompactionEngine extends CompactionEngine {
     agent: Agent,
     signal?: AbortSignal,
     onWindows?: (windows: number) => void,
+    live?: SummarizerLiveSink,
   ): Promise<SummaryResult> {
+    return summarizeWithLlm(this.ctx, this.summarizerConfig(agent), input, agent, signal, onWindows, live)
+  }
+
+  /**
+   * Resolve the effective summarizer policy for this agent. The same object
+   * feeds the real summarize call and the route announced on `compaction/start`,
+   * so a live row can never name a model different from the one that answers.
+   * @param agent - agent whose routed target and stored mode select the policy.
+   * @returns the effective summarization config.
+   */
+  private summarizerConfig(agent: Agent): SummaryConfig {
     const target = conversationTarget(agent)
     const policy = target === undefined
       ? this.config
       : resolveTargetPolicy(this.config, target)
     const mode = this.policyState(agent.session).mode
-    const config = {
+    return {
       ...policy,
       ...mode !== null && mode.summarizer === 'dedicated'
         ? { summarizationProvider: mode.provider, summarizationModel: mode.model }
         : {},
       ...mode?.maxTokens === undefined ? {} : { maxTokens: mode.maxTokens },
     }
-    return summarizeWithLlm(this.ctx, config, input, agent, signal, onWindows)
+  }
+
+  /**
+   * Name the route a live `compaction/start` row shows while the summarizer
+   * runs. A dedicated mode names its own model; otherwise the route is resolved
+   * exactly as `summarizeWithLlm` resolves an inherited conversation target.
+   * @param agent - agent whose mode and routed target choose the summarizer.
+   * @returns the announced provider/model pair, or an empty object when no
+   *   route is resolvable yet.
+   */
+  protected announcedSummarizerRoute(agent: Agent): { summarizerProvider?: string; summarizerModel?: string } {
+    const config = this.summarizerConfig(agent)
+    // Empty strings mean "inherit", not "named": the shipped defaults are blank
+    // so an unconfigured deployment resolves the conversation target instead.
+    if (config.summarizationProvider !== '' && config.summarizationModel !== '') {
+      return { summarizerProvider: config.summarizationProvider, summarizerModel: config.summarizationModel }
+    }
+    const target = conversationTarget(agent)
+    if (target === undefined) return {}
+    return { summarizerProvider: target.provider, summarizerModel: target.model }
   }
 
   /**
@@ -355,7 +416,7 @@ export class BasicCompactionEngine extends CompactionEngine {
       }
       const range = selectCompactableRange(agent.session, measurement, 0)
       if (range === null) return null
-      return this.compactRegion(range.start, range.end, agent, signal)
+      return this.compactRegionQuiet(range.start, range.end, agent, signal)
     }
 
     const mode = this.policyState(agent.session).mode
@@ -390,7 +451,8 @@ export class BasicCompactionEngine extends CompactionEngine {
         /* v8 ignore next -- paired with the defensive post-success branch above. */
         break
       }
-      result = await this.compactRegion(range.start, range.end, agent, signal)
+      result = await this.compactRegionQuiet(range.start, range.end, agent, signal)
+      if (result === null) return null
       measurement = meter.measure(agent.session)
       if (measurement.totalTokens < spec.thresholdTokens) return result
     }
@@ -416,15 +478,21 @@ export class BasicCompactionEngine extends CompactionEngine {
     agent: Agent,
     signal?: AbortSignal,
   ): Promise<CompactionResult> {
-    return compactSurfaceRegion(
+    return this.runCancellable(signal, (composed, hooks) => compactSurfaceRegion(
       this.regionDependencies(),
       agent.session,
       start,
       end,
       agent,
-      { owner: 'current-turn', stability: 'whole-surface' },
-      signal,
-    )
+      {
+        owner: 'current-turn',
+        stability: 'whole-surface',
+        ...this.announcedSummarizerRoute(agent),
+        onOpen: hooks.onOpen,
+        live: hooks.live,
+      },
+      composed,
+    ))
   }
 
   /**
@@ -446,13 +514,24 @@ export class BasicCompactionEngine extends CompactionEngine {
         const operationSignal = AbortSignal.any([agentSignal, signal])
         try {
           operationSignal.throwIfAborted()
+          // A live unmatched `compaction/start` is reported BEFORE range
+          // selection. Once selection can legitimately return null (a surface
+          // holding only checkpoints is nothing to compact), a caller must not
+          // see a silent `null` where the honest answer is "a compaction is
+          // still open on this session".
+          assertNoOpenManualCompaction(agent.session)
+          // retainTokens = 0 makes the backward walk stop at the last node, so
+          // the range is "everything except the newest item" and the tool-pairing
+          // walk then finds the largest balanced span. That span is the real
+          // conversation, not the lone previous checkpoint: on a 718K session
+          // this is what turns one /compact into 169053 -> 1489 tokens.
           const range = selectCompactableRange(
             agent.session,
             this.ctx.tokenMeter.measure(agent.session),
             0,
           )
           if (range === null) return null
-          return await compactSurfaceRegion(
+          return await this.runCancellable(operationSignal, (signal, hooks) => compactSurfaceRegion(
             this.regionDependencies(),
             agent.session,
             range.start,
@@ -462,12 +541,15 @@ export class BasicCompactionEngine extends CompactionEngine {
               owner: null,
               stability: 'selected-span',
               ...sourceCommandId === undefined ? {} : { sourceCommandId },
+              ...this.announcedSummarizerRoute(agent),
               flush: async () => {
                 await this.ctx.sessions.flush(agent.session)
               },
+              onOpen: hooks.onOpen,
+              live: hooks.live,
             },
-            operationSignal,
-          )
+            signal,
+          ))
         } catch (error: unknown) {
           if (agentSignal.aborted && operationSignal.reason === agentSignal.reason) {
             throw new ManualCompactionError(
@@ -493,7 +575,82 @@ export class BasicCompactionEngine extends CompactionEngine {
   private regionDependencies(): { meter: TokenMeter; summarize: RegionSummarize } {
     return {
       meter: this.ctx.tokenMeter,
-      summarize: (input, owner, abort, onWindows) => this.summarize(input, owner, abort, onWindows),
+      summarize: (input, owner, abort, onWindows, live) => this.summarize(input, owner, abort, onWindows, live),
+    }
+  }
+
+  /**
+   * Run one region transaction with an operator-cancellable abort composition:
+   * the caller's signal and the per-transaction stop controller are joined, the
+   * minted identity is registered for {@link CompactionEngine.cancelCompaction},
+   * and live frames are published as transient `compaction/stream` events. The
+   * stop controller aborts with its own `ManualCompactionError('cancelled')`
+   * reason, so every downstream `throwIfAborted()` surfaces the NEUTRAL
+   * cancelled outcome and never a failure.
+   * @param signal - caller-owned cancellation composed with the stop controller.
+   * @param run - transaction body receiving the composed signal and the two hooks.
+   * @returns the transaction result.
+   */
+  private async runCancellable<T>(
+    signal: AbortSignal | undefined,
+    run: (
+      signal: AbortSignal,
+      hooks: {
+        onOpen: (compactionId: CompactionId) => void
+        live: (frame: CompactionStreamFrame) => void
+      },
+    ) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController()
+    const composed = signal === undefined
+      ? controller.signal
+      : AbortSignal.any([signal, controller.signal])
+    let opened: CompactionId | undefined
+    const hooks = {
+      onOpen: (compactionId: CompactionId): void => {
+        opened = compactionId
+        this.activeCompactions.set(compactionId, controller)
+      },
+      live: (frame: CompactionStreamFrame): void => {
+        this.ctx.emit('compaction/stream', frame)
+      },
+    }
+    try {
+      return await run(composed, hooks)
+    } finally {
+      if (opened !== undefined && this.activeCompactions.get(opened) === controller) {
+        this.activeCompactions.delete(opened)
+      }
+    }
+  }
+
+  /**
+   * Stop the running compaction under `compactionId`: abort the composed signal
+   * (its reason is the neutral `ManualCompactionError('cancelled')`), tear down
+   * the in-flight summarizer request at the provider transport, and let the
+   * transaction close its bracket with the `cancelled` marker.
+   * @param compactionId - transaction identity from `compaction/start`.
+   * @returns whether a live compaction was cancelled.
+   */
+  override cancelCompaction(compactionId: CompactionId): boolean {
+    const controller = this.activeCompactions.get(compactionId)
+    if (controller === undefined) return false
+    controller.abort(new ManualCompactionError('cancelled', 'compaction stopped by the operator'))
+    return true
+  }
+
+  /** Automatic-region wrapper: an operator stop is a neutral no-op, not a failure. */
+  private async compactRegionQuiet(
+    start: SessionSeq,
+    end: SessionSeq,
+    agent: Agent,
+    signal?: AbortSignal,
+  ): Promise<CompactionResult | null> {
+    try {
+      return await this.compactRegion(start, end, agent, signal)
+    } catch (error: unknown) {
+      if (error instanceof ManualCompactionError && error.code === 'cancelled') return null
+      throw error
     }
   }
 

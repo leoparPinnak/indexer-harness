@@ -14,7 +14,8 @@ import {
   ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
-import { setCompactionMode } from '@deepseek-ai/dsh-compaction'
+import { CompactionId, setCompactionMode } from '@deepseek-ai/dsh-compaction'
+import type { SessionCancelCompactionRequest, SessionCancelCompactionValue } from './types.ts'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
@@ -193,6 +194,27 @@ export class SessionCommandController {
       )
     }
     return { mode: request.mode }
+  }
+
+  /**
+   * Stop one running compaction transaction: the abort reaches the provider
+   * transport and the bracket closes with the neutral `cancelled` marker —
+   * the same non-failure neutrality a turn's user abort has.
+   * @param request - compaction identity from `compaction/start`.
+   * @returns whether a live compaction was cancelled.
+   */
+  async cancelCompaction(
+    request: SessionCancelCompactionRequest,
+  ): Promise<SessionCancelCompactionValue> {
+    const engine = this.ctx.get('compaction')
+    if (engine === undefined) {
+      throw new RemoteError(
+        'gateway/internal',
+        'cancellation is unavailable: this deployment mounts no compaction service',
+        {},
+      )
+    }
+    return { cancelled: engine.cancelCompaction(CompactionId(request.compactionId)) }
   }
 
   /**

@@ -12,9 +12,16 @@ import type {
   ContentBlock, FinishReason, GenerateOptions, Message, TokenUsage, ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { CompactionSummaryCall } from '@deepseek-ai/dsh-compaction'
+import type {
+  CompactionStreamCall, CompactionStreamPhase, CompactionSummaryCall,
+} from '@deepseek-ai/dsh-compaction'
 
-interface SummaryConfig {
+/**
+ * Effective summarization policy for one agent: the route that writes the
+ * summary and the generation cap it sends. Exported so the backend can name the
+ * same route on `compaction/start` that the summarize call will use.
+ */
+export interface SummaryConfig {
   readonly summarizationProvider: string
   readonly summarizationModel: string
   readonly maxTokens: number
@@ -136,6 +143,27 @@ export type SummaryResult = {
   }
 )
 
+/**
+ * One live per-call progress update handed to the region's stream sink. The
+ * region binds transaction identity (compaction/session/command) and time
+ * before publishing it as a transient `compaction/stream` frame.
+ */
+export interface SummarizerLiveUpdate {
+  /** Summarizer call this update belongs to. */
+  readonly call: CompactionStreamCall
+  /** Lifecycle phase of the call. */
+  readonly phase: CompactionStreamPhase
+  /** Generation cap sent with this call. */
+  readonly maxTokens: number
+  /** Visible summary-text delta on `streaming` updates. */
+  readonly text?: string
+  /** Reasoning delta on `streaming` updates. */
+  readonly reasoning?: string
+}
+
+/** Sink receiving one {@link SummarizerLiveUpdate} per summarize-call event. */
+export type SummarizerLiveSink = (update: SummarizerLiveUpdate) => void
+
 /** One completed summarizer call: raw output, safe summary, and its envelope. */
 interface SummarizerCall {
   rawOutput: ContentBlock[]
@@ -150,6 +178,139 @@ interface SummarizerCall {
 interface PartialCheckpoint {
   message: Message
   call: SummarizerCall
+}
+
+/** Longest inline base64 payload replayed verbatim before it is marked. */
+const BASE64_MARK_THRESHOLD = 256
+
+/** A `data:*;base64,` payload of marker-worthy length inside free text. */
+const DATA_URI_BASE64_PATTERN = /data:[\w.+#/-]*;base64,[A-Za-z0-9+/=]{256,}/g
+
+/** A JSON string value of marker-worthy length that looks like raw base64. */
+const JSON_BASE64_VALUE_PATTERN = /"[^"\n]{1,64}"\s*:\s*"[A-Za-z0-9+/=]{256,}"/g
+
+/** Stand-in text for one scrubbed inline base64 payload. */
+function base64Marker(characters: number): string {
+  return `[inline base64 omitted at compaction: ${characters} chars]`
+}
+
+/** Stand-in text block for one dropped image block. */
+function imageMarker(block: Extract<ContentBlock, { type: 'image' }>): ContentBlock {
+  return {
+    type: 'text',
+    text: `[image omitted at compaction: ${block.attachment.mediaType}, ${block.attachment.bytes} bytes]`,
+  }
+}
+
+/**
+ * Replace marker-worthy inline base64 runs inside one string. Data-URI
+ * payloads keep their `data:...;base64,` prefix; JSON-string values keep the
+ * key and quoting, so the surrounding structure survives the scrub.
+ * @param text - free text (visible text, reasoning, or raw tool arguments).
+ * @returns the same string when nothing was scrubbed, otherwise the marked copy.
+ */
+function scrubBase64Runs(text: string): string {
+  if (text.length < BASE64_MARK_THRESHOLD) return text
+  const scrubbed = text
+    .replace(DATA_URI_BASE64_PATTERN, (match: string) => {
+      const cut = match.lastIndexOf(',') + 1
+      return `${match.slice(0, cut)}${base64Marker(match.length - cut)}`
+    })
+    .replace(JSON_BASE64_VALUE_PATTERN, (match: string) => {
+      const cut = match.lastIndexOf('":"') + 3
+      return `${match.slice(0, cut)}${base64Marker(match.length - cut - 1)}"`
+    })
+  return scrubbed === text ? text : scrubbed
+}
+
+/** Count every replayed image block, including tool-result nests. */
+function countImageBlocks(blocks: readonly ContentBlock[]): number {
+  let count = 0
+  for (const block of blocks) {
+    if (block.type === 'image') count += 1
+    else if (block.type === 'tool-result') count += countImageBlocks(block.content)
+  }
+  return count
+}
+
+/** Mutable traversal state: how many image blocks the walk has passed. */
+interface ReplayWalkState {
+  imagesSeen: number
+}
+
+/**
+ * Sanitize one block list in replay order: scrub every inline base64 run,
+ * keep only the image block whose ordinal equals `keepIndex`, and mark the
+ * rest. Tool results recurse; tool-call arguments are scrubbed as free text.
+ */
+function sanitizeBlocks(
+  blocks: readonly ContentBlock[],
+  state: ReplayWalkState,
+  keepIndex: number,
+): ContentBlock[] {
+  let next: ContentBlock[] | undefined
+  for (const [index, block] of blocks.entries()) {
+    let replacement: ContentBlock | undefined
+    if (block.type === 'image') {
+      const keep = state.imagesSeen === keepIndex
+      state.imagesSeen += 1
+      replacement = keep ? block : imageMarker(block)
+    } else if (block.type === 'tool-result') {
+      const content = sanitizeBlocks(block.content, state, keepIndex)
+      if (content !== block.content) replacement = { ...block, content }
+    } else if (block.type === 'text' || block.type === 'reasoning') {
+      const text = scrubBase64Runs(block.text)
+      if (text !== block.text) replacement = { ...block, text }
+    } else if (block.type === 'tool-call') {
+      const args = scrubBase64Runs(block.arguments)
+      if (args !== block.arguments) replacement = { ...block, arguments: args }
+    }
+    if (replacement !== undefined) {
+      next ??= blocks.slice(0, index)
+      next.push(replacement)
+    } else {
+      next?.push(block)
+    }
+  }
+  return next ?? blocks as ContentBlock[]
+}
+
+/** Apply {@link sanitizeBlocks} to one message under the shared walk state. */
+function sanitizeMessage(
+  message: Message,
+  state: ReplayWalkState,
+  keepIndex: number,
+): Message {
+  const content = sanitizeBlocks(message.content, state, keepIndex)
+  return content === message.content ? message : { ...message, content }
+}
+
+/**
+ * Compaction replay media policy: inline base64 never reaches the summarizer,
+ * and only the NEWEST image block is replayed as a real image — the freshest
+ * visual is the only one the checkpoint can meaningfully describe. Every
+ * earlier image becomes an explicit placeholder carrying its media type and
+ * byte size, and every base64 run in free text, reasoning, or tool-call
+ * arguments becomes a character-count marker. Walk order is the replay order
+ * (head first, then messages in surface order, tool results depth-first), so
+ * `keepIndex` selects the chronologically last image.
+ * @param head - optional system head of the replayed prefix.
+ * @param messages - the replayed region messages in surface order.
+ * @returns the sanitized head and messages; identity is preserved wherever
+ *   nothing was scrubbed or dropped.
+ */
+export function sanitizeReplayMedia(
+  head: Message | undefined,
+  messages: readonly Message[],
+): { head: Message | undefined; messages: Message[] } {
+  const totalImages = (head === undefined ? 0 : countImageBlocks(head.content))
+    + messages.reduce((count, message) => count + countImageBlocks(message.content), 0)
+  const keepIndex = totalImages - 1
+  const state: ReplayWalkState = { imagesSeen: 0 }
+  return {
+    head: head === undefined ? undefined : sanitizeMessage(head, state, keepIndex),
+    messages: messages.map(message => sanitizeMessage(message, state, keepIndex)),
+  }
 }
 
 /**
@@ -167,6 +328,7 @@ interface PartialCheckpoint {
  * @param signal - optional cancellation forwarded to every call.
  * @param onWindows - optional notice invoked once with the planned map-pass
  *   count when the windowed pipeline runs; never called on the one-shot path.
+ * @param live - optional per-call live-update sink for streaming presentation.
  * @returns safe text-only summary blocks, the exact final call envelope and
  *   output, and the intermediate window/merge calls when the pipeline ran.
  */
@@ -177,7 +339,9 @@ export async function summarizeWithLlm(
   agent: Agent,
   signal?: AbortSignal,
   onWindows?: (windows: number) => void,
+  live?: SummarizerLiveSink,
 ): Promise<SummaryResult> {
+  const { head, messages } = sanitizeReplayMedia(input.head, input.messages)
   const latest = agent.session.requestHeader()?.config
   const configured = config.summarizationProvider.length === 0
     ? undefined
@@ -197,7 +361,7 @@ export async function summarizeWithLlm(
 
   const meter = ctx.tokenMeter
   const estimate = (message: Message): number => meter.estimateMessage(message)
-  const headMessages: Message[] = input.head === undefined ? [] : [input.head]
+  const headMessages: Message[] = head === undefined ? [] : [head]
   const toolsTokens = meter.estimateTools(input.tools)
   const headTokens = headMessages.reduce((total, message) => total + estimate(message), 0)
 
@@ -206,7 +370,7 @@ export async function summarizeWithLlm(
   const mapBudget = contextWindow === undefined
     ? Number.POSITIVE_INFINITY
     : contextWindow - config.maxTokens - toolsTokens - headTokens - estimate(mapInstruction)
-  const windows = packWindows(input.messages, mapBudget, estimate)
+  const windows = packWindows(messages, mapBudget, estimate)
 
   if (windows.length <= 1) {
     const call = await runSummarizerCall(
@@ -214,9 +378,11 @@ export async function summarizeWithLlm(
       config,
       target,
       input.tools,
-      [...headMessages, ...input.messages, instructionMessage(COMPACTION_INSTRUCTION)],
+      [...headMessages, ...messages, instructionMessage(COMPACTION_INSTRUCTION)],
       agent,
       signal,
+      live,
+      { stage: 'summary', index: 0, total: null },
     )
     return finalResult(call, [])
   }
@@ -225,7 +391,10 @@ export async function summarizeWithLlm(
 
   const intermediateCalls: CompactionSummaryCall[] = []
   let partials: PartialCheckpoint[] = []
-  for (const window of windows) {
+  for (const [windowIndex, window] of windows.entries()) {
+    // Operator stop ends the map phase between calls: no window may start after
+    // an abort reaches the run.
+    signal?.throwIfAborted()
     const call = await runSummarizerCall(
       ctx,
       config,
@@ -234,6 +403,8 @@ export async function summarizeWithLlm(
       [...headMessages, ...window, mapInstruction],
       agent,
       signal,
+      live,
+      { stage: 'window', index: windowIndex, total: windows.length },
     )
     intermediateCalls.push(callRecord('window', call))
     partials.push({ message: taggedCheckpointMessage(call.summary), call })
@@ -243,7 +414,9 @@ export async function summarizeWithLlm(
   const mergeBudget = contextWindow === undefined
     ? Number.POSITIVE_INFINITY
     : contextWindow - config.maxTokens - toolsTokens - headTokens - estimate(mergeInstruction)
+  let mergeIndex = 0
   for (;;) {
+    signal?.throwIfAborted()
     const groups = packWindows(partials.map(partial => partial.message), mergeBudget, estimate)
     if (groups.length === 1) {
       const call = await runSummarizerCall(
@@ -251,9 +424,11 @@ export async function summarizeWithLlm(
         config,
         target,
         input.tools,
-        [...headMessages, ...groups[0]!, mergeInstruction],
+        [...headMessages, ...groups.flat(), mergeInstruction],
         agent,
         signal,
+        live,
+        { stage: 'merge', index: mergeIndex, total: null },
       )
       return finalResult(call, intermediateCalls)
     }
@@ -267,6 +442,8 @@ export async function summarizeWithLlm(
         next.push(members[0]!)
         continue
       }
+      // Operator stop ends the merge phase between calls as well.
+      signal?.throwIfAborted()
       const call = await runSummarizerCall(
         ctx,
         config,
@@ -275,7 +452,10 @@ export async function summarizeWithLlm(
         [...headMessages, ...group, mergeInstruction],
         agent,
         signal,
+        live,
+        { stage: 'merge', index: mergeIndex, total: null },
       )
+      mergeIndex += 1
       intermediateCalls.push(callRecord('merge', call))
       next.push({ message: taggedCheckpointMessage(call.summary), call })
     }
@@ -362,7 +542,10 @@ function packWindows(
  * @param tools - tool schemas replayed for prefix-cache alignment.
  * @param messages - the exact call messages (head, window, instruction).
  * @param agent - supplies the session id.
- * @param signal - optional cancellation forwarded to the adapter.
+ * @param signal - optional cancellation forwarded to the adapter (the abort
+ *   reason propagates: an operator stop arrives as `ManualCompactionError('cancelled')`).
+ * @param live - optional per-call live-update sink.
+ * @param call - this call's stage identity within the run.
  * @returns the call's raw output, safe summary, and envelope.
  */
 async function runSummarizerCall(
@@ -373,7 +556,10 @@ async function runSummarizerCall(
   messages: readonly Message[],
   agent: Agent,
   signal?: AbortSignal,
+  live?: SummarizerLiveSink,
+  call?: CompactionStreamCall,
 ): Promise<SummarizerCall> {
+  const callRef: CompactionStreamCall = call ?? { stage: 'summary', index: 0, total: null }
   const assembler = new BlockAssembler()
   const options: GenerateOptions = {
     provider: target.provider,
@@ -385,9 +571,27 @@ async function runSummarizerCall(
     purpose: 'compaction',
     ...signal === undefined ? {} : { signal },
   }
-  for await (const chunk of ctx.llm.stream(options)) assembler.push(chunk)
+  // The status row flips to "request sent — awaiting response" here, before
+  // any provider byte arrives.
+  live?.({ call: callRef, phase: 'requested', maxTokens: config.maxTokens })
+  for await (const chunk of ctx.llm.stream(options)) {
+    assembler.push(chunk)
+    if (chunk.type === 'text-delta') {
+      live?.({ call: callRef, phase: 'streaming', maxTokens: config.maxTokens, text: chunk.text })
+    } else if (chunk.type === 'reasoning-delta') {
+      live?.({ call: callRef, phase: 'streaming', maxTokens: config.maxTokens, reasoning: chunk.text })
+    }
+  }
   const error = finishError(assembler.finish)
-  if (error !== undefined) throw error
+  if (error !== undefined) {
+    live?.({
+      call: callRef,
+      phase: signal?.aborted === true ? 'cancelled' : 'failed',
+      maxTokens: config.maxTokens,
+    })
+    throw error
+  }
+  live?.({ call: callRef, phase: 'done', maxTokens: config.maxTokens })
 
   const rawOutput = assembler.blocks()
   const summary = summaryText(rawOutput)

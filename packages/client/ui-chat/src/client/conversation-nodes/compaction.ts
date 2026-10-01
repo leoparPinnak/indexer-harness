@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  CompactionSummaryNode, ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
+  CompactionLiveView, CompactionSummaryNode, ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import { chatNode } from './common.ts'
@@ -14,18 +14,23 @@ declare module '../contract/chat-nodes.ts' {
 }
 
 interface CompactionState {
+  readonly start?: ConversationMatch
   readonly summary?: ConversationMatch
   readonly checkpoint?: ConversationMatch
   readonly windows?: ConversationMatch
   readonly end?: ConversationMatch
+  /** Live streaming presentation folded from transient compaction frames. */
+  readonly live?: CompactionLiveView
 }
 
 function fallbackState(context: ConversationNodeContext<CompactionState>): CompactionState {
+  const start = context.matches.find(match => match.event.type === 'compaction/start')
   const summary = context.matches.find(match => match.event.type === 'compaction/summary')
   const checkpoint = context.matches.find(match => compactSource(match.event) !== undefined)
   const windows = context.matches.find(match => match.event.type === 'compaction/windows')
   const end = context.matches.find(match => match.event.type === 'compaction/end')
   return {
+    ...start === undefined ? {} : { start },
     ...summary === undefined ? {} : { summary },
     ...checkpoint === undefined ? {} : { checkpoint },
     ...windows === undefined ? {} : { windows },
@@ -42,6 +47,10 @@ export const compactionDefinition: ConversationNodeDefinition<CompactionState> =
     if (checkpoint !== undefined && checkpoint.sourceCommandId === undefined) {
       return { id: checkpoint.compactionId, role: 'update' }
     }
+    if (event.type === 'compaction/live-chunk') {
+      if (event.data.sourceCommandId !== undefined) return null
+      return { id: String(event.data.compactionId), role: 'update' }
+    }
     if (event.type === 'compaction/start'
       || event.type === 'compaction/windows'
       || event.type === 'compaction/summary'
@@ -53,11 +62,23 @@ export const compactionDefinition: ConversationNodeDefinition<CompactionState> =
     }
     return null
   },
-  start: () => ({}),
+  start: (_context, match) => (match.event.type === 'compaction/start'
+    ? { start: match }
+    : {}),
   update: (context, match) => updateCompactionState(context.state, match),
+  // Live stream frames repaint on animation frames so streaming text stays
+  // smooth instead of repainting per provider chunk.
+  publication: match => (match.event.type === 'compaction/live-chunk' ? 'animation-frame' : 'immediate'),
   buildViewNode: (context) => {
     const state = context.state ?? fallbackState(context)
-    if (state.checkpoint === undefined && state.windows === undefined && state.end === undefined) return null
+    // A bare start marker still renders: it is the live row that names the
+    // summarizer and the incoming context while the model is working. It is
+    // dropped only when no lifecycle event of any kind reached the window.
+    if (state.start === undefined
+      && state.checkpoint === undefined
+      && state.summary === undefined
+      && state.windows === undefined
+      && state.end === undefined) return null
     const marker = compactSummary(state)
     return chatNode(context, 'compaction', marker.seq, marker)
   },

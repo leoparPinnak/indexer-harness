@@ -147,7 +147,7 @@ export class TokenMeter extends Service {
     const header = requestHeader === undefined
       ? state.header
       : canonicalHeader(requestHeader)
-    const pricing = this._routeImagePricing(header)
+    const pricing = this._routeImagePricing(session, header)
     const fileText = this._fileRequestText()
     const surface = priceSurface(state.surface, pricing, fileText)
     const anchor = state.anchor
@@ -189,11 +189,25 @@ export class TokenMeter extends Service {
     }))
   }
 
-  /** Resolve the routed model's image pricing, when the llm service and route declare one. */
-  private _routeImagePricing(header: EpochHeader | undefined): LlmImageRequestPricing | undefined {
+  /**
+   * Resolve the routed model's image pricing, when the llm service and route
+   * declare one. The session's keep-newest-N image window (`keepLatestImages`
+   * on the `compactionPolicy` projection state) rides along as an override, so
+   * the gauge prices exactly the pruned request the wire will carry.
+   */
+  private _routeImagePricing(
+    session: Session,
+    header: EpochHeader | undefined,
+  ): LlmImageRequestPricing | undefined {
     const config = header?.config
     if (config === undefined) return undefined
-    return this.ctx.get('llm')?.imageRequestPricing(config.provider, config.model)
+    const policy = this.ctx.sessionProjections.stateOf(session, 'compactionPolicy') as
+      | { keepLatestImages?: number }
+      | undefined
+    const override = policy?.keepLatestImages === undefined
+      ? undefined
+      : { maxImagesPerRequest: policy.keepLatestImages }
+    return this.ctx.get('llm')?.imageRequestPricing(config.provider, config.model, override)
   }
 
   /** Resolve request-time file projection when an LLM service is mounted. */

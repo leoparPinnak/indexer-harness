@@ -55,10 +55,12 @@ function failureMessage(
   return code === 'AUTH' ? t('message.failure.auth') : message
 }
 
-function ModelRetryItem({ node, active, t }: {
+function ModelRetryItem({ node, active, t, stop }: {
   node: ModelRetryNode
   active: boolean
   t: ChatViewSlotProps['t']
+  /** Local stop: cancels the turn (and its retry wait) with a neutral close. */
+  stop?: () => void
 }) {
   // Anchor the host-scheduled delay to this browser's first render of the
   // retry node. Host event time and Date.now() may belong to different clocks.
@@ -106,6 +108,17 @@ function ModelRetryItem({ node, active, t }: {
         <span className={css.retryText} role="status">
           {t('message.retry.status', { label, retry: node.retry, maximum, seconds })}
         </span>
+        {active && stop !== undefined
+          && (
+            <button
+              type="button"
+              className={css.retryStop}
+              data-retry-stop
+              onClick={stop}
+            >
+              {t('message.compaction.stop')}
+            </button>
+          )}
       </summary>
       <div className={css.retryDetails}>
         <div>
@@ -357,9 +370,16 @@ export const CompactionNodeView = memo(function CompactionNodeView({ node, t }: 
 })
 
 /** Correlated retry-chain keyed Chat renderer. */
-export const RetryNodeView = memo(function RetryNodeView({ node, t }: ChatNodeViewProps<'model-retry'>) {
+export const RetryNodeView = memo(function RetryNodeView({ node, t, stopAction }: ChatNodeViewProps<'model-retry'>) {
   const data = node.data
-  return <ModelRetryItem node={data.current} active={data.current.retryState === 'scheduled'} t={t} />
+  return (
+    <ModelRetryItem
+      node={data.current}
+      active={data.current.retryState === 'scheduled'}
+      t={t}
+      {...stopAction === undefined ? {} : { stop: stopAction }}
+    />
+  )
 })
 
 /** Terminal turn-error keyed Chat renderer. */

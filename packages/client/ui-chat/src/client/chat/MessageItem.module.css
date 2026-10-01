@@ -145,6 +145,74 @@
   white-space: nowrap;
 }
 
+/* Live-run affordance: a quiet ring that turns while the summarizer works, so
+   the row reads as "waiting" without a second animated element competing with
+   the conversation's own activity indicators. */
+.compactionSpinner {
+  flex: none;
+  box-sizing: border-box;
+  width: calc(10px + var(--dsh-content-font-delta, 0px));
+  height: calc(10px + var(--dsh-content-font-delta, 0px));
+  margin: 0 6px;
+  border: 1.5px solid var(--dsw-alias-label-caption);
+  border-top-color: var(--dsw-alias-label-secondary);
+  border-radius: 50%;
+  animation: compaction-spin 900ms linear infinite;
+}
+
+@keyframes compaction-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Sits between the narrative summary and the counters: the model that did the
+   work, dimmed so the counts stay the loudest part of the row. */
+.compactionModel {
+  flex: none;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-label-caption);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(16px + var(--dsh-content-font-delta, 0px));
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactionStats {
+  flex: none;
+  margin-left: 8px;
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The saving is the one figure worth drawing the eye to, so it gets the only
+   tinted surface on the row. */
+.compactionRatio {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary-dimmed);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(16px + var(--dsh-content-font-delta, 0px));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A failed run keeps the row shape but states plainly that nothing landed. */
+.compactionRow[data-compaction-status="failed"] .compactionSummary {
+  color: var(--dsw-alias-label-secondary);
+}
+
 .compactionBody {
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
   padding: 4px 0 4px calc(22px + var(--dsh-content-font-delta, 0px));

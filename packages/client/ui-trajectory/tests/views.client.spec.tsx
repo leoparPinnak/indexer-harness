@@ -1366,6 +1366,11 @@ describe('TrajectoryView state', () => {
       summaryEventSeq: null,
       shadowedItemCount: null,
       shadowedTokenCount: null,
+      contextTotalTokens: null,
+      provider: null,
+      model: null,
+      replacementTokenCount: null,
+      reductionRatio: null,
       windows: null,
     })), ...visibleNodes]
     const requests: readonly RequestView[] = [{

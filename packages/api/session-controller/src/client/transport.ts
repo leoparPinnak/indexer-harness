@@ -27,6 +27,7 @@ import {
 } from './sessions/history-records.ts'
 import type { SessionEventLikeEntry, SessionLiveEventEntry } from './contract/events.ts'
 import type { SessionRemotes } from './sessions/remotes.ts'
+import type { CompactionStreamFrame } from '@deepseek-ai/dsh-compaction/types'
 import { assertSessionWireEvent } from './session-wire-event.ts'
 
 export {
@@ -56,10 +57,19 @@ export type SessionJournalChange =
   }
   | { readonly type: 'append'; readonly entry: SessionLiveEventEntry }
   | { readonly type: 'assistant-stream'; readonly frame: SessionAssistantStreamFrame }
+  | { readonly type: 'compaction-stream'; readonly frame: CompactionStreamFrame }
+
+/**
+ * Journal notification envelope: an assistant presentation frame (dense
+ * `type`) or a wrapped compaction stream frame (discriminated by `kind`).
+ */
+type SessionJournalNotification =
+  | SessionAssistantStreamFrame
+  | { readonly kind: 'compaction-stream'; readonly frame: CompactionStreamFrame }
 
 function toSessionJournalChange(
   change: RemoteJournalChange<
-    SessionJournalPage, SessionHistoryRecord, SessionAssistantStreamFrame
+    SessionJournalPage, SessionHistoryRecord, SessionJournalNotification
   >,
 ): SessionJournalChange {
   switch (change.type) {
@@ -73,7 +83,9 @@ function toSessionJournalChange(
       }
     }
     case 'notification':
-      return { type: 'assistant-stream', frame: change.notification }
+      return 'kind' in change.notification
+        ? { type: 'compaction-stream', frame: change.notification.frame }
+        : { type: 'assistant-stream', frame: change.notification }
   }
 }
 
@@ -139,7 +151,7 @@ export class SessionEventStream extends RemoteJournalStream<
   SessionHistoryRecord,
   number,
   ClientSessionPageRequest,
-  SessionAssistantStreamFrame
+  SessionJournalNotification
 > {
   /**
    * @param remote - generated Session namespace and Gateway stream factory.
@@ -173,12 +185,13 @@ export class SessionEventStream extends RemoteJournalStream<
     request: ClientSessionPageRequest,
     signal: AbortSignal,
   ): AsyncIterable<RemoteJournalFrame<
-    SessionHistoryRecord, number, SessionJournalPage, SessionAssistantStreamFrame
+    SessionHistoryRecord, number, SessionJournalPage, SessionJournalNotification
   >> {
     let assistantRevision: number | undefined
     for await (const frame of this.remote.session.follow({
       address: this.address,
       assistantStream: true,
+      compactionStream: true,
       ...(request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages }),
     }, signal)) {
       if (frame.type === 'snapshot') {
@@ -212,6 +225,10 @@ export class SessionEventStream extends RemoteJournalStream<
         }
         assistantRevision = frame.frame.revision
         yield { type: 'notification', notification: frame.frame }
+        continue
+      }
+      if (frame.type === 'compaction-stream') {
+        yield { type: 'notification', notification: { kind: 'compaction-stream', frame: frame.frame } }
         continue
       }
       assertSessionWireEvent(frame.event)

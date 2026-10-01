@@ -45,6 +45,8 @@ import {
   LlmError,
   ReasoningEffortId,
 } from '@deepseek-ai/dsh-llm'
+import { piAiImageRequestPricing } from './request-pricing.ts'
+import type { LlmImageRequestPricingOverride } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
@@ -273,6 +275,37 @@ export class PiAiAdapter extends LlmAdapter {
     return this.current().profiles.get(provider)?.retryPolicy
   }
 
+  override imageRequestPricing(
+    provider: string,
+    model: string,
+    override?: LlmImageRequestPricingOverride,
+  ): ReturnType<LlmAdapter['imageRequestPricing']> {
+    // Mirrors the request projection exactly: the same profile budgets decide
+    // which occurrences stay inline, so the token meter's context gauge counts
+    // the pruned request the wire will actually carry.
+    const snapshot = this.current()
+    const profile = snapshot.profiles.get(provider)
+    if (profile === undefined) return undefined
+    let supportsImages = false
+    try {
+      supportsImages = this.modelOf(snapshot, provider, model).input.includes('image')
+    } catch {
+      // A model this snapshot cannot resolve carries no image capability
+      // claim; its occurrences price at the text-only substitution.
+    }
+    const attachments = this.config.resolveAttachments?.()
+    return piAiImageRequestPricing({
+      maxImagesPerRequest: override?.maxImagesPerRequest ?? profile.maxImagesPerRequest,
+      maxRequestImageBytes: profile.maxRequestImageBytes,
+      requestImagePixelBudget: profile.requestImagePixelBudget,
+      requestImageMaxBytes: profile.requestImageMaxBytes,
+      supportsImages,
+      ...attachments === undefined ? {} : {
+        resolveAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
+      },
+    })
+  }
+
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     return Promise.resolve().then(() => {
       const snapshot = this.current()
@@ -377,6 +410,7 @@ export class PiAiAdapter extends LlmAdapter {
           attachments,
           resolveImageAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
           maxRequestImageBytes: profile.maxRequestImageBytes,
+          maxImagesPerRequest: options.maxImagesPerRequest ?? profile.maxImagesPerRequest,
           requestImagePolicy: {
             maxPixels: profile.requestImagePixelBudget,
             maxBytes: profile.requestImageMaxBytes,

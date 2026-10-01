@@ -10,7 +10,7 @@
  */
 
 import { offloadedImageText, offloadedImagePrefixCount, requestImageHandleText, textOnlyImageText } from '@deepseek-ai/dsh-llm'
-import type { ImageAttachmentAccessResolver, LlmImageRequestPrice, LlmImageRequestPricing } from '@deepseek-ai/dsh-llm'
+import type { ImageAttachmentAccessResolver, LlmImageRequestPrice, LlmImageRequestPricing, LlmImageRequestPricingOverride } from '@deepseek-ai/dsh-llm'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageRequestPolicy } from '@deepseek-ai/dsh-attachment'
 import { deepSeekImageTokens } from './image-tokens.ts'
@@ -74,21 +74,26 @@ export function deepSeekImageRequestPricing(
   connection: DeepSeekConnectionOptions,
   model: string,
   resolveAccess?: ImageAttachmentAccessResolver,
+  override?: LlmImageRequestPricingOverride,
 ): LlmImageRequestPricing {
   const catalogModel = connection.models.find(entry => entry.id === model)
   if (catalogModel?.inputModalities?.includes('image') !== true) {
     return { priceImages: images => images.map(textOnlyPrice) }
   }
   const policy = resolveRequestImagePolicy(catalogModel)
+  const maxImages = override?.maxImagesPerRequest ?? connection.maxImagesPerRequest
   return {
     priceImages: (images) => {
       const offloaded = offloadedImagePrefixCount(
         images.map(ref => Math.min(ref.bytes, policy.maxBytes)),
         {
           maxBytes: connection.maxRequestFilesBytes,
-          maxImages: connection.maxImagesPerRequest,
+          maxImages,
           byteQuantum: connection.imageOffloadByteQuantum,
-          countQuantum: connection.imageOffloadCountQuantum,
+          // The removal quantum steps down with a narrowed session window so a
+          // one-image window removes one at a time, mirroring serialization;
+          // never zero, so a `0` window cannot divide the quantum math by zero.
+          countQuantum: Math.max(1, Math.min(connection.imageOffloadCountQuantum, maxImages)),
         },
       )
       return images.map((ref, index) => {

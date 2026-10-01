@@ -88,6 +88,8 @@ interface ModeDraft {
   thresholdPercent: number
   capAuto: boolean
   capValue: number
+  imagesAuto: boolean
+  imagesValue: number
 }
 
 const percentOf = (part: number, whole: number | null | undefined, fallback: number): number =>
@@ -97,7 +99,12 @@ const percentOf = (part: number, whole: number | null | undefined, fallback: num
 
 const draftOf = (
   mode: CompactionSessionMode | null | undefined,
-  view: { contextBudgetTokens: number | null; thresholdTokens: number | null; modelCapacity: number | null; maxTokens?: number } | undefined,
+  view: {
+    contextBudgetTokens: number | null
+    thresholdTokens: number | null
+    modelCapacity: number | null
+    maxTokens?: number
+  } | undefined,
 ): ModeDraft => {
   const budget = view?.contextBudgetTokens ?? null
   const threshold = view?.thresholdTokens ?? null
@@ -111,6 +118,10 @@ const draftOf = (
     thresholdPercent: percentOf(threshold ?? 0, budget, 80),
     capAuto: mode?.maxTokens === undefined,
     capValue: mode?.maxTokens ?? view?.maxTokens ?? 8192,
+    // `0` is the mode validator's "replay no images" window; the default
+    // follows the deployment (the newest ONE image rides inline).
+    imagesAuto: mode?.keepLatestImages === undefined,
+    imagesValue: mode?.keepLatestImages ?? 1,
   }
 }
 
@@ -135,6 +146,7 @@ function modeOf(draft: ModeDraft, capacity: number | null): CompactionSessionMod
     ...budget === undefined ? {} : { contextBudgetTokens: budget },
     ...threshold === undefined ? {} : { thresholdTokens: threshold },
     ...draft.capAuto ? {} : { maxTokens: draft.capValue },
+    ...draft.imagesAuto ? {} : { keepLatestImages: draft.imagesValue },
   }
 }
 
@@ -355,6 +367,37 @@ export const ContextControl = memo(function ContextControl({
           )}
 
           <fieldset className={css.form}>
+            <legend>{t('settings.budget')}<span className={css.figure}>
+              {liveBudget === null
+                ? t('settings.auto')
+                : `~${formatTokens(liveBudget, t)}`}
+            </span><ScopeBadge global={draft.budgetAuto} t={t} /></legend>
+            <div className={css.sliderRow}>
+              <input
+                type="range"
+                className={css.slider}
+                min={10}
+                max={100}
+                step={1}
+                disabled={draft.budgetAuto || !slidersReady}
+                value={draft.budgetPercent}
+                aria-label={t('settings.budget')}
+                onChange={(e) => {
+                  setDraft({ ...draft, budgetAuto: false, budgetPercent: Number(e.target.value) })
+                }}
+              />
+              <label className={css.autoToggle}>
+                <input
+                  type="checkbox"
+                  checked={draft.budgetAuto}
+                  onChange={(e) => { setDraft({ ...draft, budgetAuto: e.target.checked }) }}
+                />
+                {t('settings.auto')}
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset className={css.form}>
             <legend>{t('settings.trigger')}<span className={css.figure}>
               {liveTrigger === null
                 ? t('settings.auto')
@@ -386,30 +429,30 @@ export const ContextControl = memo(function ContextControl({
           </fieldset>
 
           <fieldset className={css.form}>
-            <legend>{t('settings.budget')}<span className={css.figure}>
-              {liveBudget === null
+            <legend>{t('settings.images')}<span className={css.figure}>
+              {draft.imagesAuto
                 ? t('settings.auto')
-                : `~${formatTokens(liveBudget, t)}`}
-            </span><ScopeBadge global={draft.budgetAuto} t={t} /></legend>
+                : String(draft.imagesValue)}
+            </span><ScopeBadge global={draft.imagesAuto} t={t} /></legend>
             <div className={css.sliderRow}>
               <input
                 type="range"
                 className={css.slider}
-                min={10}
-                max={100}
+                min={0}
+                max={16}
                 step={1}
-                disabled={draft.budgetAuto || !slidersReady}
-                value={draft.budgetPercent}
-                aria-label={t('settings.budget')}
+                disabled={draft.imagesAuto}
+                value={draft.imagesValue}
+                aria-label={t('settings.images')}
                 onChange={(e) => {
-                  setDraft({ ...draft, budgetAuto: false, budgetPercent: Number(e.target.value) })
+                  setDraft({ ...draft, imagesAuto: false, imagesValue: Number(e.target.value) })
                 }}
               />
               <label className={css.autoToggle}>
                 <input
                   type="checkbox"
-                  checked={draft.budgetAuto}
-                  onChange={(e) => { setDraft({ ...draft, budgetAuto: e.target.checked }) }}
+                  checked={draft.imagesAuto}
+                  onChange={(e) => { setDraft({ ...draft, imagesAuto: e.target.checked }) }}
                 />
                 {t('settings.auto')}
               </label>

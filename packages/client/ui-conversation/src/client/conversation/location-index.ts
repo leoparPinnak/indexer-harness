@@ -414,7 +414,7 @@ export class ConversationLocationIndex {
    * @param event - contiguous tail boundary event.
    * @returns seqs whose immutable Location reference changed.
    */
-  appendBoundary(event: SessionEvent): ReadonlySet<number> {
+  appendBoundary(event: SessionEventLike): ReadonlySet<number> {
     if (event.type !== 'turn/start' && event.type !== 'turn/end'
       && event.type !== 'step/start' && event.type !== 'step/end') {
       throw new Error(`conversation Location boundary expected, received ${event.type}`)

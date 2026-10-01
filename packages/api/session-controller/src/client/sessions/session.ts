@@ -24,10 +24,11 @@ import type {
 import type {
   OpenState, PendingSubmission, PromptError, SessionSnapshot,
 } from '../contract/snapshot.ts'
-import { MutableSessionEventSource } from '../contract/events.ts'
+import { MutableSessionEventSource, compactionLiveChunkEvent } from '../contract/events.ts'
 import type {
   SessionEventLikeEntry, SessionLiveEventEntry,
 } from '../contract/events.ts'
+import type { CompactionStreamFrame } from '@deepseek-ai/dsh-compaction/types'
 import { Notifier } from './notifier.ts'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -102,6 +103,8 @@ export class Session implements SessionFace {
   /** Authoritative stream-only inbox snapshot; pending work never hits history. */
   private readonly queueMirror = new SessionQueueMirror()
   private readonly assistantStream = new ClientAssistantStream()
+  /** Monotonic counter placing compaction transients in their own seq band. */
+  private compactionLiveGap = 0
   private running = false
   private address: SubagentAddress | undefined
   private parentAvailable: boolean | undefined
@@ -651,7 +654,23 @@ export class Session implements SessionFace {
         return
       case 'assistant-stream':
         this.publishAssistantEntry(this.assistantStream.acceptFrame(change.frame))
+        return
+      case 'compaction-stream':
+        this.publishCompactionFrame(change.frame)
     }
+  }
+
+  /**
+   * Publish one live compaction stream frame as a transient row in its own
+   * fractional seq band (cursor + (0, 0.25]) so it can never collide with the
+   * assistant transient band (cursor + [0.5, 1)).
+   * @param frame - identity-bound compaction stream frame.
+   */
+  private publishCompactionFrame(frame: CompactionStreamFrame): void {
+    this.compactionLiveGap += 1
+    const seq = this.assistantStream.cursor + 0.25 * (this.compactionLiveGap / (this.compactionLiveGap + 1))
+    this.eventSource.append({ type: 'transient', event: compactionLiveChunkEvent(frame, seq) })
+    this.notifier.markDirty()
   }
 
   /** Replace the complete contiguous window and apply page-owned projection metadata. */
@@ -665,6 +684,7 @@ export class Session implements SessionFace {
     // attempts makes a held notification reopen follow once for an atomic
     // page/baseline pair instead of applying it to an unrelated repair cut.
     const visible = this.assistantStream.replace(entries, assistantStream)
+    this.compactionLiveGap = 0
     this.baseSeq = SessionLogOffset(entries[0]?.event.seq ?? 0)
     this.hasMore = hasMore
     if (visible.some(entry => entry.event.type === 'turn/start')) this.firstPromptPendingTurn = false

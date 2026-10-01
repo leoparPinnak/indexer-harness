@@ -224,16 +224,18 @@ export function apply(ctx: Context, config: Config = {}, internals: RetryInterna
     const retry = previousRetry + 1
     const retryId = previous?.retryId ?? RetryId(randomUUID())
     let delayMs: number
-    if (failure.providerRetryAfterMs !== undefined
+    if (policy.mode === 'normal'
+      && failure.providerRetryAfterMs !== undefined
       && Number.isFinite(failure.providerRetryAfterMs)
       && failure.providerRetryAfterMs > 0) {
       if (failure.providerRetryAfterMs > policy.maxDelayMs) {
-        if (policy.mode === 'normal') return next()
-        delayMs = localDelay(policy, retry, random)
-      } else {
-        delayMs = failure.providerRetryAfterMs
+        return next()
       }
+      delayMs = failure.providerRetryAfterMs
     } else {
+      // `always` mode owns one steady cadence: a provider `Retry-After` hint
+      // never shortens the configured interval, so the retry pace stays the
+      // operator's fixed heartbeat regardless of upstream chatter.
       delayMs = localDelay(policy, retry, random)
     }
 

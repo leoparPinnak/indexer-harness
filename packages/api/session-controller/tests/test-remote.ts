@@ -57,6 +57,8 @@ import type {
   SessionSearchValue,
   SessionSelectModelRequest,
   SessionSelectModelValue,
+  SessionCancelCompactionRequest,
+  SessionCancelCompactionValue,
   SessionSetCompactionModeRequest,
   SessionSetCompactionModeValue,
   SessionUpdateQueueRequest,
@@ -73,6 +75,9 @@ export interface TestSessionRemote {
   setCompactionMode(
     request: SessionSetCompactionModeRequest,
   ): Promise<RemoteResult<SessionSetCompactionModeValue>>
+  cancelCompaction(
+    request: SessionCancelCompactionRequest,
+  ): Promise<RemoteResult<SessionCancelCompactionValue>>
   modelCatalog(): Promise<RemoteResult<ModelCatalog>>
   rename(request: SessionRenameRequest): Promise<RemoteResult<SessionRenameValue>>
   fork(request: SessionForkRequest): Promise<RemoteResult<SessionForkValue>>
@@ -348,6 +353,7 @@ export function createSessionTestRemote(
     create: request => remoteResult(() => direct.create(request)),
     selectModel: request => remoteResult(() => direct.selectModel(request)),
     setCompactionMode: request => remoteResult(() => direct.setCompactionMode(request)),
+    cancelCompaction: request => remoteResult(() => direct.cancelCompaction(request)),
     modelCatalog: () => remoteResult(() => direct.modelCatalog()),
     rename: request => remoteResult(() => direct.rename(request)),
     fork: request => remoteResult(() => direct.fork(request)),

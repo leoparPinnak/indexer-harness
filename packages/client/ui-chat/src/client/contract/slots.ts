@@ -85,6 +85,12 @@ export interface ChatNodeOwnerProps {
   inspectCall: (callId: ToolCallId) => void
   forkAt: (seq: number) => void
   /**
+   * Local STOP for an in-row wait (e.g. the model-retry countdown): cancels the
+   * live turn through the Session action chain — the retry timer is cleared and
+   * the turn closes NEUTRALLY (`turn/end` aborted/user), never as a failure row.
+   */
+  stopAction?: () => void
+  /**
    * Session-authorized image loader, down-threaded from the Chat view so a
    * chat-node renderer can render the attachment presentation slot directly
    * with only the durable references plus this loader, instead of receiving a
@@ -152,6 +158,12 @@ export interface ChatViewInjected {
     read: () => ChatScrollPosition | null
   }
   forkAt: (seq: number) => void
+  /**
+   * Local STOP threaded down to chat rows (e.g. the model-retry countdown
+   * button): cancels the live turn through the Session action chain — the
+   * retry timer clears and the turn closes NEUTRALLY, never as a failure row.
+   */
+  stopAction?: () => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }
 

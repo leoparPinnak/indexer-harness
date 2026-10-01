@@ -67,6 +67,11 @@ async function bench(): Promise<Bench> {
   ctx.provide('remote', { session: sessionRemote, settings: settingsRemote, commands: { execute } })
   ctx.provide('remote.session', sessionRemote)
   ctx.provide('remote.settings', settingsRemote)
+  // Provided as its own service, exactly as the real remotes runtime does:
+  // Cordis refuses a `ctx.remote.commands` read unless BOTH the merge service
+  // and this one are injected, so a bench that only merges the facade would
+  // hide a missing entry in the plugin's own `inject` list.
+  ctx.provide('remote.commands', { execute })
   const locale = new LocaleRuntime(ctx)
   locale.setLocale('zh')
   ctx.provide('locale', locale)
@@ -75,7 +80,18 @@ async function bench(): Promise<Bench> {
 
 describe('ui-context-control browser apply', () => {
   it('declares every service it binds', () => {
-    expect(inject).toEqual(['locale', 'remote', 'remote.session', 'remote.settings', 'slots'])
+    // `remote.commands` is load-bearing: the panel's Compact button calls
+    // `ctx.remote.commands.execute`, and Cordis throws
+    // "cannot get property \"remote.commands\" without inject" at runtime when
+    // the service is used but not declared here.
+    expect(inject).toEqual([
+      'locale',
+      'remote',
+      'remote.session',
+      'remote.settings',
+      'remote.commands',
+      'slots',
+    ])
   })
 
   it('occupies both seats and unregisters them on teardown', async () => {

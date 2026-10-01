@@ -20,8 +20,21 @@ import { CompactionCap } from './CompactionCapSetting.tsx'
 import type { CompactionCapInjected } from './CompactionCapSetting.tsx'
 import { en, NS, tr, zh } from './locales.ts'
 
-/** Cordis services the client face reads. */
-export const inject = ['locale', 'remote', 'remote.session', 'remote.settings', 'slots']
+/**
+ * Cordis services the client face reads. `remote.commands` is the service the
+ * manual `/compact` action calls (`runCompact` below): Cordis refuses a
+ * `ctx.<service>` read that is not listed here, so omitting it makes the panel's
+ * Compact button fail at runtime with "cannot get property ... without inject"
+ * even though the type-only import above makes the access type-check.
+ */
+export const inject = [
+  'locale',
+  'remote',
+  'remote.session',
+  'remote.settings',
+  'remote.commands',
+  'slots',
+]
 
 /**
  * Register the context-control dictionaries and its composer seat occupant.

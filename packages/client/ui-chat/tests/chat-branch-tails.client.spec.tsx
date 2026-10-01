@@ -817,6 +817,11 @@ describe('MessageItem arms', () => {
         summaryEventSeq: 4,
         shadowedItemCount: 16,
         shadowedTokenCount: 11_309,
+        contextTotalTokens: 312_000,
+        provider: 'geminigatawey',
+        model: 'gemini-3.8-flash-medium',
+        replacementTokenCount: 2_113,
+        reductionRatio: 0.81,
         windows: null,
       }}
       />,
@@ -836,7 +841,9 @@ describe('MessageItem arms', () => {
     const view = render(<MessageItem t={t} node={{
       kind: 'compaction', seq: 6, time: 1_000,
       status: 'landed', summary: null,
-      summaryEventSeq: null, shadowedItemCount: null, shadowedTokenCount: null, windows: null,
+      summaryEventSeq: null, shadowedItemCount: null, shadowedTokenCount: null,
+      contextTotalTokens: null, provider: null, model: null,
+      replacementTokenCount: null, reductionRatio: null, windows: null,
     }} />)
     const row = view.getByRole('button', { name: /上下文已压缩/ })
     expect(row).toHaveProperty('disabled', true)

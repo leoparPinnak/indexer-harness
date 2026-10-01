@@ -230,6 +230,11 @@ export class FakeApiClient {
           payload,
           Promise.resolve(ok({ mode: payload.mode })),
         ),
+        cancelCompaction: payload => this.record(
+          'session.cancelCompaction',
+          payload,
+          Promise.resolve(ok({ cancelled: true })),
+        ),
         rename: payload => this.record('session.rename', payload, this.onRename(payload)),
         fork: payload => this.record('session.fork', payload, this.onFork(payload)),
         prompt: payload => this.record('session.prompt', payload, this.onPrompt(payload)),

@@ -319,8 +319,14 @@ describe('imageRequestPricing resolution', () => {
   it('resolves the owning adapter declaration and degrades everywhere else to undefined', async () => {
     const ctx = await setup()
     const pricing = { priceImages: () => [] }
+    const seen: Array<{ provider: string; model: string; override?: { readonly maxImagesPerRequest?: number } }> = []
     class PricingAdapter extends NoopAdapter {
-      override imageRequestPricing(provider: string, model: string): typeof pricing | undefined {
+      override imageRequestPricing(
+        provider: string,
+        model: string,
+        override?: { readonly maxImagesPerRequest?: number },
+      ): typeof pricing | undefined {
+        seen.push({ provider, model, ...override === undefined ? {} : { override } })
         return provider === 'a' && model === 'vision' ? pricing : undefined
       }
     }
@@ -329,6 +335,10 @@ describe('imageRequestPricing resolution', () => {
 
     expect(ctx.llm.imageRequestPricing('a', 'vision')).toBe(pricing)
     expect(ctx.llm.imageRequestPricing('a', 'other')).toBeUndefined()
+    // The session window override reaches the owning adapter verbatim, so the
+    // gauge can price the pruned request under the same window the wire uses.
+    expect(ctx.llm.imageRequestPricing('a', 'vision', { maxImagesPerRequest: 2 })).toBe(pricing)
+    expect(seen.at(-1)?.override).toEqual({ maxImagesPerRequest: 2 })
     // The base adapter declares none.
     expect(ctx.llm.imageRequestPricing('plain', 'vision')).toBeUndefined()
     // Unregistered providers degrade instead of throwing: callers price

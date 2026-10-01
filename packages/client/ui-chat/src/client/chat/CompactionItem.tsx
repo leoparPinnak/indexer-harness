@@ -1,5 +1,11 @@
 // A compaction marker does not replace shadowed transcript rows. It is
 // expandable only when the current window includes its cited summary.
+//
+// The row is deliberately two-phase: while the summarizer is still running it
+// names the model and the context size that went in, and once the checkpoint
+// lands it reports what came back plus the share of context removed. Both halves
+// come from the same durable lifecycle events, so a reload shows exactly what a
+// live row showed.
 
 import { memo, useMemo, useState } from 'react'
 import {
@@ -23,6 +29,11 @@ interface CompactionItemProps {
   t: ChatViewSlotProps['t']
 }
 
+/** One decimal place is enough to show a ratio moving and avoids false precision. */
+function percent(ratio: number): string {
+  return `${Math.round(ratio * 1000) / 10}%`
+}
+
 /**
  * Renders the model-history compaction marker.
  * @param props - the marker node off the snapshot cache.
@@ -38,7 +49,8 @@ export const CompactionItem = memo(function CompactionItem({
   const labels = useMemo(() => markdownLabels(t), [t])
   const expandable = node.summary !== null
   const open = expandable && expanded
-  const summary = node.status === 'running'
+  const running = node.status === 'running'
+  const summary = running
     ? (node.windows === null
       ? t('message.compaction.running')
       : t('message.compaction.windowedRunning', { windows: node.windows }))
@@ -51,8 +63,16 @@ export const CompactionItem = memo(function CompactionItem({
         })
         : fallbackSummary
           ?? (expandable ? t('message.compaction.expand') : t('message.compaction.unavailable'))
+  // The model is named from whichever lifecycle event reached the window first,
+  // so a live row answers "which model is compacting" before the model replies.
+  const modelLabel = node.model ?? node.provider
+  // "In" is the context the model was handed; "out" is the checkpoint it wrote.
+  // While running only the incoming figure is known, and the row says so rather
+  // than showing a placeholder that looks like a measurement.
+  const incoming = node.contextTotalTokens
+  const outgoing = node.replacementTokenCount
   return (
-    <div className={css.compactionRow}>
+    <div className={css.compactionRow} data-compaction-status={node.status}>
       <button
         type="button"
         className={css.compactionButton}
@@ -72,10 +92,35 @@ export const CompactionItem = memo(function CompactionItem({
           </span>
         </span>
         <span className={css.compactionTitle}>{title ?? t('message.compaction')}</span>
+        {running && <span className={css.compactionSpinner} data-compaction-spinner aria-hidden />}
         <span className={css.compactionSep} aria-hidden />
         <span className={css.compactionSummary}>{summary}</span>
+        {modelLabel !== null
+          && <span className={css.compactionModel} data-compaction-model>{modelLabel}</span>}
         {node.status === 'landed' && node.windows !== null
           && <span className={css.compactionSummary}>{t('message.compaction.windowedDone', { windows: node.windows })}</span>}
+        {incoming !== null
+          && (
+            <span className={css.compactionStats} data-compaction-stat="in">
+              {t('message.compaction.inTokens', { tokens: incoming })}
+            </span>
+          )}
+        {outgoing !== null
+          && (
+            <span className={css.compactionStats} data-compaction-stat="out">
+              {t('message.compaction.outTokens', { tokens: outgoing })}
+            </span>
+          )}
+        {node.reductionRatio !== null
+          && (
+            <span
+              className={css.compactionRatio}
+              data-compaction-stat="ratio"
+              title={t('message.compaction.ratioTitle')}
+            >
+              ↓{percent(node.reductionRatio)}
+            </span>
+          )}
       </button>
       {open && node.summary !== null
         && <div className={css.compactionBody}><MarkdownText text={node.summary} labels={labels} /></div>}

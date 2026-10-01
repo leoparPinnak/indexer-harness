@@ -424,6 +424,38 @@ describe('compaction invariants', () => {
       session.append('compaction/start', { compactionId: TEST_COMPACTION_ID, turn: 1 })
       session.append('compaction/summary', summary(session, { shadowedTokenCount: -1 }))
     }, /non-negative safe integer/],
+    ['negative start context total', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', {
+        compactionId: TEST_COMPACTION_ID, turn: 1, contextTotalTokens: -1,
+      })
+    }, /compaction\/start contextTotalTokens must be a non-negative safe integer/],
+    ['fractional start context total', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', {
+        compactionId: TEST_COMPACTION_ID, turn: 1, contextTotalTokens: 1.5,
+      })
+    }, /compaction\/start contextTotalTokens must be a non-negative safe integer/],
+    ['half-named start route', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', {
+        compactionId: TEST_COMPACTION_ID, turn: 1, provider: 'mock',
+      })
+    }, /must name both provider and model or neither/],
+    ['empty start model', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', {
+        compactionId: TEST_COMPACTION_ID, turn: 1, provider: 'mock', model: '',
+      })
+    }, /compaction\/start model must be a non-empty string/],
+    ['negative replacement token count', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', { compactionId: TEST_COMPACTION_ID, turn: 1 })
+      session.append('compaction/summary', summary(session, { replacementTokenCount: -1 }))
+    }, /compaction\/summary replacementTokenCount must be a non-negative safe integer/],
+    ['reduction ratio above one', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', { compactionId: TEST_COMPACTION_ID, turn: 1 })
+      session.append('compaction/summary', summary(session, { reductionRatio: 1.5 }))
+    }, /compaction\/summary reductionRatio must be a number in \[0, 1\]/],
+    ['negative reduction ratio', (session: ReturnType<Context['sessions']['create']>) => {
+      session.append('compaction/start', { compactionId: TEST_COMPACTION_ID, turn: 1 })
+      session.append('compaction/summary', summary(session, { reductionRatio: -0.1 }))
+    }, /compaction\/summary reductionRatio must be a number in \[0, 1\]/],
     ['end without start', (session: ReturnType<Context['sessions']['create']>) => {
       session.append('compaction/end', { compactionId: TEST_COMPACTION_ID, turn: 1, error: 'failed' })
     }, /no matching compaction\/start/],

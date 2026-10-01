@@ -22,6 +22,11 @@ const marker = (over: Partial<CompactionSummaryNode> = {}): CompactionSummaryNod
   summaryEventSeq: 7,
   shadowedItemCount: 16,
   shadowedTokenCount: 11_309,
+  contextTotalTokens: 312_000,
+  provider: 'geminigatawey',
+  model: 'gemini-3.8-flash-medium',
+  replacementTokenCount: 2_113,
+  reductionRatio: 0.81,
   windows: null,
   ...over,
 })
@@ -55,5 +60,53 @@ describe('CompactionItem lifecycle phases', () => {
   it('falls back to the plain running reading without a window count', () => {
     const view = item(marker({ status: 'running', summary: null, summaryEventSeq: null }))
     expect(view.getByText('正在压缩…')).toBeTruthy()
+  })
+})
+
+describe('CompactionItem live figures', () => {
+  it('names the summarizer and the incoming context while the run is open', () => {
+    const view = item(marker({
+      status: 'running',
+      summary: null,
+      summaryEventSeq: null,
+      replacementTokenCount: null,
+      reductionRatio: null,
+    }))
+    expect(view.getByText('gemini-3.8-flash-medium')).toBeTruthy()
+    expect(view.getByText('进 312000')).toBeTruthy()
+    // Nothing came back yet, so no outgoing figure and no ratio are claimed.
+    expect(view.queryByText('出 2113')).toBeNull()
+    expect(view.queryByText('↓81%')).toBeNull()
+  })
+
+  it('waits with a visible indicator rather than a static row', () => {
+    const view = item(marker({ status: 'running', summary: null, summaryEventSeq: null }))
+    expect(view.container.querySelector('[data-compaction-spinner]')).toBeTruthy()
+    expect(view.container.querySelector('[data-compaction-status="running"]')).toBeTruthy()
+  })
+
+  it('shows what came back and the reduction ratio once the checkpoint lands', () => {
+    const view = item(marker())
+    expect(view.getByText('出 2113')).toBeTruthy()
+    expect(view.getByText('↓81%')).toBeTruthy()
+    expect(view.container.querySelector('[data-compaction-spinner]')).toBeNull()
+  })
+
+  it('omits the figures a failed run never produced', () => {
+    const view = item(marker({
+      status: 'failed',
+      summary: null,
+      summaryEventSeq: null,
+      replacementTokenCount: null,
+      reductionRatio: null,
+    }))
+    expect(view.getByText('压缩失败')).toBeTruthy()
+    expect(view.queryByText('出 2113')).toBeNull()
+    expect(view.queryByText('↓81%')).toBeNull()
+  })
+
+  it('rounds the ratio to one decimal instead of implying false precision', () => {
+    const view = item(marker({ reductionRatio: 0.812_345 }))
+    expect(view.getByText('↓81.2%')).toBeTruthy()
   })
 })

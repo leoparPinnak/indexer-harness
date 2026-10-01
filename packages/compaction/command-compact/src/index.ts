@@ -29,7 +29,9 @@ function expectedFailure(error: ManualCompactionError): CommandResult {
         text: 'Compaction is unavailable because this process has an active compaction, or the agent is not idle.',
       }
     case 'cancelled':
-      return { kind: 'error', text: 'Compaction cancelled.' }
+      // Operator stop is a NEUTRAL outcome: the run ended because the user
+      // asked it to, so no failure row is produced.
+      return { kind: 'success', text: 'Compaction cancelled.' }
     case 'changed':
       return {
         kind: 'error',
@@ -72,7 +74,8 @@ async function executeCompact(
       sourceEventSeq: result.summarySeq,
     }
   } catch (error: unknown) {
-    if (invocation.signal.aborted) return { kind: 'error', text: 'Compaction cancelled.' }
+    // A user-initiated stop is a neutral outcome, never a failure row.
+    if (invocation.signal.aborted) return { kind: 'success', text: 'Compaction cancelled.' }
     if (error instanceof ManualCompactionError) return expectedFailure(error)
     throw error
   }

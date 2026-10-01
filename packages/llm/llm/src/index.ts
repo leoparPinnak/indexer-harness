@@ -15,6 +15,7 @@ import type {
   LlmDiscoveredModel,
   LlmFailure,
   LlmImageRequestPricing,
+  LlmImageRequestPricingOverride,
   LlmModelContext,
   LlmModelDiscoveryRequest,
   LlmModelInfo,
@@ -223,9 +224,15 @@ export abstract class LlmAdapter {
    * token meter resolves this per measurement.
    * @param _provider - a route passed to `registerAdapter()` for this instance.
    * @param _model - exact model id passed to {@link GenerateOptions.model}.
+   * @param _override - session-level request-shape overrides the pricing must
+   *   reproduce (e.g. `GenerateOptions.maxImagesPerRequest`).
    * @returns route-owned image pricing, or `undefined` when the route declares none.
    */
-  imageRequestPricing(_provider: string, _model: string): LlmImageRequestPricing | undefined {
+  imageRequestPricing(
+    _provider: string,
+    _model: string,
+    _override?: LlmImageRequestPricingOverride,
+  ): LlmImageRequestPricing | undefined {
     return undefined
   }
 
@@ -663,8 +670,12 @@ export class LlmRuntime extends TypertRemoteService {
    * @param model - exact model id named by the same header.
    * @returns the owning adapter's image pricing for the route, when declared.
    */
-  imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined {
-    return this.adapters.get(provider)?.adapter.imageRequestPricing(provider, model)
+  imageRequestPricing(
+    provider: string,
+    model: string,
+    override?: LlmImageRequestPricingOverride,
+  ): LlmImageRequestPricing | undefined {
+    return this.adapters.get(provider)?.adapter.imageRequestPricing(provider, model, override)
   }
 
   /**

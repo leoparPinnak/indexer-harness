@@ -14,12 +14,21 @@ import { estimateContent, estimateMessage } from '../src/estimate.ts'
 
 /** Adapter double declaring fixed per-occurrence image prices for one route. */
 class PricingAdapter extends LlmAdapter {
-  constructor(private readonly pricing: (model: string) => LlmImageRequestPricing | undefined) {
+  constructor(
+    private readonly pricing: (
+      model: string,
+      override?: { readonly maxImagesPerRequest?: number },
+    ) => LlmImageRequestPricing | undefined,
+  ) {
     super()
   }
 
-  override imageRequestPricing(_provider: string, model: string): LlmImageRequestPricing | undefined {
-    return this.pricing(model)
+  override imageRequestPricing(
+    _provider: string,
+    model: string,
+    override?: { readonly maxImagesPerRequest?: number },
+  ): LlmImageRequestPricing | undefined {
+    return this.pricing(model, override)
   }
 
   async * stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -73,7 +82,12 @@ interface Harness {
   session: Session
 }
 
-async function harness(pricing: (model: string) => LlmImageRequestPricing | undefined): Promise<Harness> {
+async function harness(
+  pricing: (
+    model: string,
+    override?: { readonly maxImagesPerRequest?: number },
+  ) => LlmImageRequestPricing | undefined,
+): Promise<Harness> {
   const ctx = new Context()
   new SessionProjectionRegistry(ctx)
   ctx.provide('attachments', {
@@ -185,6 +199,66 @@ describe('request projection pricing', () => {
     expect(textOnly.nodes[0]!.tokens)
       .toBe(imageFree + estimateContent([{ type: 'text', text: placeholder }]))
     expect(textOnly.totalTokens).toBeLessThan(meter.measure(session).totalTokens)
+  })
+
+  it('keeps only the newest image visual in the gauge under a count window', async () => {
+    // The (E) policy as the gauge sees it: older images price at their
+    // placeholder text with zero visual tokens, only the newest carries its
+    // routed visual price — so the context window figure equals what the
+    // pruned request actually costs.
+    const placeholder = '[image omitted to fit request image limits]'
+    const windowed: LlmImageRequestPricing = {
+      priceImages: images => images.map((_ref, index) => (
+        index < images.length - 1
+          ? { visualTokens: 0, text: placeholder }
+          : { visualTokens: VISUAL_TOKENS, text: HANDLE_TEXT }
+      )),
+    }
+    const { meter, session } = await harness(() => windowed)
+    for (let index = 0; index < 3; index += 1) {
+      session.append('user/message', imageMessage('photo'), { surfaceOp: 'append' })
+    }
+    session.append('request/header', { header: header('vision'), reason: 'initial' })
+
+    const message = imageMessage('photo')
+    const imageFree = estimateMessage({
+      ...message,
+      content: message.content.filter(block => block.type !== 'image'),
+    })
+    const measurement = meter.measure(session)
+    expect(measurement.totalTokens).toBe(
+      3 * imageFree
+        + 2 * estimateContent([{ type: 'text', text: placeholder }])
+        + VISUAL_TOKENS
+        + estimateContent([{ type: 'text', text: HANDLE_TEXT }]),
+    )
+    expect(measurement.totalTokens).toBeLessThan(3 * routedMessageTokens(message))
+  })
+
+  it('rides the session keep-newest-N window onto the pricing override', async () => {
+    // The gauge leg of the dynamic window: `keepLatestImages` on the session's
+    // compaction policy projection must reach the route pricing as
+    // `maxImagesPerRequest`, or the gauge silently stops matching the pruned
+    // wire the moment the operator changes N.
+    const seen: Array<{ override?: { readonly maxImagesPerRequest?: number } }> = []
+    const { ctx, meter, session } = await harness((
+      _model: string,
+      override?: { readonly maxImagesPerRequest?: number },
+    ) => {
+      seen.push({ ...override === undefined ? {} : { override } })
+      return fixedPricing
+    })
+    ctx.sessionProjections.register({
+      key: 'compactionPolicy',
+      stateVersion: 1,
+      stateSchema: undefined as never,
+      init: () => ({ keepLatestImages: 2 }),
+      apply: (state: unknown) => state,
+    } as never)
+    session.append('user/message', imageMessage('photo'), { surfaceOp: 'append' })
+    session.append('request/header', { header: header('vision'), reason: 'initial' })
+    meter.measure(session)
+    expect(seen.at(-1)?.override).toEqual({ maxImagesPerRequest: 2 })
   })
 
   it('keeps the fixed heuristic for routes and services that declare no pricing', async () => {

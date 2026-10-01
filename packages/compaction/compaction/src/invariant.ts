@@ -38,6 +38,22 @@ type CompactionTransition =
   | { kind: 'end' }
   | { kind: 'end-seed' }
 
+/** Require a non-negative safe integer token count when the field is present. */
+function validateTokenCount(value: unknown, label: string, fail: InvariantFailure): void {
+  if (value === undefined) return
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    fail(`${label} must be a non-negative safe integer token count`)
+  }
+}
+
+/** Require a reduction ratio inside [0, 1] when the field is present. */
+function validateReductionRatio(value: unknown, label: string, fail: InvariantFailure): void {
+  if (value === undefined) return
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    fail(`${label} must be a number in [0, 1]`)
+  }
+}
+
 /** Require a durable opaque identity to be a non-empty string. */
 function validateId(value: unknown, label: string, fail: InvariantFailure): asserts value is string {
   if (typeof value !== 'string' || value.length === 0) fail(`${label} must be a non-empty string`)
@@ -202,6 +218,18 @@ function validateCompactionEvent(
     if (event.data.sourceCommandId !== undefined) {
       validateId(event.data.sourceCommandId, 'compaction/start sourceCommandId', fail)
     }
+    // The announced route is either absent or a complete provider/model pair:
+    // a half-named model would leave a live row showing a bare provider.
+    if (event.data.provider !== undefined) {
+      validateId(event.data.provider, 'compaction/start provider', fail)
+    }
+    if (event.data.model !== undefined) {
+      validateId(event.data.model, 'compaction/start model', fail)
+    }
+    if ((event.data.provider === undefined) !== (event.data.model === undefined)) {
+      fail('compaction/start must name both provider and model or neither')
+    }
+    validateTokenCount(event.data.contextTotalTokens, 'compaction/start contextTotalTokens', fail)
     if (open !== undefined) {
       const owner = open.turn === null ? 'standalone compaction' : `turn ${open.turn}`
       fail(`compaction/start while ${owner} is still compacting`)
@@ -231,6 +259,8 @@ function validateCompactionEvent(
     if (!Number.isSafeInteger(event.data.shadowedTokenCount) || event.data.shadowedTokenCount < 0) {
       fail('compaction/summary shadowedTokenCount must be a non-negative safe integer')
     }
+    validateTokenCount(event.data.replacementTokenCount, 'compaction/summary replacementTokenCount', fail)
+    validateReductionRatio(event.data.reductionRatio, 'compaction/summary reductionRatio', fail)
     return {
       kind: 'summary',
       compactionId: open.compactionId,

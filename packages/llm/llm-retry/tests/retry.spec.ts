@@ -422,6 +422,32 @@ describe('provider-routed retry policy', () => {
     expect(adapter.requests).toHaveLength(2)
   })
 
+  it('keeps the fixed always cadence even when the provider asks for a shorter wait', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      new LlmError('brief wait', 'RATE_LIMIT', { providerRetryAfterMs: 5 }),
+      textResponse('done'),
+    ])
+    ;({ ctx: context } = await harness(adapter, { mock: alwaysConfig({
+      initialDelayMs: 8,
+      maxDelayMs: 8,
+      jitterRatio: 0,
+    }) }))
+    const agent = await context.agentLoop.create(SessionId('retry-always-fixed-cadence'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const scheduled = waitForRetry(context, agent, 1)
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    expect((await scheduled).data.delayMs).toBe(8)
+    const idle = waitForIdle(context, agent)
+    await vi.advanceTimersByTimeAsync(8)
+    await idle
+
+    expect(adapter.requests).toHaveLength(2)
+  })
+
   it('delegates non-transient failures without scheduling a timer', async () => {
     vi.useFakeTimers()
     const adapter = new ScriptedAdapter([new LlmError('bad key', 'AUTH')])
@@ -468,7 +494,10 @@ describe('provider-routed retry policy', () => {
       new LlmError('other auth failed', 'AUTH'),
       textResponse('other recovered'),
     ])
+    // The contrast is pinned explicitly: unconfigured routes now default to
+    // unbounded always retry, so "mock" carries the bounded transient policy.
     ;({ ctx: context } = await harness(adapter, {
+      mock: normalConfig(),
       other: alwaysConfig({ initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 }),
     }))
 
@@ -971,6 +1000,111 @@ describe('provider-routed retry policy', () => {
       data: { reason: { kind: 'aborted' } },
     })
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  /**
+   * A request that hangs until its AbortSignal tears it down, modeling a live
+   * fetch/socket: the production adapters abort their transport on the request
+   * signal (`fetch(..., { signal })` in llm-deepseek; `AbortSignal.any` +
+   * `LlmError('... aborted by caller', 'ABORTED')` in llm-pi-ai), and this
+   * fixture proves the loop delivers that signal to an open request on DURDUR.
+   */
+  class HangingSignalAdapter extends ScriptedAdapter {
+    readonly signals: AbortSignal[] = []
+    abortObserved = false
+    readonly started: Promise<void>
+    private readonly markStarted: () => void
+
+    constructor() {
+      super([])
+      let mark!: () => void
+      const started = new Promise<void>((resolve) => { mark = resolve })
+      this.started = started
+      this.markStarted = mark
+    }
+
+    override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      this.requests.push(options)
+      const signal = options.signal
+      if (signal !== undefined) this.signals.push(signal)
+      this.markStarted()
+      await new Promise<never>((_resolve, reject) => {
+        const die = (): void => {
+          this.abortObserved = true
+          reject(new LlmError('test request aborted by caller', 'ABORTED', { cause: signal?.reason }))
+        }
+        if (signal === undefined) {
+          reject(new Error('hanging adapter requires a request signal'))
+          return
+        }
+        if (signal.aborted) {
+          die()
+          return
+        }
+        signal.addEventListener('abort', die, { once: true })
+      })
+    }
+  }
+
+  it('DURDUR cuts an open model request through its AbortSignal and closes the turn neutrally', async () => {
+    vi.useFakeTimers()
+    const adapter = new HangingSignalAdapter()
+    ;({ ctx: context } = await harness(adapter, { mock: alwaysConfig() }))
+    const agent = await context.agentLoop.create(SessionId('retry-stop-open-request'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const idle = waitForIdle(context, agent)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await adapter.started
+    expect(vi.getTimerCount()).toBe(0)
+
+    agent.cancel({ kind: 'user' })
+    await idle
+
+    // Hard requirement: the cut reaches the open request as a real AbortSignal
+    // abort — the adapter-side wait is torn down, not abandoned half-open.
+    expect(adapter.abortObserved).toBe(true)
+    expect(adapter.signals[0]?.aborted).toBe(true)
+    // Neutral close: a stop is never a turn failure and never a turn-error.
+    const end = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(end?.type === 'turn/end' ? end.data.reason : undefined)
+      .toEqual({ kind: 'aborted', reason: { kind: 'user' } })
+    // No retry is planned after the cut and no timer survives it.
+    expect(agent.session.snapshotEvents().some(event =>
+      event.type === 'llm/retry' || event.type === 'llm/retry-started')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    // Exactly one request; nothing half-committed onto the derived surface.
+    expect(adapter.requests).toHaveLength(1)
+    expect(agent.session.deriveMessages().some(message => message.role === 'assistant')).toBe(false)
+  })
+
+  it('DURDUR during an always-retry wait schedules no further attempt and never errors the turn', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      new LlmError('permanent', 'AUTH'),
+      textResponse('must not run'),
+    ])
+    ;({ ctx: context } = await harness(adapter, { mock: alwaysConfig() }))
+    const agent = await context.agentLoop.create(SessionId('retry-stop-wait'), {
+      provider: 'mock',
+      model: 'mock',
+    })
+    const scheduled = waitForRetry(context, agent, 1)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await scheduled
+    const idle = waitForIdle(context, agent)
+
+    agent.cancel({ kind: 'user' })
+    await idle
+
+    expect(agent.session.snapshotEvents().some(event => event.type === 'llm/retry-started')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(adapter.requests).toHaveLength(1)
+    const end = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(end?.type === 'turn/end' ? end.data.reason : undefined)
+      .toEqual({ kind: 'aborted', reason: { kind: 'user' } })
+    expect(end?.type === 'turn/end' ? end.data.reason.kind : undefined).not.toBe('error')
   })
 
   it.each([

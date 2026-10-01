@@ -11,9 +11,14 @@ import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { EMPTY_RESPONSE_CODE } from './error.ts'
 
-// Each attempt is now bounded by the transport's connect deadline (four seconds), so the default
-// spends a patience budget of the same order as the previous five attempts on eight of them: more
-// independent chances to cross a path that drops the occasional SYN, and a faster first recovery.
+// Default posture: unbounded fixed-interval recovery. A turn's model request
+// retries every failure on a steady 15-second pace with no attempt limit — a
+// turn never retires as failed over a provider blip, and only cancellation or
+// disposal stops the cadence. Routes that want the older bounded transient
+// behavior configure `mode: 'normal'` explicitly.
+const DEFAULT_FIXED_INTERVAL_MS = 15_000
+// Default attempt budget for an explicitly configured `mode: 'normal'` policy;
+// the unconfigured default above never consults it.
 const DEFAULT_MAX_RETRIES = 8
 const DEFAULT_INITIAL_DELAY_MS = 500
 const DEFAULT_MAX_DELAY_MS = 10_000
@@ -155,10 +160,15 @@ export function resolveRetryPolicy(
 ): ResolvedRetryPolicy {
   if (config === undefined) {
     return Object.freeze({
-      mode: 'normal',
-      maxRetries: DEFAULT_MAX_RETRIES,
-      retryableCodes: DEFAULT_RETRYABLE_CODES,
-      ...resolveBackoff(undefined, `${path}.backoff`),
+      mode: 'always',
+      ...resolveBackoff(
+        {
+          initialDelayMs: DEFAULT_FIXED_INTERVAL_MS,
+          maxDelayMs: DEFAULT_FIXED_INTERVAL_MS,
+          jitterRatio: 0,
+        },
+        `${path}.backoff`,
+      ),
     })
   }
 

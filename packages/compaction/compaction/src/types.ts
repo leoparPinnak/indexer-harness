@@ -9,7 +9,7 @@
 
 import type { ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
-import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 // Type-only: resolves the projection type outlet so the namespace merge below
 // binds to the loaded module (the permission-presets precedent).
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -36,6 +36,12 @@ interface CompactionSessionModePolicy {
    * Absent applies the backend's configured `maxTokens`.
    */
   maxTokens?: number
+  /**
+   * Dynamic visual window of the compaction replay: replay at most the NEWEST
+   * N images to the summarizer and drop/mark the rest. Absent applies the
+   * adapter profile default; `0` replays no images at all.
+   */
+  keepLatestImages?: number
 }
 
 /**
@@ -91,6 +97,8 @@ export interface CompactionPolicyState {
   route: { provider: string; model: string } | null
   /** Latest routed model capacity in tokens; null when the route advertises none. */
   modelCapacity: number | null
+  /** Session replay visual window (`keepLatestImages`); absent means the adapter default. */
+  keepLatestImages?: number
 }
 
 /**
@@ -129,7 +137,24 @@ declare module '@deepseek-ai/dsh-session/types' {
      * `compaction/end`. A numbered owner is strictly enclosed by that open turn;
      * `null` identifies a standalone manual transaction between turns.
      */
-    'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
+    'compaction/start': {
+      compactionId: CompactionId
+      sourceCommandId?: CommandId
+      turn: number | null
+      /**
+       * Route that will write the summary, resolved before the first summarize
+       * call so a live row can name the model while it is still running. Absent
+       * when a backend cannot name its summarizer route up front.
+       */
+      provider?: string
+      model?: string
+      /**
+       * Session surface pressure at the moment the transaction opened, in
+       * tokens. This is the "context going in" figure a live row shows before
+       * the model answers.
+       */
+      contextTotalTokens?: number
+    }
     /**
      * The windowed summarization pipeline committed to its map phase —
      * log-only, inside the `compaction/start`/`compaction/end` bracket. It
@@ -172,6 +197,18 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Provider-reported token usage for the summarization request, when emitted. */
       usage?: TokenUsage
       /**
+       * Token price of the framed replacement checkpoint — the "context coming
+       * back" half of the ratio. Absent when the backend cannot price its own
+       * replacement.
+       */
+      replacementTokenCount?: number
+      /**
+       * Fraction of the shadowed context that the replacement removed, in
+       * [0, 1]. Derived host-side so every client shows one number rather than
+       * recomputing it from two independently rounded counts.
+       */
+      reductionRatio?: number
+      /**
        * Map and intermediate-merge calls whose outputs the final call
        * consolidated, in call order. Absent on a one-shot summary; the final
        * call's own envelope and output stay in the fields above and in the
@@ -195,8 +232,19 @@ declare module '@deepseek-ai/dsh-session/types' {
     /**
      * Marks the end of a compaction — log-only, releases the lock. Its owner
      * matches `compaction/start`; `error` records an unsuccessful attempt.
+     * `cancelled` closes the bracket NEUTRALLY when the operator (or an
+     * enclosing cancellation) stopped the run: a cancelled attempt is not a
+     * failure, never checkpoints a partial summary, and its close carries no
+     * `error`.
      */
-    'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
+    'compaction/end': {
+      compactionId: CompactionId
+      sourceCommandId?: CommandId
+      turn: number | null
+      error?: string
+      /** Present (true) on a neutral operator/agent cancellation close. */
+      cancelled?: true
+    }
     /**
      * Shadow price of one model-free prune replacement — log-only, no
      * surfaceOp. The shared shadow-price protocol: a surface `replace` event
@@ -221,6 +269,62 @@ declare module '@deepseek-ai/dsh-session/types' {
      * means the backend defaults apply.
      */
     'compaction/mode': CompactionSessionMode
+  }
+}
+
+/** One summarizer call inside a compaction run, identified for live display. */
+export interface CompactionStreamCall {
+  /** Pipeline stage owning the call; `summary` is the single one-shot call. */
+  readonly stage: 'window' | 'merge' | 'summary'
+  /** Zero-based index of this call within its stage across the run. */
+  readonly index: number
+  /** Planned call count for the stage when known (window map passes); null otherwise. */
+  readonly total: number | null
+}
+
+/**
+ * Lifecycle of the request behind one live frame: `requested` the moment the
+ * summarize call dispatches (before any provider bytes), `streaming` on the
+ * first output chunk, then one terminal phase. `cancelled` is the neutral
+ * operator-stop close and never pairs with a failure presentation.
+ */
+export type CompactionStreamPhase = 'requested' | 'streaming' | 'done' | 'failed' | 'cancelled'
+
+/**
+ * One live compaction stream frame — transient (process-local, never durable):
+ * the compaction analog of `assistant/live-chunk`. Deltas are per-chunk slices
+ * of the summarizer's raw output (`text`) and its reasoning (`reasoning`); a
+ * non-delta frame carries neither. Consumers accumulate deltas per `call`.
+ */
+export interface CompactionStreamFrame {
+  /** Transaction identity shared with the durable `compaction/*` bracket. */
+  readonly compactionId: CompactionId
+  /** Initiating command identity when the run is a manual compaction. */
+  readonly sourceCommandId?: CommandId
+  /** Session whose surface is being compacted; scopes the frame's routing. */
+  readonly sessionId: SessionId
+  /** Unix epoch ms when the frame was published. */
+  readonly time: number
+  /** Summarizer call this frame belongs to. */
+  readonly call: CompactionStreamCall
+  /** Lifecycle phase of the call. */
+  readonly phase: CompactionStreamPhase
+  /** Generation cap (`maxTokens`) sent with this call. */
+  readonly maxTokens: number
+  /** Visible summary-text delta for `streaming` frames. */
+  readonly text?: string
+  /** Reasoning delta for `streaming` frames. */
+  readonly reasoning?: string
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Live compaction summarize-call progress — process-local and transient,
+     * published per stream chunk while a compaction runs.
+     * @param payload - one ordered live frame of the running compaction.
+     */
+    'compaction/stream'(payload: CompactionStreamFrame): void
   }
 }
 

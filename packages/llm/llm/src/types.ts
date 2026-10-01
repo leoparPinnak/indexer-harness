@@ -183,6 +183,12 @@ export interface LlmImageRequestPrice {
  * meter) resolve it synchronously per measurement, so implementations must not
  * perform I/O.
  */
+/** Session-level request-shape overrides that request-image pricing must reproduce. */
+export interface LlmImageRequestPricingOverride {
+  /** Keep-newest-N image window overriding the route profile's own window. */
+  readonly maxImagesPerRequest?: number
+}
+
 export interface LlmImageRequestPricing {
   /**
    * Price every image occurrence of one request projection.
@@ -456,4 +462,12 @@ export interface GenerateOptions {
    * generation policy. Ordinary conversation requests leave it unset.
    */
   purpose?: 'compaction' | 'session-title'
+  /**
+   * Session-selected keep-newest-N image window for this request: at most N
+   * image occurrences stay inline as base64 and every older occurrence becomes
+   * a deterministic placeholder on the wire and in request pricing. Omission
+   * keeps the route profile's own window. The token meter reproduces the same
+   * window so the context gauge never disagrees with the pruned request.
+   */
+  maxImagesPerRequest?: number
 }

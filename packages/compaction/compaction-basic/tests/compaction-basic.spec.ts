@@ -3,10 +3,10 @@ import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
 import type { BasicCompactionConfig } from '@deepseek-ai/dsh-compaction-basic'
-import { selectCompactableRange } from '@deepseek-ai/dsh-compaction-basic/src/region.ts'
+import { isCheckpointOnlyRange, selectCompactableRange } from '@deepseek-ai/dsh-compaction-basic/src/region.ts'
 import { frameSummary } from '@deepseek-ai/dsh-compaction-basic/src/summarizer.ts'
 import type { SummarizationInput, SummaryResult } from '@deepseek-ai/dsh-compaction-basic/src/summarizer.ts'
-import { CompactionId, toolPairingBalancedAfter, toolPairingBalancedBefore } from '@deepseek-ai/dsh-compaction'
+import { CompactionId, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from '@deepseek-ai/dsh-compaction'
 import {
   resolveCompactSpec,
   resolveConfig,
@@ -261,6 +261,14 @@ class TestCompactionEngine extends BasicCompactionEngine {
   error: unknown
   mutateDuringSummary: (() => void) | undefined
   calls: Array<{ input: SummarizationInput; signal: AbortSignal | undefined }> = []
+
+  /**
+   * Names the same route `summarize` reports, so `compaction/start` announces
+   * what this stub will actually produce instead of the configured default.
+   */
+  protected override announcedSummarizerRoute(): { summarizerProvider?: string; summarizerModel?: string } {
+    return { summarizerProvider: this.summaryProvider, summarizerModel: this.summaryModel }
+  }
 
   override async summarize(
     input: SummarizationInput,
@@ -928,6 +936,24 @@ describe('compaction region transaction', () => {
       rawOutput: compact.rawOutput,
       usage: compact.usage,
     })
+    // The two halves a live compaction row needs: what the replacement costs,
+    // and the share of the shadowed span it removed. Both are derived from the
+    // same measurement the shrink check used, so the ratio is a real saving.
+    const summaryData = summary?.data
+    expect(typeof summaryData?.replacementTokenCount).toBe('number')
+    expect(summaryData?.replacementTokenCount ?? Infinity)
+      .toBeLessThan(summaryData?.shadowedTokenCount ?? 0)
+    expect(summaryData?.reductionRatio ?? -1).toBeGreaterThan(0)
+    expect(summaryData?.reductionRatio ?? 2).toBeLessThanOrEqual(1)
+    // And the start marker announces the route and the incoming context so a
+    // running row is informative before the model answers.
+    const start = session.snapshotEvents().find(event => event.type === 'compaction/start')
+    expect(start?.data).toMatchObject({
+      provider: 'summary-provider',
+      model: 'summary-model',
+    })
+    expect(typeof start?.data.contextTotalTokens).toBe('number')
+    expect(start?.data.contextTotalTokens ?? -1).toBeGreaterThan(0)
     expect(summary?.data).not.toHaveProperty('llmStreamCall')
     const head = session.deriveMessages()[0]!
     expect(head.content[0]?.type).toBe('text')
@@ -1363,6 +1389,59 @@ describe('default one-shot summarizer', () => {
     expect(lastText).toContain('Write concise English engineering prose.')
     expect(lastText).toContain('numeric values, function signatures, and syntax fragments.')
     expect(lastText).toContain('## Primary Request and Intent')
+  })
+
+  it('keeps only the newest image and marks every scrubbed one', async () => {
+    const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }])
+    const image = (letter: string): ContentBlock => ({
+      type: 'image',
+      attachment: {
+        attachmentId: AttachmentId(`sha256:${letter.repeat(64)}`),
+        mediaType: 'image/png',
+        bytes: 1,
+        width: 1,
+        height: 1,
+      },
+    })
+    const first = createUserMessage({
+      content: [{ type: 'text', text: 'older shot' }, image('a')],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    const second = createUserMessage({
+      content: [image('b')],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    await compact.runSummarize({ messages: [first, second] }, agent(conversation(1), MODEL))
+
+    const messages = adapter.lastOptions?.messages ?? []
+    const replayed = JSON.stringify(messages.slice(0, -1))
+    expect(replayed).not.toContain(`sha256:${'a'.repeat(64)}`)
+    expect(replayed).toContain(`sha256:${'b'.repeat(64)}`)
+    expect(replayed).toContain('[image omitted at compaction: image/png, 1 bytes]')
+  })
+
+  it('marks inline base64 payloads in text and tool-call arguments', async () => {
+    const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }])
+    const blob = 'iVBORw0KGgo'.padEnd(600, 'A')
+    const textMessage = createUserMessage({
+      content: [{ type: 'text', text: `shot: data:image/png;base64,${blob}` }],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    const jsonMessage = createUserMessage({
+      content: [{ type: 'text', text: `{"data":"${blob}"}` }],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    const toolMessage = createUserMessage({
+      content: [{ type: 'tool-call', id: ToolCallId('call-1'), name: 'x', arguments: `{"upload":"${blob}"}` }],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    await compact.runSummarize({
+      messages: [textMessage, jsonMessage, toolMessage],
+    }, agent(conversation(1), MODEL))
+
+    const replayed = JSON.stringify((adapter.lastOptions?.messages ?? []).slice(0, -1))
+    expect(replayed).not.toContain(blob)
+    expect(replayed.match(/\[inline base64 omitted at compaction: 600 chars\]/g)).toHaveLength(3)
   })
 
   it('applies the routed model policy without changing the replayed prefix', async () => {
@@ -2064,6 +2143,52 @@ describe('route-priced image pressure', () => {
     session.append('turn/start', { turn: turns + 1 })
     return session
   }
+
+  it('never selects a lone prior checkpoint when real conversation sits behind it', () => {
+    // The failure this pins: a huge tool result satisfied the whole retention
+    // budget on its own, so the backward walk stopped at it, the tool-pairing
+    // walk then retreated to the previous CHECKPOINT, and the "range" became
+    // that single ~1.2K summary. Re-summarizing a summary cannot shrink it
+    // (1197 -> 1186, 0.92%), so a 718K context never moved. The region must
+    // reach the real conversation behind the checkpoint instead.
+    const session = conversation(6)
+    const ctx = createContext()
+    // Insert the checkpoint a prior compaction would have landed, at the head.
+    const checkpoint = session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '## Primary Request and Intent\n- previous checkpoint body' }],
+      source: compactCheckpointSource('previous-run' as never),
+    }), { surfaceOp: 'append' })
+    expect(session.surface.nodes).toContain(checkpoint.seq)
+
+    // A retention budget that one oversized tail node satisfies alone: the walk
+    // stops immediately, which is exactly the state that produced the bug.
+    const measurement = ctx.tokenMeter.measure(session)
+    const hugeTail = measurement.nodes.reduce((max, node) => Math.max(max, node.tokens), 0)
+    const range = selectCompactableRange(session, measurement, hugeTail)
+
+    if (range !== null) {
+      const shadowed = measurement.nodes
+        .slice(0, measurement.nodes.findIndex(node => node.seq === range.end) + 1)
+      expect(shadowed.length).toBeGreaterThan(1)
+    }
+  })
+
+  it('rejects a range that would cover only a compaction checkpoint', () => {
+    // Same rule stated directly: a range whose entire shadowed span is one
+    // compaction checkpoint is useless, so selection must decline it and let
+    // the caller try again rather than spend a summarizer call for 0.9%.
+    const session = conversation(4)
+    const checkpointSeq = session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: '## Next Step\n- (none)' }],
+      source: compactCheckpointSource('solo-run' as never),
+    }), { surfaceOp: 'append' }).seq
+
+    // A one-node span on the checkpoint is the exact useless case.
+    expect(isCheckpointOnlyRange(session, checkpointSeq, checkpointSeq)).toBe(true)
+    // Widening back over the conversation is not.
+    const firstConversationNode = session.surface.nodes[0]!
+    expect(isCheckpointOnlyRange(session, firstConversationNode, checkpointSeq)).toBe(false)
+  })
 
   it('selects an image-dense range only when the routed price counts visual tokens', () => {
     const session = imageConversation()

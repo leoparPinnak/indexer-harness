@@ -415,7 +415,12 @@ describe('compactNow transaction and failure classification', () => {
     )
     const end = session.snapshotEvents().findLast(event => event.type === 'compaction/end')
     const correlated = { compactionId: result?.compactionId, sourceCommandId: commandId }
-    expect(start?.data).toEqual({ ...correlated, turn: null })
+    // The start marker additionally announces the summarizer route and the
+    // context size going in, so a live row can render before the model answers.
+    expect(start?.data).toMatchObject({ ...correlated, turn: null })
+    expect(start?.data.provider).toBe('mock')
+    expect(start?.data.model).toBe('mock')
+    expect(typeof start?.data.contextTotalTokens).toBe('number')
     expect(summaryEvent?.data.sourceCommandId).toBe(commandId)
     expect(checkpoint?.data.source).toMatchObject(correlated)
     expect(end?.data).toEqual({ ...correlated, turn: null })
@@ -688,7 +693,7 @@ describe('compactNow transaction and failure classification', () => {
     expect(result).not.toBeNull()
     expect(session.snapshotEvents().some(event => event.type === 'turn/start')).toBe(false)
     expect(session.snapshotEvents().find(event => event.type === 'compaction/start')?.data)
-      .toEqual({ compactionId: result?.compactionId, turn: null })
+      .toMatchObject({ compactionId: result?.compactionId, turn: null })
   })
 
   it('classifies a durability failure after the standalone bracket committed', async () => {
@@ -702,6 +707,8 @@ describe('compactNow transaction and failure classification', () => {
     expect(session.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(true)
     const start = session.snapshotEvents().findLast(event => event.type === 'compaction/start')
     const end = session.snapshotEvents().findLast(event => event.type === 'compaction/end')
+    // The bracket closed cleanly: only the durability flush failed afterwards,
+    // so the end marker records no error.
     expect(end?.data).toEqual({ compactionId: start?.data.compactionId, turn: null })
   })
 

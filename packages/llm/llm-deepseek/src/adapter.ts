@@ -373,7 +373,11 @@ export class DeepSeekAdapter extends LlmAdapter {
     return this.config.options().retryPolicy
   }
 
-  override imageRequestPricing(_provider: string, model: string): ReturnType<LlmAdapter['imageRequestPricing']> {
+  override imageRequestPricing(
+    _provider: string,
+    model: string,
+    override?: { readonly maxImagesPerRequest?: number },
+  ): ReturnType<LlmAdapter['imageRequestPricing']> {
     // The same access resolution the serializer uses, so priced handle and
     // placeholder text matches what the request actually sends.
     const attachments = this.config.resolveAttachments?.()
@@ -382,7 +386,7 @@ export class DeepSeekAdapter extends LlmAdapter {
       : (ref: ImageAttachmentRef): ImageAttachmentAccess | undefined => (
         this.config.resolveImageAccess?.(attachments, ref)
       )
-    return deepSeekImageRequestPricing(this.config.options(), model, resolveAccess)
+    return deepSeekImageRequestPricing(this.config.options(), model, resolveAccess, override)
   }
 
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
@@ -557,12 +561,19 @@ export class DeepSeekAdapter extends LlmAdapter {
       ? undefined
       : (ref: ImageAttachmentRef): ImageAttachmentAccess | undefined => this.config.resolveImageAccess?.(attachments, ref)
     const imageAccessOptions = resolveImageAccess === undefined ? {} : { resolveImageAccess }
+    // The session's keep-newest-N window overrides the route default; the
+    // removal quantum steps down with it so a one-image window removes one at
+    // a time instead of one whole quantum.
+    const maxImages = options.maxImagesPerRequest ?? connection.maxImagesPerRequest
+    // Never zero: a `0` window (replay no images) would divide the removal
+    // quantum math by zero; the window alone removes every occurrence.
+    const countQuantum = Math.max(1, Math.min(connection.imageOffloadCountQuantum, maxImages))
     const requestMessages = policy === undefined ? options.messages : offloadRequestImagesWithPolicy(options.messages, {
       representation: 'raw',
       maxBytes: connection.maxRequestFilesBytes,
-      maxImages: connection.maxImagesPerRequest,
+      maxImages,
       byteQuantum: connection.imageOffloadByteQuantum,
-      countQuantum: connection.imageOffloadCountQuantum,
+      countQuantum,
       byteLength: ref => Math.min(ref.bytes, policy.maxBytes),
       placeholder: ref => offloadedImageText(ref, resolveImageAccess?.(ref)),
     })
@@ -583,9 +594,9 @@ export class DeepSeekAdapter extends LlmAdapter {
           requestImages,
           ...imageAccessOptions,
           maxRequestImageBytes: connection.maxInlineRequestImageBytes,
-          maxImagesPerRequest: connection.maxImagesPerRequest,
+          maxImagesPerRequest: maxImages,
           byteQuantum: connection.inlineImageOffloadByteQuantum,
-          countQuantum: connection.imageOffloadCountQuantum,
+          countQuantum,
         }, connection.defaults)
       } else {
         try {
@@ -614,9 +625,9 @@ export class DeepSeekAdapter extends LlmAdapter {
             requestImages,
             ...imageAccessOptions,
             maxRequestImageBytes: connection.maxRequestFilesBytes,
-            maxImagesPerRequest: connection.maxImagesPerRequest,
+            maxImagesPerRequest: maxImages,
             byteQuantum: connection.imageOffloadByteQuantum,
-            countQuantum: connection.imageOffloadCountQuantum,
+            countQuantum,
           }, connection.defaults)
         } catch (error: unknown) {
           if (!(error instanceof FileResolutionFailure)) throw error

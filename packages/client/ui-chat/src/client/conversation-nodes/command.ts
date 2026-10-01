@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  CommandNode, CompactionSummaryNode, ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
+  CommandNode, CompactionLiveView, CompactionSummaryNode, ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { CompactionCheckpointSource } from '@deepseek-ai/dsh-compaction/checkpoint'
 import type {} from '@deepseek-ai/dsh-compaction/types'
@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-commands/types'
 import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import type { ManualCompactionChatData } from '../contract/chat-nodes.ts'
 import { chatNode } from './common.ts'
+import { foldCompactionLive } from './compaction-live-state.ts'
 
 declare module '../contract/chat-nodes.ts' {
   interface ChatNodeDataMap {
@@ -24,6 +25,7 @@ const COMPACT_PLUGIN: CompactionCheckpointSource['plugin'] = 'compact'
 
 interface CommandState {
   readonly command: CommandNode
+  readonly start?: ConversationMatch
   readonly summary?: ConversationMatch
   readonly checkpoint?: ConversationMatch
   readonly windows?: ConversationMatch
@@ -31,10 +33,13 @@ interface CommandState {
 }
 
 interface CompactionEvidence {
+  readonly start?: ConversationMatch
   readonly summary?: ConversationMatch
   readonly checkpoint?: ConversationMatch
   readonly windows?: ConversationMatch
   readonly end?: ConversationMatch
+  /** Live streaming presentation folded from transient compaction frames. */
+  readonly live?: CompactionLiveView
 }
 
 function commandFromRun(match: ConversationMatch): CommandNode {
@@ -97,17 +102,34 @@ function compactSource(event: Parameters<ConversationNodeDefinition['match']>[0]
   }
 }
 
+/** Read a non-negative integer count, or null when the field is absent or malformed. */
+function tokenCount(value: unknown): number | null {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : null
+}
+
+/** Read a finite ratio inside [0, 1], or null when the field is absent or malformed. */
+function ratio(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null
+}
+
 /**
  * Build the visible compaction marker from optional lifecycle evidence.
  * @param state - correlated compaction Matches for one transaction.
  * @returns final compaction summary Node data, anchored on the newest evidence.
  */
 function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
-  const anchor = state.checkpoint?.event ?? state.end?.event ?? state.windows?.event ?? state.summary?.event
+  const anchor = state.checkpoint?.event ?? state.end?.event ?? state.windows?.event
+    ?? state.summary?.event ?? state.start?.event
   if (anchor === undefined) throw new Error('compaction marker requires one lifecycle event')
   let summary: string | null = null
   let shadowedItemCount: number | null = null
   let shadowedTokenCount: number | null = null
+  let replacementTokenCount: number | null = null
+  let reductionRatio: number | null = null
+  let summaryProvider: string | null = null
+  let summaryModel: string | null = null
   if (state.summary?.event.type === 'compaction/summary') {
     const data = state.summary.event.data
     if (Array.isArray(data.summary)) {
@@ -120,12 +142,27 @@ function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
       && data.shadowedSeqs.every(seq => Number.isSafeInteger(seq) && seq >= 0)
       ? data.shadowedSeqs.length
       : null
-    shadowedTokenCount = Number.isSafeInteger(data.shadowedTokenCount)
-      && data.shadowedTokenCount >= 0
-      ? data.shadowedTokenCount
-      : null
+    shadowedTokenCount = tokenCount(data.shadowedTokenCount)
+    replacementTokenCount = tokenCount(data.replacementTokenCount)
+    reductionRatio = ratio(data.reductionRatio)
+    summaryProvider = typeof data.provider === 'string' && data.provider !== '' ? data.provider : null
+    summaryModel = typeof data.model === 'string' && data.model !== '' ? data.model : null
+  }
+  // The start marker announces the route and the incoming context size before
+  // the model answers, so a still-running row is already informative.
+  let startProvider: string | null = null
+  let startModel: string | null = null
+  let contextTotalTokens: number | null = null
+  if (state.start?.event.type === 'compaction/start') {
+    const data = state.start.event.data
+    startProvider = typeof data.provider === 'string' && data.provider !== '' ? data.provider : null
+    startModel = typeof data.model === 'string' && data.model !== '' ? data.model : null
+    contextTotalTokens = tokenCount(data.contextTotalTokens)
   }
   const failed = state.end?.event.type === 'compaction/end' && state.end.event.data.error !== undefined
+  // An operator stop closes the bracket with `cancelled` and no error: the row
+  // is NEUTRAL and never presents as a failure.
+  const cancelled = state.end?.event.type === 'compaction/end' && state.end.event.data.cancelled === true
   const windows = state.windows?.event.type === 'compaction/windows'
     && Number.isSafeInteger(state.windows.event.data.windows)
     && state.windows.event.data.windows >= 1
@@ -135,12 +172,20 @@ function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
     kind: 'compaction',
     seq: anchor.seq,
     time: anchor.time,
-    status: state.checkpoint !== undefined ? 'landed' : failed ? 'failed' : 'running',
+    status: state.checkpoint !== undefined ? 'landed' : cancelled ? 'cancelled' : failed ? 'failed' : 'running',
     summary,
     summaryEventSeq: state.summary?.event.seq ?? null,
     shadowedItemCount,
     shadowedTokenCount,
+    contextTotalTokens,
+    // The summary event is authoritative once it exists; the start announcement
+    // only fills the gap while the run is still in flight.
+    provider: summaryProvider ?? startProvider,
+    model: summaryModel ?? startModel,
+    replacementTokenCount,
+    reductionRatio,
     windows,
+    ...state.live === undefined ? {} : { live: state.live },
   }
 }
 
@@ -183,9 +228,13 @@ export function updateCompactionState<State extends CompactionEvidence>(
   state: State,
   match: ConversationMatch,
 ): State {
+  if (match.event.type === 'compaction/start') return { ...state, start: match }
   if (match.event.type === 'compaction/summary') return { ...state, summary: match }
   if (match.event.type === 'compaction/windows') return { ...state, windows: match }
   if (match.event.type === 'compaction/end') return { ...state, end: match }
+  if (match.event.type === 'compaction/live-chunk') {
+    return { ...state, live: foldCompactionLive(state.live, match.event.data) }
+  }
   if (compactSource(match.event) !== undefined) return { ...state, checkpoint: match }
   return state
 }
@@ -205,6 +254,10 @@ export const commandDefinition: ConversationNodeDefinition<CommandState> = {
     if (checkpoint?.sourceCommandId !== undefined) {
       return { id: String(checkpoint.sourceCommandId), role: 'update' }
     }
+    if (event.type === 'compaction/live-chunk') {
+      if (event.data.sourceCommandId === undefined) return null
+      return { id: String(event.data.sourceCommandId), role: 'update' }
+    }
     if (event.type === 'compaction/start'
       || event.type === 'compaction/windows'
       || event.type === 'compaction/summary'
@@ -222,6 +275,7 @@ export const commandDefinition: ConversationNodeDefinition<CommandState> = {
     }
     return updateCompactionState(context.state, match)
   },
+  publication: match => (match.event.type === 'compaction/live-chunk' ? 'animation-frame' : 'immediate'),
   buildViewNode: (context) => {
     const state = context.state ?? fallbackState(context)
     if (state === undefined) return null

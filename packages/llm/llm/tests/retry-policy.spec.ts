@@ -7,20 +7,16 @@ import type { RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
 describe('provider retry policy', () => {
-  it('resolves immutable normal defaults', () => {
+  it('resolves immutable unbounded fixed-interval defaults', () => {
     const policy = resolveRetryPolicy(undefined, 'provider.retryPolicy')
 
     expect(policy).toEqual({
-      mode: 'normal',
-      maxRetries: 8,
-      retryableCodes: ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'],
-      initialDelayMs: 500,
-      maxDelayMs: 10_000,
-      jitterRatio: 0.1,
+      mode: 'always',
+      initialDelayMs: 15_000,
+      maxDelayMs: 15_000,
+      jitterRatio: 0,
     })
     expect(Object.isFrozen(policy)).toBe(true)
-    if (policy.mode !== 'normal') throw new Error('expected normal policy')
-    expect(Object.isFrozen(policy.retryableCodes)).toBe(true)
   })
 
   it('resolves and detaches a configured normal policy', () => {

@@ -172,8 +172,10 @@ describe('ContextControl', () => {
     })
 
     // Back to the deployment default: each override leaves the durable mode.
+    // Only the toggles currently OFF are the overrides' auto switches — the
+    // image window's switch already follows the default and must stay there.
     for (const auto of view.getAllByRole('checkbox', { name: '跟随默认值' })) {
-      fireEvent.click(auto)
+      if (!(auto as HTMLInputElement).checked) fireEvent.click(auto)
     }
     await waitFor(() => {
       expect(calls.saved.at(-1)).toEqual({ summarizer: 'conversation' })
@@ -207,17 +209,45 @@ describe('ContextControl', () => {
     expect(view.container.querySelector('[role="dialog"]')!.textContent).toContain('~96K')
   })
 
+  it('orders the budget above the trigger: capacity is read before its threshold', () => {
+    // The budget is the parent figure — the trigger point is a percentage OF
+    // it — so reading it first makes the panel's causal order match its visual
+    // order. A DOM-order test, because a screenshot cannot prove it.
+    const { view } = control(withContext())
+    fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
+    const dialog = view.container.querySelector('[role="dialog"]')!
+    const budgetAt = dialog.textContent!.indexOf('上下文预算（tokens）')
+    const triggerAt = dialog.textContent!.indexOf('触发点')
+    expect(budgetAt).toBeGreaterThanOrEqual(0)
+    expect(triggerAt).toBeGreaterThanOrEqual(0)
+    expect(budgetAt).toBeLessThan(triggerAt)
+  })
+
   it('reads each field\'s scope from its default-follow state', () => {
     const { view } = control(withContext())
     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
     // Every slider follows the deployment default initially; only the
     // dedicated strategy option is inherently a session-scoped choice.
-    expect(view.getAllByText('全局')).toHaveLength(4)
+    expect(view.getAllByText('全局')).toHaveLength(5)
     expect(view.getAllByText('仅本会话')).toHaveLength(1)
     // Leaving the default scopes that one field to this session.
     fireEvent.change(view.getByLabelText('上下文预算（tokens）'), { target: { value: '75' } })
-    expect(view.getAllByText('全局')).toHaveLength(3)
+    expect(view.getAllByText('全局')).toHaveLength(4)
     expect(view.getAllByText('仅本会话')).toHaveLength(2)
+  })
+
+  it('rides the keep-newest-N image window into the durable mode, zero included', async () => {
+    const { view, calls } = control(withContext())
+    fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
+    fireEvent.change(view.getByLabelText('最新图像窗口'), { target: { value: '3' } })
+    await waitFor(() => {
+      expect(calls.saved.at(-1)).toEqual({ summarizer: 'conversation', keepLatestImages: 3 })
+    })
+    // `0` is the mode validator's "replay no images" window and must commit.
+    fireEvent.change(view.getByLabelText('最新图像窗口'), { target: { value: '0' } })
+    await waitFor(() => {
+      expect(calls.saved.at(-1)).toEqual({ summarizer: 'conversation', keepLatestImages: 0 })
+    })
   })
 
   it('routes the dedicated strategy with its picked provider and model', async () => {

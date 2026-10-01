@@ -16,6 +16,14 @@ function isTokenBudget(value: unknown): value is number | undefined {
 }
 
 /**
+ * Whether one untrusted visual-window figure is absent or a non-negative safe
+ * integer (`0` replays no images; `N` keeps the newest N).
+ */
+function isImageWindow(value: unknown): value is number | undefined {
+  return value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+}
+
+/**
  * Whether one untrusted value is a complete, self-consistent
  * {@link CompactionSessionMode} — wire- and durable-boundary validation
  * before a write is accepted.
@@ -28,7 +36,8 @@ export function isCompactionSessionMode(value: unknown): value is CompactionSess
   const candidate = value as Record<string, unknown>
   if (!isTokenBudget(candidate.contextBudgetTokens)
     || !isTokenBudget(candidate.thresholdTokens)
-    || !isTokenBudget(candidate.maxTokens)) {
+    || !isTokenBudget(candidate.maxTokens)
+    || !isImageWindow(candidate.keepLatestImages)) {
     return false
   }
   if (candidate.summarizer === 'conversation') {

@@ -180,7 +180,7 @@ describe('Conversation registries', () => {
     const unsubscribe = conversation.snapshot.subscribe(listener)
     const source = binding.eventSource as MutableSessionEventSource
     const append = (event: SessionEventLike): void => {
-      source.append(event.type === 'assistant/live-chunk'
+      source.append(event.type === 'assistant/live-chunk' || event.type === 'compaction/live-chunk'
         ? { type: 'transient', event }
         : { type: 'event', event })
     }

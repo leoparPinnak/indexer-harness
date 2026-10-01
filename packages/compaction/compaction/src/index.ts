@@ -11,12 +11,16 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 import type { CompactionResult } from './types.ts'
+import type { CompactionId } from './brand.ts'
 
 export type { CompactionResult } from './types.ts'
 export type {
   CompactionPolicyState,
   CompactionPolicyView,
   CompactionSessionMode,
+  CompactionStreamCall,
+  CompactionStreamFrame,
+  CompactionStreamPhase,
   CompactionSummaryCall,
 } from './types.ts'
 export { CompactionId } from './brand.ts'
@@ -174,6 +178,21 @@ export abstract class CompactionEngine extends Service {
     agent: CompactionAgentContext,
     signal?: AbortSignal,
   ): Promise<CompactionResult>
+
+  /**
+   * Stop the compaction currently running under `compactionId`: abort its
+   * in-flight summarizer request (the abort reaches the provider transport),
+   * prevent any further windowed/merge call from starting, and close the
+   * durable bracket with the NEUTRAL `compaction/end` `cancelled` marker — a
+   * cancelled run is not a failure and never checkpoints a partial summary.
+   * Implementations override this with their active-transaction registry.
+   * @param compactionId - transaction identity from `compaction/start`.
+   * @returns whether a live compaction was cancelled; `false` when none is running.
+   */
+  cancelCompaction(_compactionId: CompactionId): boolean {
+    /* v8 ignore next -- default seam behavior: an engine without a registry cancels nothing. */
+    return false
+  }
 }
 
 export default CompactionEngine

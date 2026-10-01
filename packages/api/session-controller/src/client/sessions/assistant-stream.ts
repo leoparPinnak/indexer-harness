@@ -43,6 +43,11 @@ export class ClientAssistantStream {
   private durableCursor = -1
   private transientInGap = 0
 
+  /** Last durable Session seq this fold observed; anchors sibling transient bands. */
+  get cursor(): number {
+    return this.durableCursor
+  }
+
   /**
    * Replace the durable Web window and adopt an optional reconnect baseline.
    * @param entries - durable entries in the replacement window.

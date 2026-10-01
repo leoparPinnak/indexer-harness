@@ -206,17 +206,18 @@ describe('/compact human command', () => {
   })
 
   it.each([
-    ['busy', 'Compaction is unavailable because this process has an active compaction, or the agent is not idle.'],
-    ['cancelled', 'Compaction cancelled.'],
-    ['changed', 'The history selected for compaction changed before it could be replaced. The conversation is unchanged; the attempt is recorded in the session log.'],
-    ['summary', 'Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.'],
-    ['commit', 'Compaction did not finish cleanly; some session history may have changed. Inspect the current session state before retrying.'],
-    ['persistence', 'Compaction finished, but the session could not be saved.'],
-  ] as const)('maps expected %s failures to direct errors', async (code, text) => {
+    ['busy', 'Compaction is unavailable because this process has an active compaction, or the agent is not idle.', 'error'],
+    // Operator stop is NEUTRAL: it closes as a plain outcome, never a failure row.
+    ['cancelled', 'Compaction cancelled.', 'success'],
+    ['changed', 'The history selected for compaction changed before it could be replaced. The conversation is unchanged; the attempt is recorded in the session log.', 'error'],
+    ['summary', 'Compaction could not produce a useful summary. The conversation is unchanged; the attempt is recorded in the session log.', 'error'],
+    ['commit', 'Compaction did not finish cleanly; some session history may have changed. Inspect the current session state before retrying.', 'error'],
+    ['persistence', 'Compaction finished, but the session could not be saved.', 'error'],
+  ] as const)('maps expected %s failures to direct command outcomes', async (code, text, kind) => {
     const test = await harness()
     test.compact.failure = new ManualCompactionError(code, 'backend detail')
     const execution = await run(test)
-    expect(execution.result).toEqual({ kind: 'error', text })
+    expect(execution.result).toEqual({ kind, text })
     expect(execution.commandId).toBe(expectLastLifecycle(test, '', execution.result))
   })
 

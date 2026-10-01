@@ -162,6 +162,15 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
+          // Row-level STOP (e.g. the model-retry countdown button): the same
+          // cancellation the composer's stop owns — the retry timer clears and
+          // the turn closes NEUTRALLY (`turn/end` aborted/user), never as a
+          // failure row.
+          stopAction: () => {
+            session.cancel().catch(() => {
+              // Stop failure is published through Session promptError.
+            })
+          },
         }
       },
     }, ChatView)

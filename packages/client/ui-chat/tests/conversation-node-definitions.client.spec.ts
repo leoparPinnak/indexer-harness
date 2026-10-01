@@ -2292,6 +2292,102 @@ describe('built-in conversation node Definitions', () => {
     })
   })
 
+  it('names the summarizer and the incoming context size while the run is still open', () => {
+    // The whole point of the start announcement: a running row answers "which
+    // model is compacting" and "how much context went in" without waiting for
+    // the model's answer.
+    const running = assembler([
+      at(10, 'compaction/start', {
+        compactionId: 'live-run',
+        turn: null,
+        provider: 'geminigatawey',
+        model: 'gemini-3.8-flash-medium',
+        contextTotalTokens: 412_000,
+      }),
+    ], true)
+
+    expect(node(snapshot(running), 'compaction')?.data).toMatchObject({
+      status: 'running',
+      provider: 'geminigatawey',
+      model: 'gemini-3.8-flash-medium',
+      contextTotalTokens: 412_000,
+      // Nothing is known about the replacement until the summary lands.
+      replacementTokenCount: null,
+      reductionRatio: null,
+      shadowedTokenCount: null,
+    })
+  })
+
+  it('reports what came back and the reduction ratio once the checkpoint lands', () => {
+    const landed = assembler([
+      at(10, 'compaction/start', {
+        compactionId: 'measured-run',
+        turn: null,
+        provider: 'geminigatawey',
+        model: 'gemini-3.8-flash-medium',
+        contextTotalTokens: 412_000,
+      }),
+      at(11, 'compaction/summary', {
+        compactionId: 'measured-run',
+        summary: [{ type: 'text', text: 'measured summary' }],
+        shadowedSeqs: [1, 2, 3],
+        shadowedTokenCount: 8000,
+        provider: 'geminigatawey',
+        model: 'gemini-3.8-flash-medium',
+        replacementTokenCount: 1000,
+        reductionRatio: 0.875,
+      }),
+      at(12, 'user/message', {
+        ...textMessage('measured-checkpoint', 'checkpoint'),
+        source: { kind: 'plugin', plugin: 'compact', compactionId: 'measured-run' },
+      }, { surfaceOp: { op: 'replace', startSeq: 1, endSeq: 3 } }),
+      at(13, 'compaction/end', { compactionId: 'measured-run', turn: null }),
+    ], true)
+
+    expect(node(snapshot(landed), 'compaction')?.data).toMatchObject({
+      status: 'landed',
+      contextTotalTokens: 412_000,
+      shadowedTokenCount: 8000,
+      replacementTokenCount: 1000,
+      reductionRatio: 0.875,
+    })
+  })
+
+  it('drops malformed token and ratio figures instead of rendering them', () => {
+    // A malformed figure must read as "unknown", never as a wrong measurement.
+    const landed = assembler([
+      at(10, 'compaction/start', {
+        compactionId: 'bad-figures',
+        turn: null,
+        provider: '',
+        contextTotalTokens: -5,
+      }),
+      at(11, 'compaction/summary', {
+        compactionId: 'bad-figures',
+        summary: [{ type: 'text', text: 'summary' }],
+        shadowedSeqs: [1, 2],
+        shadowedTokenCount: 8000,
+        provider: 'p',
+        model: 'm',
+        replacementTokenCount: -1,
+        reductionRatio: 4,
+      }),
+      at(12, 'user/message', {
+        ...textMessage('bad-checkpoint', 'checkpoint'),
+        source: { kind: 'plugin', plugin: 'compact', compactionId: 'bad-figures' },
+      }, { surfaceOp: { op: 'replace', startSeq: 1, endSeq: 2 } }),
+      at(13, 'compaction/end', { compactionId: 'bad-figures', turn: null }),
+    ], true)
+
+    expect(node(snapshot(landed), 'compaction')?.data).toMatchObject({
+      contextTotalTokens: null,
+      replacementTokenCount: null,
+      reductionRatio: null,
+      // The summary event's own route still names the model.
+      model: 'm',
+    })
+  })
+
   it('routes a windowed manual run into its command marker', () => {
     const value = assembler([
       at(10, 'command/run', {

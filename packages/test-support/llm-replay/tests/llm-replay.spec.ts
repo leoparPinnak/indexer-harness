@@ -1435,11 +1435,10 @@ describe('installLlmReplay (through the real LlmRuntime)', () => {
       jitterRatio: 0,
     })
     expect(ctx.llm.providerRetryPolicy('empty')).toMatchObject({
-      mode: 'normal',
-      maxRetries: 8,
-      initialDelayMs: 500,
-      maxDelayMs: 10_000,
-      jitterRatio: 0.1,
+      mode: 'always',
+      initialDelayMs: 15_000,
+      maxDelayMs: 15_000,
+      jitterRatio: 0,
     })
     expect(await drain(ctx.llm.stream({ provider: 'deepseek', model: 'pro', messages: [] }))).toEqual(TEXT_CHUNKS)
 

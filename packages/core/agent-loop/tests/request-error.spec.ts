@@ -94,8 +94,8 @@ describe('agent/request-error', () => {
     ])
     expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(1)
     expect(seen.map(item => item.retryPolicy)).toEqual([
-      expect.objectContaining({ mode: 'normal' }),
-      expect.objectContaining({ mode: 'normal' }),
+      expect.objectContaining({ mode: 'always' }),
+      expect.objectContaining({ mode: 'always' }),
     ])
     expect(statuses).toEqual(['running', 'idle'])
     expect(agent.session.snapshotEvents().flatMap(event =>

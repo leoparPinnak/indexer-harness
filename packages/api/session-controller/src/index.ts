@@ -34,6 +34,8 @@ import type {
   SessionCreateRequest,
   SessionCreateValue,
   SessionFollowFrame,
+  SessionCancelCompactionRequest,
+  SessionCancelCompactionValue,
   SessionFollowRequest,
   SessionForkRequest,
   SessionForkValue,
@@ -256,6 +258,19 @@ export class SessionController extends TypertRemoteService {
   @Remote('selectModel')
   selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     return this.commands.selectModel(request)
+  }
+
+  /**
+   * Stop one running compaction transaction: aborts the in-flight summarizer
+   * request and closes the bracket with the neutral `cancelled` marker.
+   * @param request - compaction identity from `compaction/start`.
+   * @returns whether a live compaction was cancelled.
+   */
+  @Remote('cancelCompaction')
+  cancelCompaction(
+    request: SessionCancelCompactionRequest,
+  ): Promise<SessionCancelCompactionValue> {
+    return this.commands.cancelCompaction(request)
   }
 
   /**

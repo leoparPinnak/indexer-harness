@@ -11,18 +11,19 @@ import {
   CompactionId,
   ManualCompactionError,
   compactCheckpointSource,
+  isCompactCheckpointSource,
   toolPairingBalancedAfter,
   toolPairingBalancedBefore,
 } from '@deepseek-ai/dsh-compaction'
-import type { CompactionResult } from '@deepseek-ai/dsh-compaction'
+import type { CompactionResult, CompactionStreamFrame } from '@deepseek-ai/dsh-compaction'
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 import { createUserMessage, errorChain } from '@deepseek-ai/dsh-llm'
 import type { Message, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { TokenMeasurement, TokenMeter } from '@deepseek-ai/dsh-token-meter'
 import { SessionSeq, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { frameSummary } from './summarizer.ts'
-import type { SummarizationInput, SummaryResult } from './summarizer.ts'
+import { frameSummary, sanitizeReplayMedia } from './summarizer.ts'
+import type { SummarizationInput, SummarizerLiveSink, SummaryResult } from './summarizer.ts'
 
 interface RegionDependencies {
   readonly meter: TokenMeter
@@ -31,6 +32,7 @@ interface RegionDependencies {
     agent: Agent,
     signal?: AbortSignal,
     onWindows?: (windows: number) => void,
+    live?: SummarizerLiveSink,
   ): Promise<SummaryResult>
 }
 
@@ -55,6 +57,10 @@ interface PreparedCompaction extends SurfaceSelection {
 
 type SummarizedCompaction = PreparedCompaction & SummaryResult & {
   readonly checkpointMessage: UserMessage
+  /** Token price of the framed replacement checkpoint. */
+  readonly replacementTokenCount: number
+  /** Share of the shadowed context the replacement removed, in [0, 1]. */
+  readonly reductionRatio: number
 }
 
 interface CompactionTransactionOptions {
@@ -66,6 +72,23 @@ interface CompactionTransactionOptions {
   readonly flush?: () => Promise<void>
   /** Manual command that initiated this transaction, when present. */
   readonly sourceCommandId?: CommandId
+  /**
+   * Summarizer route announced on `compaction/start` so a live row can name
+   * the model before its answer lands. Absent leaves the row unnamed.
+   */
+  readonly summarizerProvider?: string
+  /** Model of {@link CompactionTransactionOptions.summarizerProvider}. */
+  readonly summarizerModel?: string
+  /**
+   * Announces the minted transaction identity the moment `compaction/start`
+   * commits, so an owner registry can key operator cancellation to it.
+   */
+  readonly onOpen?: (compactionId: CompactionId) => void
+  /**
+   * Live stream sink receiving identity-bound `compaction/stream` frames
+   * (transient presentation of the running summarize calls).
+   */
+  readonly live?: (frame: CompactionStreamFrame) => void
 }
 
 interface CompactionEntryState {
@@ -156,7 +179,55 @@ export function selectCompactableRange(
   const first = surfaceNodes[firstIdx]!
   // oxlint-disable-next-line typescript/no-non-null-assertion
   const cutoff = surfaceNodes[keepFromIdx - 1]!
+  if (isCheckpointOnlyRange(session, first, cutoff)) {
+    // The span is a single already-compacted checkpoint. Re-summarizing a
+    // summary cannot shrink it, so this would burn a full summarizer call to
+    // move ~1% — or fail the "not smaller" check outright. Widen the span
+    // back over the real conversation behind the checkpoint instead.
+    while (keepFromIdx > firstIdx + 1) {
+      keepFromIdx -= 1
+      // oxlint-disable-next-line typescript/no-non-null-assertion
+      if (toolPairingBalancedBefore(session, surfaceNodes[keepFromIdx]!)) break
+    }
+    // oxlint-disable-next-line typescript/no-non-null-assertion
+    const widened = surfaceNodes[keepFromIdx - 1]!
+    // A still-checkpoint-only widened span is genuinely all this surface has:
+    // decline it rather than loop, and let the caller decide (an orphan
+    // `compaction/start` is still the caller's business to resolve).
+    if (isCheckpointOnlyRange(session, first, widened)) return null
+    return { start: first, end: widened }
+  }
   return { start: first, end: cutoff }
+}
+
+/**
+ * Whether a candidate span covers nothing but compaction checkpoints — a
+ * summary of a summary, which is the one span no summarizer can shrink.
+ * @param session - session supplying the surface behind the seqs.
+ * @param start - inclusive first surface-node seq.
+ * @param end - inclusive last surface-node seq.
+ * @returns true when every node in the span is a compaction checkpoint.
+ */
+export function isCheckpointOnlyRange(
+  session: Session,
+  start: SessionSeq,
+  end: SessionSeq,
+): boolean {
+  const surface = session.surface.nodes
+  const startIndex = surface.indexOf(start)
+  const endIndex = surface.indexOf(end)
+  if (startIndex < 0 || endIndex < startIndex) return false
+  const span = surface.slice(startIndex, endIndex + 1)
+  if (span.length === 0) return false
+  return span.every((seq) => {
+    // Surface nodes are current log seqs, so the event exists.
+    // Existing Session history read; migration deferred.
+    // oxlint-disable-next-line typescript/no-deprecated
+    const event = session.eventAt(seq)
+    return event !== undefined
+      && event.type === 'user/message'
+      && isCompactCheckpointSource(event.data.source)
+  })
 }
 
 /**
@@ -207,12 +278,27 @@ export async function compactSurfaceRegion(
   }
 
   const compactionId = CompactionId(randomUUID())
+  // Priced before the start marker so a live row can show the incoming
+  // context size the moment compaction begins, not once the model answers.
+  // This is the same measurement `prepareCompaction` takes, so the announced
+  // figure and the shrink comparison never disagree.
+  const openingMeasurement = dependencies.meter.measure(session)
+  // Identity fields shared by the whole bracket. The opening announcement
+  // belongs to `compaction/start` only — `compaction/end` is a close marker
+  // and stays exactly as narrow as it was.
   const lifecycle = {
     compactionId,
     ...options.sourceCommandId === undefined ? {} : { sourceCommandId: options.sourceCommandId },
     turn: owner,
   }
-  const startEvent = session.append('compaction/start', lifecycle)
+  const startEvent = session.append('compaction/start', {
+    ...lifecycle,
+    ...options.summarizerProvider === undefined || options.summarizerModel === undefined
+      ? {}
+      : { provider: options.summarizerProvider, model: options.summarizerModel },
+    contextTotalTokens: openingMeasurement.totalTokens,
+  })
+  options.onOpen?.(compactionId)
   const assertStable: StabilityCheck = options.stability === 'whole-surface'
     ? assertWholeSurfaceUnchanged
     : assertSelectedSpanStable
@@ -222,9 +308,26 @@ export async function compactSurfaceRegion(
   let closed = false
   let closing = false
   let stage: TransactionFailure['stage'] = 'summary'
+  // Identity-bound live sink: the summarizer emits bare call updates; the
+  // frame's transaction identity and time are bound here.
+  const liveSink: SummarizerLiveSink | undefined = options.live === undefined
+    ? undefined
+    : (update) => {
+      options.live?.({
+        compactionId,
+        ...options.sourceCommandId === undefined ? {} : { sourceCommandId: options.sourceCommandId },
+        sessionId: session.id,
+        time: Date.now(),
+        call: update.call,
+        phase: update.phase,
+        maxTokens: update.maxTokens,
+        ...update.text === undefined ? {} : { text: update.text },
+        ...update.reasoning === undefined ? {} : { reasoning: update.reasoning },
+      })
+    }
 
   try {
-    const prepared = prepareCompaction(dependencies, session, selection)
+    const prepared = prepareCompaction(dependencies, session, selection, openingMeasurement)
     const summarized = await summarizeCompaction(
       dependencies,
       prepared,
@@ -232,8 +335,15 @@ export async function compactSurfaceRegion(
       compactionId,
       options.sourceCommandId,
       signal,
+      liveSink,
     )
-    if (options.owner === null) signal?.throwIfAborted()
+    // A USER OPERATOR stop never checkpoints: the run dies before any surface
+    // replacement and closes neutrally. An enclosing turn abort keeps the
+    // legacy automatic-path lenience (its exact reason is preserved and a
+    // finished summary still commits).
+    const operatorStopped = signal?.reason instanceof ManualCompactionError
+      && signal.reason.code === 'cancelled'
+    if (options.owner === null || operatorStopped) signal?.throwIfAborted()
     assertStable(dependencies, session, summarized)
     stage = 'commit'
     const pending = commitCompactionBody(session, startEvent, summarized)
@@ -246,7 +356,16 @@ export async function compactSurfaceRegion(
     if (!closing) {
       closing = true
       try {
-        session.append('compaction/end', { ...lifecycle, error: errorChain(error) })
+        // A USER OPERATOR stop closes the bracket NEUTRALLY (`cancelled`, no
+        // error record); any other abort preserves its exact reason in the
+        // error chain, per the cancellation contract.
+        const operatorStopped = signal?.reason instanceof ManualCompactionError
+          && signal.reason.code === 'cancelled'
+        if (operatorStopped) {
+          session.append('compaction/end', { ...lifecycle, cancelled: true })
+        } else {
+          session.append('compaction/end', { ...lifecycle, error: errorChain(error) })
+        }
         closed = true
       } catch (closeError: unknown) {
         failure = { error: closeError, stage: 'commit' }
@@ -281,6 +400,9 @@ export async function compactSurfaceRegion(
 
 /** Classify one closed manual attempt without weakening cancellation precedence. */
 function throwManualFailure(failure: TransactionFailure): never {
+  // An operator stop travels as its own classified reason; it surfaces as the
+  // neutral `cancelled` outcome, never relabeled as a summary failure.
+  if (failure.error instanceof ManualCompactionError) throw failure.error
   if (failure.stage === 'commit') {
     throw new ManualCompactionError(
       'commit',
@@ -366,8 +488,11 @@ function prepareCompaction(
   dependencies: RegionDependencies,
   session: Session,
   selection: SurfaceSelection,
+  openingMeasurement?: TokenMeasurement,
 ): PreparedCompaction {
-  const measurement = dependencies.meter.measure(session)
+  // Reuses the transaction's opening measurement when given: measuring twice
+  // would let the two snapshots disagree about the very range being priced.
+  const measurement = openingMeasurement ?? dependencies.meter.measure(session)
   const selectedNodes = measurement.nodes.slice(selection.startIdx, selection.endIdx + 1)
   if (selectedNodes.length !== selection.shadowedSeqs.length
     || selectedNodes.some((node, index) => node.seq !== selection.shadowedSeqs[index])) {
@@ -395,6 +520,7 @@ async function summarizeCompaction(
   compactionId: CompactionResult['compactionId'],
   sourceCommandId: CommandId | undefined,
   signal?: AbortSignal,
+  live?: SummarizerLiveSink,
 ): Promise<SummarizedCompaction> {
   // The windowed pipeline announces its map phase inside the bracket so an
   // observer sees the multi-call mechanism before the first window call.
@@ -405,7 +531,7 @@ async function summarizeCompaction(
       windows,
     })
   }
-  const summaryResult = await dependencies.summarize(prepared.input, agent, signal, onWindows)
+  const summaryResult = await dependencies.summarize(prepared.input, agent, signal, onWindows, live)
   const checkpointMessage = createUserMessage({
     content: frameSummary(summaryResult.summary),
     source: compactCheckpointSource(compactionId, sourceCommandId),
@@ -423,6 +549,11 @@ async function summarizeCompaction(
     ...prepared,
     ...summaryResult,
     checkpointMessage,
+    replacementTokenCount: framedSummaryTokenCount,
+    // The shrink check above guarantees a strictly positive saving, so the
+    // ratio is well-defined and stays inside (0, 1].
+    reductionRatio: (prepared.shadowedRouteTokenCount - framedSummaryTokenCount)
+      / prepared.shadowedRouteTokenCount,
   }
 }
 
@@ -484,6 +615,8 @@ function commitCompactionBody(
     usage,
     intermediateCalls,
     checkpointMessage,
+    replacementTokenCount,
+    reductionRatio,
   } = summarized
   const callProvenance = summarized.llmStreamCall === true
     ? { rawOutput: summarized.rawOutput, llmStreamCall: true as const }
@@ -503,6 +636,8 @@ function commitCompactionBody(
     ...maxTokens === undefined ? {} : { maxTokens },
     ...usage === undefined ? {} : { usage },
     ...intermediateCalls === undefined ? {} : { intermediateCalls },
+    replacementTokenCount,
+    reductionRatio,
   })
   session.append('user/message', checkpointMessage, {
     surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
@@ -538,9 +673,14 @@ function completeCompaction(
  * the call is a genuine prefix of the conversation and reuses the provider's
  * KV cache. A surface without a system head, or whose head projects to no
  * message, contributes no leading system message.
+ *
+ * The replay passes through {@link sanitizeReplayMedia}: only the newest image
+ * block survives as a real image, and every other visual payload — earlier
+ * image blocks and inline base64 runs alike — becomes an explicit placeholder,
+ * so screenshots never inflate the summarizer request.
  * @param session - session supplying the surface head, request header, and per-node projection.
  * @param shadowedSeqs - the surface-node seqs, in order, being compacted.
- * @returns the replayed conversation prefix to condense.
+ * @returns the replayed conversation prefix to condense under the replay media policy.
  */
 function buildSummarizationInput(
   session: Session,
@@ -550,17 +690,20 @@ function buildSummarizationInput(
   // shadowedSeqs are current surface seqs, so the surface has a node 0.
   // oxlint-disable-next-line typescript/no-non-null-assertion
   const head = systemHead(session, session.surface.nodes[0]!)
-  const system = head === undefined ? null : session.deriveEventMessage(head)
   const regionMessages = shadowedSeqs
     // shadowedSeqs are current surface seqs, so each is a valid log index.
     // Existing Session history read; migration deferred.
     // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
     .map(seq => session.deriveEventMessage(session.eventAt(seq)!))
     .filter((message): message is Message => message !== null)
+  const sanitized = sanitizeReplayMedia(
+    head === undefined ? undefined : session.deriveEventMessage(head) ?? undefined,
+    regionMessages,
+  )
   return {
     ...header?.tools === undefined ? {} : { tools: header.tools },
-    ...system === null ? {} : { head: system },
-    messages: regionMessages,
+    ...sanitized.head === undefined ? {} : { head: sanitized.head },
+    messages: sanitized.messages,
   }
 }
 

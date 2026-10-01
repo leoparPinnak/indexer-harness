@@ -627,7 +627,36 @@ export class ReactLoopAgent implements Agent {
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
       signal,
+      ...keepLatestImagesOf(session, this.loopCtx.get('sessionProjections')) === undefined
+        ? {}
+        // oxlint-disable-next-line typescript/no-non-null-assertion
+        : { maxImagesPerRequest: keepLatestImagesOf(session, this.loopCtx.get('sessionProjections'))! },
     }))
     return request
   }
+}
+
+/**
+ * Soft-read the session's keep-newest-N image window from the compaction
+ * policy projection. Absent projection or absent field degrades to the route
+ * profile's own window; the read never throws and never names a hard service
+ * dependency, so a context without compaction mounted still serves requests.
+ * @param session - session whose folded policy state is read.
+ * @param projections - session-projection registry, or undefined when unmounted.
+ * @returns the selected window, or undefined to keep the route default.
+ */
+export function keepLatestImagesOf(
+  session: Session,
+  projections: { stateOf(session: Session, key: string): unknown } | undefined,
+): number | undefined {
+  const policy = projections?.stateOf(session, 'compactionPolicy') as
+    | { keepLatestImages?: number }
+    | undefined
+  const window = policy?.keepLatestImages
+  // A foreign projection shape must never smuggle a bogus window onto
+  // requests: only a non-negative safe integer is a real count (`0` replays no
+  // images, `N` keeps the newest N — the mode validator's exact semantics).
+  return typeof window === 'number' && Number.isSafeInteger(window) && window >= 0
+    ? window
+    : undefined
 }

@@ -4,7 +4,7 @@ import type {
   AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType,
 } from '@deepseek-ai/dsh-attachment'
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { CompactionSessionMode } from '@deepseek-ai/dsh-compaction/types'
+import type { CompactionSessionMode, CompactionStreamFrame } from '@deepseek-ai/dsh-compaction/types'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
@@ -465,6 +465,8 @@ export interface SessionFollowRequest {
   readonly maxMessages?: number
   /** Include process-local assistant presentation frames for the Web client. */
   readonly assistantStream?: true
+  /** Include process-local compaction stream frames for the Web client. */
+  readonly compactionStream?: true
 }
 
 /** One active assistant attempt in a reconnect opening snapshot. */
@@ -538,6 +540,17 @@ export type SessionFollowFrame =
   }
   | SessionEventEntry
   | { readonly type: 'assistant-stream'; readonly frame: SessionAssistantStreamFrame }
+  | { readonly type: 'compaction-stream'; readonly frame: CompactionStreamFrame }
+
+/** Stop one running compaction transaction by its `compaction/start` identity. */
+export interface SessionCancelCompactionRequest {
+  readonly compactionId: string
+}
+
+/** Whether a live compaction was cancelled by the stop request. */
+export interface SessionCancelCompactionValue {
+  readonly cancelled: boolean
+}
 
 /** One pending inbox occurrence in the authoritative queue snapshot. */
 export interface SessionQueuedItem {

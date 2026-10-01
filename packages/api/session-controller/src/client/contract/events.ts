@@ -1,6 +1,7 @@
 /** Observable contiguous Session event window consumed by domain assemblers. */
 import { notifySubscribers, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { LlmAttemptId, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { CompactionStreamFrame } from '@deepseek-ai/dsh-compaction/types'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 
 /** Client-only live chunk presentation; `seq` orders the transient row between durable Session seqs. */
@@ -16,13 +17,41 @@ export interface AssistantLiveChunkEvent {
   }
 }
 
-/** Current durable Session event or one client-only live chunk presentation. */
-export type SessionEventLike = SessionEvent | AssistantLiveChunkEvent
+/**
+ * Client-only live compaction stream presentation. `seq` orders the transient
+ * row in its own fractional band below the assistant band. The body carries the
+ * wire frame verbatim; `attemptId?: never` exists solely so shared transient
+ * filters that narrow on the assistant attempt id type-check while never
+ * matching a compaction frame.
+ */
+export interface CompactionLiveEvent {
+  readonly type: 'compaction/live-chunk'
+  readonly seq: number
+  readonly time: number
+  readonly data: CompactionStreamFrame & { readonly attemptId?: never }
+}
+
+/**
+ * Build one transient compaction presentation event at a fractional seq below
+ * the next durable entry.
+ * @param frame - identity-bound live compaction stream frame.
+ * @param seq - fractional ordering seq in the compaction transient band.
+ * @returns the transient event entry's event body.
+ */
+export function compactionLiveChunkEvent(
+  frame: CompactionStreamFrame,
+  seq: number,
+): CompactionLiveEvent {
+  return { type: 'compaction/live-chunk', seq, time: frame.time, data: frame }
+}
+
+/** Current durable Session event or one client-only live presentation. */
+export type SessionEventLike = SessionEvent | AssistantLiveChunkEvent | CompactionLiveEvent
 
 /** Client history entry retaining its coarse transport discriminator. */
 export type SessionEventLikeEntry =
   | { readonly type: 'event'; readonly event: SessionEvent }
-  | { readonly type: 'transient'; readonly event: AssistantLiveChunkEvent }
+  | { readonly type: 'transient'; readonly event: AssistantLiveChunkEvent | CompactionLiveEvent }
 
 /** Scalar live entry accepted by append-only Client paths. */
 export type SessionLiveEventEntry = Extract<SessionEventLikeEntry, { readonly type: 'event' }>

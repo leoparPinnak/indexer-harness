@@ -112,4 +112,15 @@ describe('DeepSeek request-image pricing', () => {
     expect(prices.map(price => price.visualTokens)).toEqual([0, 422, 422])
     expect(prices[0]!.text).toBe(offloadedImageText(images[0]!))
   })
+
+  it('lets a session window override the route default and steps the quantum down', () => {
+    const images = [ref('first', 800, 800), ref('second', 800, 800), ref('third', 800, 800)]
+    const prices = deepSeekImageRequestPricing(
+      connection({ maxImagesPerRequest: 3, imageOffloadCountQuantum: 3 }),
+      'vision',
+      undefined,
+      { maxImagesPerRequest: 1 },
+    ).priceImages(images)
+    expect(prices.map(price => price.visualTokens)).toEqual([0, 0, 422])
+  })
 })
