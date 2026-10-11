@@ -35,12 +35,6 @@ export interface DaemonStream extends Readable {
   readonly headers: Record<string, string | string[] | undefined>
 }
 
-/** Transport named by `DEAMON_TRANSPORT`, when it names one at all. */
-function transportFromEnv(): DeamonTransport | undefined {
-  const raw = process.env.DEAMON_TRANSPORT
-  return raw === 'pipe' || raw === 'http' ? raw : undefined
-}
-
 /** Budget for a pipe round trip that is not a stream header (today's HTTP budget). */
 const PIPE_REQUEST_TIMEOUT_MS = 30_000
 /** Budget for a pipe request the tools make directly (today's HTTP budget). */
@@ -50,14 +44,16 @@ const PIPE_STREAM_TIMEOUT_MS = 10_000
 /** Budget for the gateway handshake and ping used as a liveness probe. */
 const PIPE_PROBE_TIMEOUT_MS = 1500
 
+/** Options constructing a {@link DeamonManager}: daemon port, logger, spawn script, and transport. */
 export interface DeamonManagerOptions {
   port?: number | undefined
   log: DaemonLogger
   daemonScript?: string | undefined
-  /** Transport the bridge speaks; `pipe` unless `DEAMON_TRANSPORT` says otherwise. */
+  /** Transport the bridge speaks; `pipe` unless the caller selects `http`. */
   transport?: DeamonTransport | undefined
 }
 
+/** Owns the daemon child or named-pipe gateway connection: spawns, health-probes, and forwards JSON over the pipe or loopback HTTP transport. */
 export class DeamonManager {
   private child: ChildProcess | undefined
   private activePort: number | undefined
@@ -73,7 +69,7 @@ export class DeamonManager {
 
   constructor(options: DeamonManagerOptions) {
     this.log = options.log
-    this.transport = options.transport ?? transportFromEnv() ?? 'pipe'
+    this.transport = options.transport ?? 'pipe'
     this.targetPort = options.port ?? DEFAULT_DEAMON_PORT
     if (options.daemonScript) {
       this.scriptPath = options.daemonScript
@@ -84,7 +80,10 @@ export class DeamonManager {
     }
   }
 
-  /** The transport in force, after any attach-time downgrade. */
+  /**
+   * The transport in force, after any attach-time downgrade.
+   * @returns the live transport, `pipe` or `http`.
+   */
   getTransport(): DeamonTransport {
     return this.transport
   }
@@ -144,17 +143,26 @@ export class DeamonManager {
     return { port, url: `http://127.0.0.1:${port}` }
   }
 
-  /** True if the daemon child process is currently alive. */
+  /**
+   * True if the daemon child process is currently alive.
+   * @returns whether the daemon child is running.
+   */
   isActive(): boolean {
     return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null
   }
 
-  /** Return the currently discovered daemon base URL, or undefined if not active. */
+  /**
+   * Return the currently discovered daemon base URL, or undefined if not active.
+   * @returns the base URL, or undefined when no port is discovered.
+   */
   getBaseUrl(): string | undefined {
     return this.activePort ? `http://127.0.0.1:${this.activePort}` : undefined
   }
 
-  /** Return the currently active port, or undefined if not active. */
+  /**
+   * Return the currently active port, or undefined if not active.
+   * @returns the active port, or undefined when not active.
+   */
   getPort(): number | undefined {
     return this.activePort
   }
@@ -162,6 +170,7 @@ export class DeamonManager {
   /**
    * Ensure the daemon is running and healthy.
    * If already healthy, returns immediately. Otherwise spawns and polls /health.
+   * @returns the daemon coordinates (port and base URL).
    */
   async ensureRunning(): Promise<{ port: number; url: string }> {
     if (this.startingPromise) {
@@ -329,6 +338,10 @@ export class DeamonManager {
   /**
    * Forward a JSON API request from DSH to the daemon.
    * Catches network dropouts cleanly and sends HTTP 502 without crashing DSH.
+   * @param req - the incoming HTTP request being forwarded.
+   * @param res - the response written with the daemon's answer or a 502.
+   * @param targetPath - daemon route path to forward to.
+   * @param bodyOverride - replacement JSON body, when the caller supplies one.
    */
   async forwardJson(
     req: IncomingMessage,
@@ -443,6 +456,9 @@ export class DeamonManager {
 
   /**
    * Fetch a JSON endpoint on the daemon directly (e.g. for tools).
+   * @param targetPath - daemon route path to fetch.
+   * @param options - request options: an HTTP method and a JSON body.
+   * @returns the parsed JSON response body.
    */
   async fetchJson<T = unknown>(targetPath: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const ready = await this.ensureRunning()

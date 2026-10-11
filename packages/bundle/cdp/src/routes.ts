@@ -16,34 +16,129 @@ import { RefStaleError } from './refs.ts' /* plan08 */
 import { parseExtractSpec } from './extract.ts' /* plan08 */
 import type { CdpService } from './service.ts'
 
+/**
+ * GET route reporting the live CDP status — the same payload the
+ * `cdp_status` tool answers with (plan01).
+ */
 export const CDP_STATUS_ROUTE = '/api/server/cdp/status'
+/**
+ * POST route opening or attaching a browser; a `needsChoice` body stays
+ * `ok:true` because it is a report, not a failure (plan13-profile).
+ */
 export const CDP_OPEN_ROUTE = '/api/server/cdp/open'
+/**
+ * POST route navigating a tab to `url`; answers `{ ok, frameId, url }` and
+ * 400 when `url` is missing.
+ */
 export const CDP_NAVIGATE_ROUTE = '/api/server/cdp/navigate'
+/** GET route listing the open tab targets (`service.targets`). */
 export const CDP_TABS_ROUTE = '/api/server/cdp/tabs'
+/**
+ * GET route capturing a fresh woven snapshot for the optional `targetId`
+ * query parameter.
+ */
 export const CDP_SNAPSHOT_ROUTE = '/api/server/cdp/snapshot'
+/**
+ * POST route evaluating an `expression` in the page — page-level failures
+ * answer 200 with the honest `ok:false` envelope; 500 stays for
+ * infrastructure (plan01 §4.4).
+ */
 export const CDP_EVAL_ROUTE = '/api/server/cdp/eval'
 // plan01: one-shot execute with the mandatory error envelope.
+/**
+ * plan01: POST route for one-shot script execution with the mandatory error
+ * envelope — same shape as the `cdp_exec` tool.
+ */
 export const CDP_EXEC_ROUTE = '/api/server/cdp/exec'
+/** POST route closing the target named by `targetId` (or the active one). */
 export const CDP_CLOSE_ROUTE = '/api/server/cdp/close'
 // plan06: screenshot capture and explicit viewport routes.
+/**
+ * plan06: POST route capturing a screenshot — JSON only, the image itself
+ * always lands on disk; an invalid clip/selector fails 400 before any CDP
+ * call.
+ */
 export const CDP_SCREENSHOT_ROUTE = '/api/server/cdp/screenshot'
+/**
+ * plan06: POST route for opt-in viewport control — no parameters only
+ * reports the live observation, width+height set the device metrics
+ * override, `reset` clears it; validation failures answer 400.
+ */
 export const CDP_VIEWPORT_ROUTE = '/api/server/cdp/viewport'
 // plan10: downloads, print-to-PDF, PDF reading, and the file routes.
+/**
+ * plan10: POST route dispatching download actions — `configure`, `status`,
+ * or `await`; an unknown action answers 400 `BAD_ACTION`.
+ */
 export const CDP_DOWNLOAD_ROUTE = '/api/server/cdp/download'
+/**
+ * plan10: POST route printing the page to PDF — the body mirrors the
+ * `cdp_printpdf` tool, with `saveTo`/`filePath` picking the destination.
+ */
 export const CDP_PRINTPDF_ROUTE = '/api/server/cdp/printpdf'
+/**
+ * plan10: GET|POST route extracting text from a PDF file — POST body or GET
+ * query params (`path`, `page`, `pageFrom`, `pages`, `maxChars`), with
+ * `path` required.
+ */
 export const CDP_READPDF_ROUTE = '/api/server/cdp/readpdf'
+/**
+ * plan10: GET route over the downloads root — `action=list|stat|remove`,
+ * with `pattern`/`limit` narrowing the listing; unknown actions answer 400.
+ */
 export const CDP_FILES_ROUTE = '/api/server/cdp/files'
 // plan05: dialog inspection/answering and file-input binding routes.
+/**
+ * plan05: GET|POST route for dialogs — GET `?targetId=` lists open dialogs;
+ * POST `{ action, targetId?, promptText?, policy? }` accepts, dismisses, or
+ * sets the default policy.
+ */
 export const CDP_DIALOG_ROUTE = '/api/server/cdp/dialog' /* plan05 */
+/**
+ * plan05: POST route binding files to a file input or answering a chooser —
+ * `{ files[], selector?, targetId?, chooser?, timeoutMs? }`.
+ */
 export const CDP_UPLOAD_ROUTE = '/api/server/cdp/upload' /* plan05 */
 // plan04: endpoint inventory, per-connection pool state, and context lifecycle.
+/**
+ * plan04: GET route probing loopback debug ports (`?ports=…&timeoutMs=`) and
+ * merging the answer with the connection pool, so attached-but-unprobed
+ * endpoints (ephemeral launched ports) still get a row.
+ */
 export const CDP_ENDPOINTS_ROUTE = '/api/server/cdp/endpoints' /* plan04 */
+/**
+ * plan04: GET route reporting per-connection pool state plus the active
+ * connection id, keeping `cdp_status`'s strict schema untouched.
+ */
 export const CDP_CONNECTIONS_ROUTE = '/api/server/cdp/connections' /* plan04 */
+/**
+ * plan04: POST route driving context lifecycle —
+ * `{ action: list|create|open|dispose, contextId?, url? }`; `open` requires
+ * a non-empty `url`.
+ */
 export const CDP_CONTEXTS_ROUTE = '/api/server/cdp/contexts' /* plan04 */
+/**
+ * plan04: POST route detaching the ACTIVE endpoint only; every other pooled
+ * endpoint stays attached and its reconnect driver keeps running.
+ */
 export const CDP_DISCONNECT_ROUTE = '/api/server/cdp/disconnect' /* plan04 */
 // plan08: ref path — resolve a woven snapshot ref against a fresh document.
+/**
+ * plan08: POST route resolving a woven snapshot ref against a FRESH
+ * document — a stale ref answers 200 `{ ok:false, staleRef:true, reason }`
+ * as DATA, not an HTTP failure; 400 is caller input, 500 session/protocol.
+ */
 export const CDP_REF_ROUTE = '/api/server/cdp/ref' /* plan08 */
+/**
+ * plan08: POST route discovering elements by `ref`, `selector`, `ariaLabel`,
+ * `role`, or `text` — `matched:0` is 200 data, a missing query key is 400.
+ */
 export const CDP_FIND_ROUTE = '/api/server/cdp/find' /* plan08 */
+/**
+ * plan08: POST route running a JSON projection spec — the spec is validated
+ * host-side before any protocol call (broken spec answers 400), and every
+ * projection outcome is 200 data.
+ */
 export const CDP_EXTRACT_ROUTE = '/api/server/cdp/extract' /* plan08 */
 
 /**

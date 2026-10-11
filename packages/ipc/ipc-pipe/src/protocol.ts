@@ -5,7 +5,10 @@
  * count, a single-line JSON envelope, a newline, then the raw body the
  * envelope describes. The newline is unambiguous because `JSON.stringify`
  * never emits a raw one, so the reader recovers the header before it has to
- * buffer a body and can refuse an oversized frame the moment its type is known.
+ * buffer a body and learns the frame's type immediately — but the cap itself
+ * is enforced only once the frame is complete, so per-connection buffering is
+ * held to a 520 KiB ceiling (`MAX_RESPONSE_BYTES + MAX_CONTROL_BYTES`) while a
+ * frame assembles.
  *
  * Caps are the Hermes numbers: 64 KiB for a request frame, 512 KiB for a
  * response frame, and 2000 ms as the default per-request budget. Every
@@ -99,8 +102,10 @@ function capFor(type: string): number {
 
 /**
  * Incremental frame reader: feed it socket chunks, take back whole frames.
- * The buffer never grows past one frame's cap, so a peer cannot pin memory
- * with a declared length it never sends.
+ * A declared length past the 520 KiB ceiling (`MAX_RESPONSE_BYTES +
+ * MAX_CONTROL_BYTES`) is refused before more of it is buffered, so a peer
+ * cannot pin unbounded memory; the per-type cap of a frame whose type is
+ * already known is enforced once that frame is complete, not before.
  */
 export class FrameReader {
   /** Bytes received but not yet decoded. */

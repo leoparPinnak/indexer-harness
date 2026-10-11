@@ -52,6 +52,8 @@ let sharedDaemonManager: DeamonManager | undefined
 
 /**
  * Get or initialize the shared DeamonManager for the active session.
+ * @param log - diagnostic sink for the manager's daemon-lifecycle reports.
+ * @returns the shared manager, or the test-seam override when one is set.
  */
 export function getDeamonManager(log?: Logger): DeamonManager {
   if (internals.daemonManager !== undefined) return internals.daemonManager
@@ -132,6 +134,21 @@ const BASE64_LINE = /^[A-Za-z0-9+/]+={0,2}$/u
 
 /** Largest input batch one `POST /api/server/sandbox/input` accepts. */
 const MAX_INPUT_EVENTS = 64
+
+/** Delivery mode of one input batch: posted messages (the default, unchanged) or opt-in real input synthesis. */
+export type ShellboxInputMode = 'post' | 'send'
+
+/** Largest node count one `uia` read may ask for; the helper clamps to the same bound. */
+const MAX_UIA_NODES = 256
+
+/** Node count a `uia` read takes when the request does not name one. */
+const DEFAULT_UIA_NODES = 128
+
+/** How long `POST /api/server/sandbox/uia` waits for the helper's sidecar answer. */
+const UIA_WAIT_MS = 3000
+
+/** Poll interval of that wait: the helper answers between frames. */
+const UIA_POLL_MS = 25
 
 /** A `.state` snapshot younger than this still counts as fresh. */
 const STATE_FRESH_MS = 2000
@@ -340,6 +357,18 @@ export function parseInputEvents(body: unknown): { ok: true; events: ShellboxInp
 }
 
 /**
+ * Validate a raw batch `mode` value. Absent means `post`, so an older client
+ * that never sends the field keeps the posted-message path byte for byte.
+ * @param value - the unparsed `mode` value.
+ * @returns the delivery mode, or the violated rule's message.
+ */
+export function parseInputMode(value: unknown): { ok: true; mode: ShellboxInputMode } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, mode: 'post' }
+  if (value === 'post' || value === 'send') return { ok: true, mode: value }
+  return { ok: false, error: 'mode must be one of post, send' }
+}
+
+/**
  * Wait for a child's `close` event.
  * @param child - the process to observe.
  * @param ms - maximum wait.
@@ -382,6 +411,7 @@ export function respondJson(res: ServerResponse, status: number, body: unknown):
   res.end(JSON.stringify(body))
 }
 
+/** Minimal logging contract the sandbox controller and session manager consume. */
 export interface SandboxLogger {
   info: (msg: string) => void
   warn: (msg: string) => void
@@ -412,6 +442,8 @@ export class SandboxController {
   private inputDir = ''
   /** Monotonic spool batch sequence within one helper run, starting at 1. */
   private inputSeq = 0
+  /** Monotonic staged-launch script sequence within one helper run, starting at 1. */
+  private launchSeq = 0
 
   /**
    * @param log - diagnostic sink for helper stderr, lifecycle, and exit reports.
@@ -424,7 +456,10 @@ export class SandboxController {
     readonly instanceId: string = '',
   ) {}
 
-  /** True while the helper child process is alive. */
+  /**
+   * True while the helper child process is alive.
+   * @returns whether the helper child is running.
+   */
   isActive(): boolean {
     return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null
   }
@@ -527,7 +562,40 @@ export class SandboxController {
       this.log.error(`sandbox: could not start the helper for launch: ${String(error)}`)
       return false
     }
-    return this.writeCommand(`launch ${trimmed}\n`)
+    let line = trimmed
+    const split = splitPowerShellCommandPayload(trimmed)
+    if (split !== undefined) {
+      // A -Command payload becomes a file before it joins the line channel:
+      // shipped as `-Command "…"`, the Windows command-line quote pass strips
+      // the payload's embedded quotes before PowerShell parses it and the
+      // script is shredded (the logged `Add-Type SOURCE_CODE_ERROR` run).
+      const scriptPath = this.stageLaunchScript(split.payload)
+      if (scriptPath === undefined) return false
+      line = `${split.prefix} -File "${scriptPath}"`
+    }
+    return this.writeCommand(`launch ${line}\n`)
+  }
+
+  /**
+   * Write a launch payload verbatim beside the command file: UTF-8 with a BOM,
+   * because Windows PowerShell reads BOM-less UTF-8 as the ANSI code page, in
+   * `<commandFile>.launch` so the helper's stop, crash settle, and restart all
+   * remove the scripts with the rest of the spool.
+   * @param payload - the exact script text to execute.
+   * @returns the script path, or undefined when it could not be written.
+   */
+  private stageLaunchScript(payload: string): string | undefined {
+    try {
+      const dir = `${this.commandFile}.launch`
+      mkdirSync(dir, { recursive: true })
+      const name = `launch-${String(++this.launchSeq).padStart(4, '0')}-${randomBytes(4).toString('hex')}.ps1`
+      const path = join(dir, name)
+      writeFileSync(path, Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(payload, 'utf8')]))
+      return path
+    } catch (error: unknown) {
+      this.log.warn(`sandbox: could not stage the launch script: ${String(error)}`)
+      return undefined
+    }
   }
 
   /**
@@ -566,8 +634,11 @@ export class SandboxController {
     this.detachPipes(child)
     this.removeCommandFile(commandFile)
     this.removeInputDir(`${commandFile}.in`)
+    // The helper is gone; its staged launch scripts have no consumer left.
+    this.removeInputDir(`${commandFile}.launch`)
     this.inputDir = ''
     this.inputSeq = 0
+    this.launchSeq = 0
     return true
   }
 
@@ -585,6 +656,9 @@ export class SandboxController {
     const inputDir = `${commandFile}.in`
     // A restarted helper must never replay batches staged for its predecessor.
     this.removeInputDir(inputDir)
+    // Nor launch scripts staged for it: a fresh helper consumes only what it
+    // is handed after its own start.
+    this.removeInputDir(`${commandFile}.launch`)
     mkdirSync(inputDir, { recursive: true })
     const child = spawn('powershell.exe', [
       '-NoProfile',
@@ -595,12 +669,17 @@ export class SandboxController {
       '-Height', String(this.viewport.height),
       '-Fps', String(this.frameRate),
       '-DesktopName', this.desktop,
+      // The helper refuses to stream the session's real desktop unless the
+      // host passes this opt-in, which only the explicit host-desktop target
+      // earns; every private desktop composes its own surface or exits.
+      ...(this.desktop === 'Default' ? ['-AllowHostDesktop'] : []),
       '-CommandFile', commandFile,
       '-InputDir', inputDir,
     ], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     this.commandFile = commandFile
     this.inputDir = inputDir
     this.inputSeq = 0
+    this.launchSeq = 0
     this.child = child
     this.pending = ''
     this.attachPipes(child)
@@ -681,7 +760,7 @@ export class SandboxController {
     }
   }
 
-  /** Remove an input spool directory, tolerating an already-gone path. */
+  /** Remove a spool directory (input batches or staged launch scripts), tolerating an already-gone path. */
   private removeInputDir(path: string): void {
     if (path === '') return
     try {
@@ -726,8 +805,10 @@ export class SandboxController {
     // The helper is gone with its spool: removing the directory here keeps a
     // later restart from replaying batches the dead helper never drained.
     this.removeInputDir(this.inputDir)
+    if (this.commandFile !== '') this.removeInputDir(`${this.commandFile}.launch`)
     this.inputDir = ''
     this.inputSeq = 0
+    this.launchSeq = 0
     this.log.warn(`sandbox: ${detail}`)
     this.endClients()
   }
@@ -931,14 +1012,25 @@ export class SandboxSessionManager {
     }
   }
 
-  /** Clean session id into safe desktop name suffix (alphanumeric only, max 16 chars). */
+  /**
+   * Clean session id into safe desktop name suffix (alphanumeric only, max 16 chars).
+   * @param sessionId - raw session key to sanitize.
+   * @param index - 1-based instance number; 1 omits the numeric suffix.
+   * @returns a safe Win32 desktop name for the session and index.
+   */
   static desktopNameFor(sessionId: string, index: number = 1): string {
     const clean = sessionId.replace(/[^a-zA-Z0-9]/gu, '').slice(0, 16)
     if (clean.length === 0) return 'dsh-shellbox'
     return index <= 1 ? `dsh-sb-${clean}` : `dsh-sb-${clean}-${String(index)}`
   }
 
-  /** Get or create controller for a session, explicit instance ID, or target type. Defaults to 'default' when empty. */
+  /**
+   * Get or create controller for a session, explicit instance ID, or target type. Defaults to 'default' when empty.
+   * @param sessionId - session key; empty falls back to 'default'.
+   * @param instanceId - explicit instance id, when the caller named one.
+   * @param target - target kind (`win32`, `hyperv`, `wsl-ubuntu`, or a host desktop).
+   * @returns the matching or newly created controller.
+   */
   get(sessionId?: string, instanceId?: string, target?: string): SandboxController {
     const key = sessionId?.trim() || 'default'
 
@@ -1063,7 +1155,11 @@ export class SandboxSessionManager {
     return Array.from(this.instances.values()).filter(rec => rec.boundSessionIds.includes(key))
   }
 
-  /** Create a new numbered instance for a session. */
+  /**
+   * Create a new numbered instance for a session.
+   * @param options - session key, optional instance type, and optional VM name.
+   * @returns the created (or reused) instance record.
+   */
   createInstance(options: {
     sessionId: string
     type?: 'win32' | 'hyperv' | 'wsl-ubuntu' | undefined
@@ -1126,7 +1222,12 @@ export class SandboxSessionManager {
     return record
   }
 
-  /** Attach an existing instance to another session. */
+  /**
+   * Attach an existing instance to another session.
+   * @param targetSessionId - session to bind the instance to.
+   * @param instanceId - existing instance id.
+   * @returns whether the instance existed and is now attached.
+   */
   attachInstance(targetSessionId: string, instanceId: string): boolean {
     const rec = this.instances.get(instanceId)
     if (rec === undefined) return false
@@ -1139,7 +1240,12 @@ export class SandboxSessionManager {
     return true
   }
 
-  /** Detach an instance from a session. */
+  /**
+   * Detach an instance from a session.
+   * @param sessionId - session to unbind from.
+   * @param instanceId - instance to detach.
+   * @returns whether the instance existed and is now detached.
+   */
   detachInstance(sessionId: string, instanceId: string): boolean {
     const rec = this.instances.get(instanceId)
     if (rec === undefined) return false
@@ -1152,7 +1258,11 @@ export class SandboxSessionManager {
     return true
   }
 
-  /** Terminate and cleanup an instance. */
+  /**
+   * Terminate and cleanup an instance.
+   * @param instanceId - instance to terminate and remove.
+   * @returns whether the instance existed and was torn down.
+   */
   async terminateInstance(instanceId: string): Promise<boolean> {
     const rec = this.instances.get(instanceId)
     if (rec === undefined) return false
@@ -1165,7 +1275,10 @@ export class SandboxSessionManager {
     return true
   }
 
-  /** List all instances across sessions with current status. */
+  /**
+   * List all instances across sessions with current status.
+   * @returns every instance record paired with its live-active flag.
+   */
   listInstances(): Array<Omit<VirtualInstanceRecord, 'controller'> & { active: boolean }> {
     return Array.from(this.instances.values()).map(rec => ({
       id: rec.id,
@@ -1180,7 +1293,11 @@ export class SandboxSessionManager {
     }))
   }
 
-  /** Stop and remove session instances. */
+  /**
+   * Stop and remove session instances.
+   * @param sessionId - session whose instances are stopped; empty defaults to 'default'.
+   * @returns whether any instance was stopped.
+   */
   async stop(sessionId?: string): Promise<boolean> {
     const key = sessionId?.trim() || 'default'
     let anyStopped = false
@@ -1207,7 +1324,11 @@ export class SandboxSessionManager {
     this.sessionDefault.clear()
   }
 
-  /** Check if a session has an active running helper. */
+  /**
+   * Check if a session has an active running helper.
+   * @param sessionId - session to inspect; empty defaults to 'default'.
+   * @returns whether any bound controller has a live helper.
+   */
   hasActive(sessionId?: string): boolean {
     const key = sessionId?.trim() || 'default'
     for (const rec of this.instances.values()) {
@@ -1219,7 +1340,12 @@ export class SandboxSessionManager {
   }
 }
 
-/** Extract session ID from request URL query or JSON payload. */
+/**
+ * Extract session ID from request URL query or JSON payload.
+ * @param req - incoming request carrying the `session` query parameter.
+ * @param bodyPayload - parsed JSON body, consulted first for `sessionId`.
+ * @returns the trimmed session id, or undefined when absent.
+ */
 export function parseSessionParam(req: IncomingMessage, bodyPayload?: unknown): string | undefined {
   if (typeof bodyPayload === 'object' && bodyPayload !== null) {
     const bodySession = (bodyPayload as { sessionId?: unknown }).sessionId
@@ -1241,7 +1367,12 @@ export function parseSessionParam(req: IncomingMessage, bodyPayload?: unknown): 
   return undefined
 }
 
-/** Extract instance ID from request URL query or JSON payload. */
+/**
+ * Extract instance ID from request URL query or JSON payload.
+ * @param req - incoming request carrying the `instance` query parameter.
+ * @param bodyPayload - parsed JSON body, consulted first for `instanceId`.
+ * @returns the trimmed instance id, or undefined when absent.
+ */
 export function parseInstanceParam(req: IncomingMessage, bodyPayload?: unknown): string | undefined {
   if (typeof bodyPayload === 'object' && bodyPayload !== null) {
     const bodyInstance = (bodyPayload as { instanceId?: unknown }).instanceId
@@ -1263,7 +1394,12 @@ export function parseInstanceParam(req: IncomingMessage, bodyPayload?: unknown):
   return undefined
 }
 
-/** Extract target environment type from request URL query or JSON payload. */
+/**
+ * Extract target environment type from request URL query or JSON payload.
+ * @param req - incoming request carrying the `target` query parameter.
+ * @param bodyPayload - parsed JSON body, consulted first for `target`.
+ * @returns the trimmed target kind, or undefined when absent.
+ */
 export function parseTargetParam(req: IncomingMessage, bodyPayload?: unknown): string | undefined {
   if (typeof bodyPayload === 'object' && bodyPayload !== null) {
     const bodyTarget = (bodyPayload as { target?: unknown }).target
@@ -1285,7 +1421,12 @@ export function parseTargetParam(req: IncomingMessage, bodyPayload?: unknown): s
   return undefined
 }
 
-/** Extract frame rate parameter (1-60 fps) from request URL query or JSON payload. */
+/**
+ * Extract frame rate parameter (1-60 fps) from request URL query or JSON payload.
+ * @param req - incoming request carrying the `fps` query parameter.
+ * @param bodyPayload - parsed JSON body, consulted first for `fps`.
+ * @returns the rounded fps clamped to 1-60, or undefined when absent or invalid.
+ */
 export function parseFpsParam(req: IncomingMessage, bodyPayload?: unknown): number | undefined {
   if (typeof bodyPayload === 'object' && bodyPayload !== null) {
     const raw = (bodyPayload as { fps?: unknown }).fps
@@ -1311,6 +1452,9 @@ export function parseFpsParam(req: IncomingMessage, bodyPayload?: unknown): numb
  * Resolve well-known application aliases (msedge, chrome) to their full executable
  * paths and ensure an isolated user-data-dir is attached so Chromium processes do not
  * defer to existing instances on the interactive desktop.
+ * @param command - launch command, possibly a bare app alias.
+ * @param desktopName - target desktop whose user-data-dir is scoped.
+ * @returns the resolved launch command.
  */
 export function resolveLaunchCommand(command: string, desktopName: string): string {
   let cmd = command.trim()
@@ -1374,6 +1518,53 @@ export function resolveLaunchCommand(command: string, desktopName: string): stri
     }
   }
   return cmd
+}
+
+/**
+ * A launch command split at its PowerShell `-Command` token: the interpreter
+ * invocation that owns the flags, and the script payload that followed it.
+ */
+export interface PowerShellCommandPayload {
+  /** Everything before the `-Command` token: the interpreter and its own flags. */
+  prefix: string
+  /** The script text after `-Command`, with the command-line quote wrapper removed. */
+  payload: string
+}
+
+/** First token of a command line that invokes powershell or pwsh. */
+const POWERSHELL_LAUNCH = /^"?(?:[^"]*\\)?(?:powershell|pwsh)(?:\.exe)?"?(?=\s)/iu
+
+/** The `-Command` switch that introduces a script payload; never `-EncodedCommand`. */
+const COMMAND_SWITCH = /(?:^|\s)-Command(?:\s|$)/u
+
+/**
+ * Split a `powershell ... -Command <text>` launch into its parts.
+ *
+ * The payload is everything after the first `-Command` token; when it is
+ * wrapped in one pair of double quotes (the wrapper the caller owed to the
+ * command line), exactly that pair comes off and nothing else is escaped or
+ * unescaped — quotes, backticks, `$`, and `&` inside stay byte-for-byte. The
+ * caller writes the payload to a script file and launches `-File` instead of
+ * shipping it through another `-Command "…"` layer, where the Windows
+ * command-line quote pass strips embedded quotes before PowerShell ever parses
+ * and shreds the script (the logged `Add-Type SOURCE_CODE_ERROR` failure).
+ *
+ * @param command - the launch command line as the model or route supplied it.
+ * @returns the split parts, or undefined when the command does not invoke powershell/pwsh with a non-empty `-Command` payload.
+ */
+export function splitPowerShellCommandPayload(command: string): PowerShellCommandPayload | undefined {
+  const trimmed = command.trim()
+  if (!POWERSHELL_LAUNCH.test(trimmed)) return undefined
+  const token = COMMAND_SWITCH.exec(trimmed)
+  if (token === null) return undefined
+  const prefix = trimmed.slice(0, token.index).trimEnd()
+  const payload = trimmed.slice(token.index + token[0].length).trimStart()
+  if (payload === '') return undefined
+  if (payload.length >= 2 && payload.startsWith('"') && payload.endsWith('"')) {
+    const inner = payload.slice(1, -1)
+    if (inner !== '') return { prefix, payload: inner }
+  }
+  return { prefix, payload }
 }
 
 /** The manager coordinating helper controllers for this process. */
@@ -1596,7 +1787,7 @@ export interface SandboxLocalResponse {
   body: unknown
 }
 
-/** Refusal body of input, window-action, and paging routes: `ok:false` with the echoed status. */
+/** Refusal body of input, window-action, accessibility, and paging routes: `ok:false` with the echoed status. */
 type ShellboxRefusal = Extract<ShellboxInputResult, { readonly ok: false }>
 
 /**
@@ -1659,12 +1850,19 @@ function queryParams(req: IncomingMessage): URLSearchParams {
 
 /**
  * Render validated events in the helper's spool grammar, one line per event in
- * delivery order.
+ * delivery order. A `send` batch is opened by its `input mode send` line, which
+ * is the only grammar addition: batches that do not ask for synthesis emit the
+ * exact `input …` lines they always did, and the helper starts every spool file
+ * back in post mode.
  * @param events - events accepted by {@link parseInputEvents}.
+ * @param mode - batch delivery mode; defaults to `post`.
  * @returns the `input …` lines without line endings.
  */
-function shellboxInputLines(events: readonly ShellboxInputEvent[]): string[] {
-  return events.map((event): string => {
+export function shellboxInputLines(
+  events: readonly ShellboxInputEvent[],
+  mode: ShellboxInputMode = 'post',
+): string[] {
+  const lines = events.map((event): string => {
     switch (event.t) {
       case 'move': return `input move ${String(event.x)} ${String(event.y)}`
       case 'button': return `input button ${event.b} ${event.p}`
@@ -1673,6 +1871,7 @@ function shellboxInputLines(events: readonly ShellboxInputEvent[]): string[] {
       case 'char': return `input char ${String(event.c)}`
     }
   })
+  return mode === 'send' ? ['input mode send', ...lines] : lines
 }
 
 /**
@@ -1692,15 +1891,18 @@ function deliverShellboxInput(
   instance: string | undefined,
   target: string | undefined,
   events: unknown,
+  mode: unknown,
 ): ShellboxInputResult {
   const parsed = parseInputEvents(events)
   if (!parsed.ok) return refuse(400, parsed.error)
+  const parsedMode = parseInputMode(mode)
+  if (!parsedMode.ok) return refuse(400, parsedMode.error)
   if (isHostDesktopTarget(instance, target)) return refuse(403, 'host desktop input is directed to the shellbox desktop')
   const record = manager.find(session, instance, target)
   if (record === undefined || !record.controller.isActive()) {
     return refuse(409, 'shellbox helper is not running')
   }
-  if (!queueShellboxCommands(record, shellboxInputLines(parsed.events))) {
+  if (!queueShellboxCommands(record, shellboxInputLines(parsed.events, parsedMode.mode))) {
     return refuse(500, 'could not queue input commands for the shellbox helper')
   }
   return { ok: true, accepted: parsed.events.length, delivered: true }
@@ -1738,6 +1940,162 @@ function deliverShellboxWindowAction(
     return refuse(500, 'could not queue the window action for the shellbox helper')
   }
   return { ok: true, delivered: true }
+}
+
+/** One node of a helper accessibility document after host-side clamping. */
+export interface ShellboxUiaNode {
+  readonly ct: string
+  readonly name: string
+  readonly cls: string
+  readonly value: string
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+  readonly enabled: boolean
+  readonly offscreen: boolean
+  readonly hwnd: number
+}
+
+/** Largest string one accessibility node carries; the helper truncates first. */
+const UIA_STRING_LIMIT = 200
+
+/**
+ * @param value - candidate text field from the helper's document.
+ * @returns the text as a string, cut to {@link UIA_STRING_LIMIT}.
+ */
+function clampUiaText(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value.length > UIA_STRING_LIMIT ? value.slice(0, UIA_STRING_LIMIT) : value
+}
+
+/**
+ * @param value - candidate coordinate field from the helper's document.
+ * @returns the value as an integer clamped into the protocol's 0..5120 range, else 0.
+ */
+function clampUiaCoord(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.min(MAX_VIEWPORT, Math.max(0, Math.round(value)))
+}
+
+/**
+ * Parse and clamp the helper's `uia` sidecar document. The helper already
+ * bounds the walk, but the route treats it as untrusted input: a broken or
+ * hostile document must still answer a shape the protocol promises — capped
+ * node count, clamped coordinates, bounded strings.
+ * @param raw - the sidecar file's text.
+ * @param maxNodes - the cap the request asked for.
+ * @returns the bounded tree, or the parse/refusal message.
+ */
+export function parseUiaResult(raw: string, maxNodes: number): { ok: true; hwnd: number; truncated: boolean; nodes: ShellboxUiaNode[] } | { ok: false; error: string } {
+  let doc: unknown
+  try {
+    doc = JSON.parse(raw)
+  } catch {
+    return { ok: false, error: 'helper accessibility document is not valid JSON' }
+  }
+  if (typeof doc !== 'object' || doc === null) {
+    return { ok: false, error: 'helper accessibility document is not an object' }
+  }
+  const record = doc as Record<string, unknown>
+  if (record.ok !== true) {
+    const message = typeof record.error === 'string' && record.error !== '' ? record.error : 'helper refused the accessibility read'
+    return { ok: false, error: message }
+  }
+  const cap = Math.min(Math.max(Math.round(maxNodes), 1), MAX_UIA_NODES)
+  const rawNodes: unknown[] = Array.isArray(record.nodes) ? record.nodes : []
+  const nodes: ShellboxUiaNode[] = []
+  for (const rawNode of rawNodes) {
+    if (nodes.length >= cap) break
+    if (typeof rawNode !== 'object' || rawNode === null) continue
+    const node = rawNode as Record<string, unknown>
+    nodes.push({
+      ct: clampUiaText(node.ct),
+      name: clampUiaText(node.name),
+      cls: clampUiaText(node.cls),
+      value: clampUiaText(node.value),
+      x: clampUiaCoord(node.x),
+      y: clampUiaCoord(node.y),
+      w: clampUiaCoord(node.w),
+      h: clampUiaCoord(node.h),
+      enabled: node.enabled === true,
+      offscreen: node.offscreen === true,
+      hwnd: typeof node.hwnd === 'number' && Number.isSafeInteger(node.hwnd) ? node.hwnd : 0,
+    })
+  }
+  const truncated = record.truncated === true || rawNodes.length > cap
+  const hwnd = typeof record.hwnd === 'number' && Number.isSafeInteger(record.hwnd) ? record.hwnd : 0
+  return { ok: true, hwnd, truncated, nodes }
+}
+
+/** Reads are serialized: one helper answers one sidecar path at a time. */
+let uiaQueue: Promise<void> = Promise.resolve()
+
+/**
+ * Spool `uia <hwnd> <max>` for the target desktop and wait for the helper's
+ * sidecar answer, enforcing the same status precedence as input delivery and
+ * a bounded wait — the helper writes between frames, so a silent helper is a
+ * conflict, never a hang.
+ * @param manager - the session/instance manager holding the desktops.
+ * @param session - requested session key, or undefined for 'default'.
+ * @param instance - requested instance id, or undefined for the session default.
+ * @param target - requested target kind, or undefined.
+ * @param hwnd - raw `hwnd` value; a positive safe integer is required.
+ * @param maxNodes - raw `maxNodes` value; 1 through {@link MAX_UIA_NODES}, or the default.
+ * @returns the bounded tree, or the refusal with its status.
+ */
+async function deliverShellboxUia(
+  manager: SandboxSessionManager,
+  session: string | undefined,
+  instance: string | undefined,
+  target: string | undefined,
+  hwnd: unknown,
+  maxNodes: unknown,
+): Promise<{ ok: true; hwnd: number; truncated: boolean; nodes: ShellboxUiaNode[] } | ShellboxRefusal> {
+  if (typeof hwnd !== 'number' || !Number.isSafeInteger(hwnd) || hwnd <= 0) {
+    return refuse(400, 'hwnd must be a positive integer')
+  }
+  let cap = DEFAULT_UIA_NODES
+  if (maxNodes !== undefined) {
+    if (typeof maxNodes !== 'number' || !Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > MAX_UIA_NODES) {
+      return refuse(400, `maxNodes must be an integer from 1 through ${String(MAX_UIA_NODES)}`)
+    }
+    cap = maxNodes
+  }
+  if (isHostDesktopTarget(instance, target)) return refuse(403, 'host desktop input is directed to the shellbox desktop')
+  const record = manager.find(session, instance, target)
+  if (record === undefined || !record.controller.isActive()) {
+    return refuse(409, 'shellbox helper is not running')
+  }
+  const commandFile = record.controller.currentCommandFile()
+  if (commandFile === '') return refuse(409, 'shellbox helper is not running')
+  const sidecar = `${commandFile}.uia`
+  const previous = uiaQueue
+  let release: (() => void) | undefined
+  uiaQueue = new Promise<void>((resolve) => { release = resolve })
+  await previous
+  try {
+    rmSync(sidecar, { force: true })
+    rmSync(`${sidecar}.tmp`, { force: true })
+    if (!queueShellboxCommands(record, [`uia ${String(hwnd)} ${String(cap)}`])) {
+      return refuse(500, 'could not queue the accessibility read for the shellbox helper')
+    }
+    const deadline = Date.now() + UIA_WAIT_MS
+    while (Date.now() < deadline) {
+      if (existsSync(sidecar)) {
+        const raw = readFileSync(sidecar, 'utf8')
+        rmSync(sidecar, { force: true })
+        const parsed = parseUiaResult(raw, cap)
+        if (!parsed.ok) return refuse(400, parsed.error)
+        return { ok: true, hwnd: parsed.hwnd, truncated: parsed.truncated, nodes: parsed.nodes }
+      }
+      if (!record.controller.isActive()) return refuse(409, 'shellbox helper is not running')
+      await new Promise<void>((resolve) => { setTimeout(resolve, UIA_POLL_MS) })
+    }
+    return refuse(504, 'accessibility read timed out')
+  } finally {
+    release?.()
+  }
 }
 
 /** Entries retained per instance ring; the oldest entry goes once this capacity is passed. */
@@ -2106,7 +2464,38 @@ export async function handleSandboxInputLocal(
   const events = typeof payload === 'object' && payload !== null
     ? (payload as Record<string, unknown>).events
     : undefined
-  const result = deliverShellboxInput(manager, session, instance, target, events)
+  const mode = typeof payload === 'object' && payload !== null
+    ? (payload as Record<string, unknown>).mode
+    : undefined
+  const result = deliverShellboxInput(manager, session, instance, target, events, mode)
+  return { status: result.ok ? 200 : result.status, body: result }
+}
+
+/**
+ * Serve `POST /api/server/sandbox/uia` locally: parse the body, then await the
+ * helper's bounded accessibility answer through {@link deliverShellboxUia}.
+ * @param manager - the session/instance manager holding the desktops.
+ * @param req - the POST request; its query may also carry `session`/`instance`.
+ * @param bodyText - the already-read request body.
+ * @returns status with the clamped tree or a refusal body.
+ */
+export async function handleSandboxUiaLocal(
+  manager: SandboxSessionManager,
+  req: IncomingMessage,
+  bodyText: string,
+): Promise<SandboxLocalResponse> {
+  if (req.method !== 'POST') return { status: 405, body: refuse(405, 'method not allowed') }
+  let payload: unknown
+  try {
+    payload = JSON.parse(bodyText)
+  } catch {
+    return { status: 400, body: refuse(400, 'request body is not valid JSON') }
+  }
+  const session = bodyParam(payload, 'session') ?? parseSessionParam(req, payload)
+  const instance = bodyParam(payload, 'instance') ?? parseInstanceParam(req, payload)
+  const target = parseTargetParam(req, payload)
+  const body = typeof payload === 'object' && payload !== null ? payload as Record<string, unknown> : undefined
+  const result = await deliverShellboxUia(manager, session, instance, target, body?.hwnd, body?.maxNodes)
   return { status: result.ok ? 200 : result.status, body: result }
 }
 
@@ -2608,6 +2997,34 @@ export function registerSandboxRoutes(ctx: Context, options?: SandboxRouteOption
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
+    path: '/api/server/sandbox/uia',
+    handler: async (req, res) => {
+      if (req.method !== 'POST') {
+        res.statusCode = 405
+        res.setHeader('allow', 'POST')
+        res.end('Method Not Allowed')
+        return
+      }
+      let raw: string | undefined
+      try {
+        raw = await readBody(req)
+      } catch {
+        // A destroyed request body carries no session; it reaches the local
+        // handler as text that cannot parse, or the bridge as its own 400.
+        raw = undefined
+      }
+      markShellboxTouched(resolveRequestSession(req, raw))
+      if (internals.useDaemon) {
+        await daemonManager.forwardJson(req, res, '/uia', raw)
+        return
+      }
+      const result = await handleSandboxUiaLocal(manager, req, raw ?? '')
+      respondJson(res, result.status, result.body)
+    },
+  }), 'deamon: POST /api/server/sandbox/uia')
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
     path: '/api/server/sandbox/windows',
     handler: async (req, res) => {
       if (req.method !== 'GET') {
@@ -2833,7 +3250,9 @@ export function registerSandboxRoutes(ctx: Context, options?: SandboxRouteOption
           body: { session, instance: instanceId, events },
         })
       }
-      return deliverShellboxInput(manager, session, instanceId, undefined, events)
+      // The model-facing seam predates the mode field: its batches stay on the
+      // default post path, and `undefined` parses to exactly that.
+      return deliverShellboxInput(manager, session, instanceId, undefined, events, undefined)
     },
   })
 

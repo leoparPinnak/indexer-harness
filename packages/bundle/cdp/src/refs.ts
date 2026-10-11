@@ -234,7 +234,11 @@ export class RefStaleError extends Error {
   }
 }
 
-/** True when one error is a plan08 stale-ref refusal. */
+/**
+ * True when one error is a plan08 stale-ref refusal.
+ * @param error - the thrown value to identify.
+ * @returns true when `error is RefStaleError`, narrowing it to {@link RefStaleError}.
+ */
 export function isRefStaleError(error: unknown): error is RefStaleError {
   return error instanceof RefStaleError
 }
@@ -571,7 +575,11 @@ export function renameNote(rename: RefRename): string {
     + 'call cdp_snapshot again only if you need its new ref'
 }
 
-/** True when a reason is a rename note (never a staleness claim). */
+/**
+ * True when a reason is a rename note (never a staleness claim).
+ * @param reason - the verdict reason to test, when present.
+ * @returns true when `reason` carries the `ref-target-renamed:` prefix.
+ */
 export function isRefRenamedReason(reason: string | undefined): boolean {
   return typeof reason === 'string' && reason.startsWith(`${REF_RENAMED_PREFIX}:`)
 }
@@ -758,7 +766,15 @@ export async function resolveRefOn(
   return evidence
 }
 
-/** plan08: viewport center of one resolved element, clamped into the viewport. */
+/**
+ * plan08: viewport center of one resolved element, clamped into the viewport.
+ * @param rect - frame-local rect of the resolved element.
+ * @param viewportWidth - width to clamp against, when given; omitted falls
+ *   back to an effectively unbounded 1,000,000 px ceiling.
+ * @param viewportHeight - height to clamp against, when given (same default).
+ * @returns the rounded `{ x, y }` center, clamped to `[0, width-1]` and
+ *   `[0, height-1]`.
+ */
 export function centerOf(rect: RefRect, viewportWidth?: number, viewportHeight?: number): { x: number, y: number } {
   const maxX = (viewportWidth ?? 1_000_000) - 1
   const maxY = (viewportHeight ?? 1_000_000) - 1
@@ -854,7 +870,11 @@ export function refFailureRun(ref: string, targetId: string, reason: string): Lo
   return { targetId, reply }
 }
 
-/** True when a verdict reason is a plan08 stale-ref refusal (for tool outputs). */
+/**
+ * True when a verdict reason is a plan08 stale-ref refusal (for tool outputs).
+ * @param reason - the verdict reason to test, when present.
+ * @returns true when `reason` carries the `stale-ref:` prefix.
+ */
 export function isStaleRefReason(reason: string | undefined): boolean {
   return typeof reason === 'string' && reason.startsWith(`${REF_STALE_PREFIX}:`)
 }

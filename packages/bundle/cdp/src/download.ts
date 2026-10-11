@@ -139,12 +139,19 @@ export class DownloadManager {
     }
   }
 
-  /** Every tracked download, newest first. */
+  /**
+   * Every tracked download, newest first.
+   * @returns a snapshot copy of the tracked records, ordered newest first.
+   */
   status(): DownloadRecord[] {
     return [...this.records.values()].reverse()
   }
 
-  /** One record by GUID. */
+  /**
+   * One record by GUID.
+   * @param guid - the browser-assigned download GUID from the events.
+   * @returns the tracked record, or undefined when the GUID is unknown.
+   */
   record(guid: string): DownloadRecord | undefined {
     return this.records.get(guid)
   }

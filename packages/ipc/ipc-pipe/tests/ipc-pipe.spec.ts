@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   gatewayCoordinates,
   GatewayAlreadyRunningError,
@@ -23,8 +26,22 @@ import {
 /** Live gateways closed after each case, newest first. */
 const mounted: PipeGateway[] = []
 
+/** Every spec-created gateway key lives in a temp home, never the live one. */
+let savedHome: string | undefined
+let specHome: string
+
+beforeEach(() => {
+  savedHome = process.env.DSH_HOME
+  specHome = mkdtempSync(join(tmpdir(), 'dsh-ipc-pipe-home-'))
+  process.env.DSH_HOME = specHome
+})
+
 afterEach(async () => {
   for (const gateway of mounted.splice(0)) await gateway.close()
+  if (savedHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = savedHome
+  savedHome = undefined
+  rmSync(specHome, { recursive: true, force: true })
 })
 
 /**
@@ -194,6 +211,30 @@ describe('gateway size caps', () => {
       client.close()
     }
   })
+
+  it('refuses an in-band body the header pushes over the cap, sparing the connection', async () => {
+    // The body alone fits the cap; the `res` envelope (45 bytes) rides along,
+    // so the frame on the wire does not. Measuring only the body would let this
+    // answer through, and the peer's reader would then kill the connection —
+    // taking innocent in-flight requests with it.
+    const { seed } = await mount((req, res) => {
+      if (req.url === '/borderline') res.end(Buffer.alloc(MAX_RESPONSE_BYTES - 16))
+      else res.end('ok')
+    })
+    const client = await PipeGatewayClient.connect({ seed })
+    try {
+      const borderline = client.request({ method: 'GET', url: '/borderline' })
+      borderline.catch(() => { /* awaited below once the in-flight answer settles */ })
+      const normal = await client.request({ method: 'GET', url: '/health' })
+      expect(normal.status).toBe(200)
+      await expect(borderline).rejects.toBeInstanceOf(GatewayPayloadTooLargeError)
+      // The refusal stays per-request: the peer never sees an illegal frame.
+      expect(client.connected).toBe(true)
+      expect((await client.request({ method: 'GET', url: '/health' })).status).toBe(200)
+    } finally {
+      client.close()
+    }
+  })
 })
 
 describe('gateway budgets', () => {
@@ -245,7 +286,12 @@ describe('gateway single-instance lock', () => {
 })
 
 describe('gateway half-close tolerance', () => {
-  it('keeps answering a peer that half-closed while the answer was cooking', async () => {
+  // win32 cannot deliver an answer to a peer that half-closed: the write side
+  // takes EPIPE (libuv/OS semantics — reproduced in plain Node, not an
+  // ipc-pipe bug; POSIX unix-socket behavior is unverified here), so the frame
+  // never reaches the peer. Known limitation in the README; peers should sign
+  // off with the protocol's `bye` message instead of a raw FIN.
+  it.skipIf(process.platform === 'win32')('keeps answering a peer that half-closed while the answer was cooking', async () => {
     const warnings: string[] = []
     let closedAt = 0
     const { gateway, seed } = await mount(
@@ -266,7 +312,10 @@ describe('gateway half-close tolerance', () => {
     expect(closedAt).toBe(0)
     expect(warnings.some(line => line.includes('dropped a half-closed connection'))).toBe(false)
 
-    // The answer still lands and completes the response.
+    // The answer still lands: the buffered `res` frame reaches the
+    // half-closed peer with the late body inside it.
+    const answer = await peer.waitFor(frame => frame.message.t === 'res')
+    expect(answer.body.toString()).toBe('late but delivered')
     for (let attempt = 0; closedAt === 0 && attempt < 100; attempt += 1) await delay(20)
     expect(closedAt).toBeGreaterThan(0)
     expect(closedAt - finAt).toBeGreaterThan(100)

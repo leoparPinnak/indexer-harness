@@ -75,7 +75,7 @@ export interface ServerResponse {
 /** Complete Connection RPC envelope union. */
 export type RpcMessage = ClientRequest | ServerResponse
 
-/** HTTP request facts consumed by browser trust and authentication. */
+/** HTTP request facts consumed by browser trust and admission. */
 export interface ConnectionTrustRequest {
   /** Request headers supplied by either the Fetch or node:http representation. */
   readonly headers: Headers | Readonly<Record<string, string | readonly string[] | undefined>>
@@ -84,13 +84,13 @@ export interface ConnectionTrustRequest {
 /** HTTP status returned before dispatch, or undefined when the request may proceed. */
 export type ConnectionRequestRejection = 401 | 403 | undefined
 
-/** Root/index request facts used by the browser-token exchange. */
+/** Root/index request facts consulted by the admission seam. */
 export interface ConnectionIndexRequest extends ConnectionTrustRequest {
   readonly method?: string | undefined
   readonly url?: string | undefined
 }
 
-/** Root/index response operations owned by the browser-token exchange. */
+/** Root/index response operations a denied index request is answered through. */
 export interface ConnectionIndexResponse {
   writeHead(status: number, headers?: Readonly<Record<string, string>>): unknown
   end(body?: string): unknown
@@ -120,7 +120,7 @@ export interface ConnectionFetchRoute {
   readonly methods: readonly ConnectionFetchMethod[]
   /** Buffered requests obey the configured JSON cap; streaming requests arrive with backpressure and no aggregate cap. */
   readonly requestBody: ConnectionRequestBodyMode
-  /** Handle one request after the physical carrier has applied its trust and authentication policy. */
+  /** Handle one request after the physical carrier has applied its trust and admission policy. */
   readonly fetch: (request: Request) => Promise<Response>
 }
 
@@ -137,7 +137,7 @@ export interface HostConnectionFetch {
 /** Host registry for logical RPC channels carried by the current transport. */
 export interface HostConnectionRpc {
   /**
-   * Register one authenticated absolute channel prefix.
+   * Register one admitted absolute channel prefix.
    * @param channel - absolute logical channel such as `/rpc`.
    * @param handler - decoded endpoint handler returning the existing RPC result shape.
    * @returns asynchronous disposer removing the channel and its physical route.
@@ -171,12 +171,12 @@ export interface HostConnectionHandle {
   /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
-   * @returns Fetch handler for trusted, authenticated requests.
+   * @returns Fetch handler for admitted requests below the Host/Origin fence.
    */
   createSharedFetchHandler(channel: '/api'): ConnectionFetchHandler
 
   /**
-   * Apply Connection's Host/Origin checks and browser authentication to
+   * Apply Connection's Host/Origin checks and the admission seam to
    * another Web route.
    * @param request - request headers from the HTTP or upgrade request.
    * @returns rejection status, or undefined when the route may accept the request.
@@ -184,17 +184,19 @@ export interface HostConnectionHandle {
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection
 
   /**
-   * Authenticate one frontend index request, owning a token redirect or 401.
+   * Ask the admission seam whether one frontend index request may be served.
    * @param request - root or configured-index HTTP request.
-   * @param response - response owned when the result is false.
-   * @returns true only when the frontend may serve index.html.
+   * @param response - response owned by this method when the result is false;
+   * only a future login gate installed at the admission seam can make that happen.
+   * @returns true when the frontend may serve index.html.
    */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean
 
   /**
-   * Add the fresh process token to an ordinary Web application URL.
+   * Return the ordinary clean Web application URL.
    * @param baseUrl - clean canonical browser origin.
-   * @returns root URL accepted by {@link authorizeIndex} for initial login.
+   * @returns root URL the frontend serves without credentials; a future login
+   * gate may extend {@link authorizeIndex} with a token exchange again.
    */
   authenticatedUrl(baseUrl: string): string
 }
@@ -209,7 +211,7 @@ export interface ConnectionFetchHandler {
   requestBodyMode(request: { readonly method: string; readonly url: URL }): ConnectionRequestBodyMode
 
   /**
-   * Dispatch one already-authenticated request.
+   * Dispatch one admitted request.
    * @param request - Fetch request below the shared channel.
    * @returns the registered response or a 404 response.
    */

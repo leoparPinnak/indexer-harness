@@ -317,6 +317,8 @@ export interface EvidenceReply {
  * (U+202A–U+202E, U+2066–U+2069, U+200E–U+200F) removed, whitespace
  * collapsed, ends trimmed. Makes `'Gönder ‪(Ctrl-Enter)‬'` equal
  * `'Gönder (Ctrl-Enter)'`.
+ * @param value - the raw text as the page or the model supplied it.
+ * @returns the normalized text.
  */
 export function normalizeText(value: string): string {
   return value
@@ -326,7 +328,11 @@ export function normalizeText(value: string): string {
     .trim()
 }
 
-/** Build a locator spec from tool arguments; empty/invalid values are dropped. */
+/**
+ * Build a locator spec from tool arguments; empty/invalid values are dropped.
+ * @param args - the model-facing argument map (see {@link LocatorArgs}).
+ * @returns a spec carrying only the usable fields.
+ */
 export function locatorSpecFromArgs(args: LocatorArgs): LocatorSpec {
   const spec: LocatorSpec = {}
   if (typeof args.css === 'string' && args.css !== '') spec.css = args.css
@@ -344,6 +350,8 @@ export function locatorSpecFromArgs(args: LocatorArgs): LocatorSpec {
 /**
  * Structural validation before any round trip. Returns a failure reason or
  * `undefined` when the spec can be sent to the page.
+ * @param spec - the assembled locator to check before any round trip.
+ * @returns a failure reason, or `undefined` when the spec is sendable.
  */
 export function validateLocatorSpec(spec: LocatorSpec): string | undefined {
   const hasCss = spec.css !== undefined
@@ -372,6 +380,10 @@ export function validateLocatorSpec(spec: LocatorSpec): string | undefined {
  * requirement, regex compile for `urlMatches`, and locator structure for the
  * checks that need a locator. `urlMatches` runs against the page URL and
  * therefore ignores the locator entirely.
+ * @param check - the requested check name, as the tool passed it.
+ * @param spec - the locator the check resolves; `urlMatches` ignores it.
+ * @param expected - the expected text or URL pattern, when the check needs one.
+ * @returns a failure reason, or `undefined` when the options are valid.
  */
 export function validateExpectOptions(
   check: string,
@@ -398,19 +410,27 @@ export function validateExpectOptions(
   return validateLocatorSpec(spec)
 }
 
-/** Clamp a wait budget to [0, LOCATOR_MAX_WAIT_MS]; invalid → 0 (single attempt). */
+/** Clamp a wait budget to [0, LOCATOR_MAX_WAIT_MS]; invalid → 0 (single attempt).
+ * @param timeoutMs - the requested wait budget, or undefined when omitted.
+ * @returns the clamped budget in milliseconds, or 0 for invalid input.
+ */
 export function clampWaitTimeout(timeoutMs: number | undefined): number {
   if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs < 0) return 0
   return Math.min(Math.floor(timeoutMs), LOCATOR_MAX_WAIT_MS)
 }
 
-/** Clamp a text budget to [1, LOCATOR_MAX_CHARS]; invalid → default. */
+/** Clamp a text budget to [1, LOCATOR_MAX_CHARS]; invalid → default.
+ * @param maxChars - the requested character budget, or undefined when omitted.
+ * @returns the clamped budget in characters, or the default for invalid input.
+ */
 export function clampMaxChars(maxChars: number | undefined): number {
   if (typeof maxChars !== 'number' || !Number.isFinite(maxChars)) return LOCATOR_DEFAULT_MAX_CHARS
   return Math.max(1, Math.min(Math.floor(maxChars), LOCATOR_MAX_CHARS))
 }
 
-/** Poll delay; exported so tests and the service share one cadence. */
+/** Poll delay; exported so tests and the service share one cadence.
+ * @param ms - how long to wait before the returned promise resolves.
+ */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => { setTimeout(resolve, ms) })
 }
@@ -425,6 +445,8 @@ export function sleep(ms: number): Promise<void> {
  * evidence, and returns a JSON string: `{ok, found, matched, strategy,
  * candidates[≤5], url, reason?, hint?, warning?, target?, actionability?}`.
  * `spec === null` is the URL-only probe used by `urlMatches`.
+ * @param spec - the locator to resolve, or `null` for the URL-only probe.
+ * @returns the async page expression to evaluate with `awaitPromise:true`.
  */
 export function buildLocatorExpression(spec: LocatorSpec | null): string {
   return String.raw`(async () => {
@@ -457,6 +479,7 @@ ${locatorPageCore()}
  * `MAX_*`, and `DIRTY`; failure paths `return` the envelope straight out, while
  * a successful resolve falls through with `out.target` + `out.actionability`
  * set and `out.ok` still false — the caller decides what "ok" means.
+ * @returns the page-side resolver body as a string to inline.
  */
 export function locatorPageCore(): string {
   return String.raw`
@@ -747,6 +770,9 @@ export function locatorPageCore(): string {
 /**
  * Point evidence for coordinate clicks: whatever sits at (x, y) plus the page
  * URL, as one JSON string. Read-only and best-effort.
+ * @param x - viewport CSS x of the click point.
+ * @param y - viewport CSS y of the click point.
+ * @returns the page expression returning the point evidence JSON string.
  */
 /**
  * plan16: page-side neighbourhood probe behind `cdp_describe` — the honest
@@ -874,7 +900,9 @@ export function buildPointExpression(x: number, y: number): string {
 })()`
 }
 
-/** Focus evidence for typing: the active element plus the page URL. */
+/** Focus evidence for typing: the active element plus the page URL.
+ * @returns the page expression returning the focus evidence JSON string.
+ */
 export function buildFocusExpression(): string {
   return String.raw`(() => {
   try {
@@ -1033,6 +1061,9 @@ function failedReply(reason: string): LocatorReply {
  * errors, truncation, malformed JSON, and shape drift all collapse into
  * `ok:false` with a reason, because a locator failure is data, not an
  * exception.
+ * @param evaluation - the raw page evaluation result (value, error, truncation).
+ * @param targetId - the session target the evaluation ran under.
+ * @returns the run pairing the target with the typed reply.
  */
 export function parseLocatorReply(evaluation: PageEvaluation, targetId: string): LocatorRun {
   if (evaluation.error !== undefined) {
@@ -1063,6 +1094,8 @@ export function parseLocatorReply(evaluation: PageEvaluation, targetId: string):
  * (candidate shape drift, optional-field types). Returns undefined when the
  * record lacks `ok:boolean`. Shared by {@link parseLocatorReply} and
  * `fill.ts`'s richer parse.
+ * @param record - the already-parsed reply object from the page.
+ * @returns the typed reply, or undefined when `ok` is not a boolean.
  */
 export function asLocatorReply(record: Record<string, unknown>): LocatorReply | undefined {
   if (typeof record.ok !== 'boolean') return undefined
@@ -1086,6 +1119,8 @@ export function asLocatorReply(record: Record<string, unknown>): LocatorReply | 
 /**
  * Parse one evidence JSON string (point or focus). Returns undefined when the
  * value is not JSON or not an object — callers treat evidence as optional.
+ * @param value - the page's evidence JSON string (point or focus).
+ * @returns the parsed evidence, or undefined when the value is unusable.
  */
 export function parseEvidenceReply(value: string): EvidenceReply | undefined {
   let parsed: unknown
@@ -1144,6 +1179,9 @@ export function parseFocusCheckReply(value: string): TypeFocusCheck | undefined 
  * Turn one resolution attempt into a text read. Gating order: resolution ok →
  * visible → text budget. A resolved-but-hidden element fails — innerText of a
  * hidden element is not visible text.
+ * @param reply - the parsed page reply for one resolution attempt.
+ * @param maxChars - character cap for the returned text.
+ * @returns the verdict: the (clamped) text, or the failure reason.
  */
 export function evaluateText(reply: LocatorReply, maxChars: number): TextVerdict {
   if (!reply.ok) {
@@ -1167,6 +1205,10 @@ export function evaluateText(reply: LocatorReply, maxChars: number): TextVerdict
  * Evaluate one expect attempt against one resolution. Expected conditions
  * never throw: not-found, ambiguity, and mismatches come back as
  * `passed:false` with a reason.
+ * @param reply - the parsed page reply for one resolution attempt.
+ * @param check - the expect check to evaluate.
+ * @param expected - the expected text or pattern, when the check needs one.
+ * @returns the verdict: pass with the actual value, or fail with a reason.
  */
 export function evaluateExpect(
   reply: LocatorReply,
@@ -1248,7 +1290,10 @@ export interface TextRenderInput {
   target?: { tag: string; name: string } | undefined
 }
 
-/** One-line render for `cdp_text`: success quotes the text, failure leads with the reason. */
+/** One-line render for `cdp_text`: success quotes the text, failure leads with the reason.
+ * @param value - the text outcome to render.
+ * @returns the single-line tool block.
+ */
 export function renderCdpText(value: TextRenderInput): string {
   const label = value.target !== undefined
     ? `<${value.target.tag}${value.target.name !== '' ? ` "${value.target.name}"` : ''}>`
@@ -1276,7 +1321,10 @@ export interface ExpectRenderInput {
   reason?: string | undefined
 }
 
-/** One-line render for `cdp_expect`: PASS leads with the actual, FAIL leads with the reason. */
+/** One-line render for `cdp_expect`: PASS leads with the actual, FAIL leads with the reason.
+ * @param value - the expect outcome to render.
+ * @returns the single-line tool block.
+ */
 export function renderCdpExpect(value: ExpectRenderInput): string {
   const head = `EXPECT ${value.check}${value.expected !== undefined ? ` expected=${JSON.stringify(value.expected)}` : ''}`
   if (value.passed && value.ok) {

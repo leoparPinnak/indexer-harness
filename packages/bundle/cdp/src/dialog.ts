@@ -123,6 +123,9 @@ export const DIALOG_GUARDED_TOOLS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Whether a tool is guarded by the plan05 dialog guard: while a dialog is
+ * pending, guarded tools refuse to run so they cannot report a stale page
+ * state; only the dialog-specific tools are exempt.
  * @param name - tool name about to execute.
  * @returns whether the plan05 dialog guard applies to that tool.
  */
@@ -173,6 +176,8 @@ export function quoteDialogText(text: string): string {
 }
 
 /**
+ * Normalize a protocol dialog `type` into a known {@link DialogType}, so a
+ * value Chromium invents later still lands in a typed record.
  * @param value - the protocol's `type` field.
  * @returns a known {@link DialogType}; unknown values normalize to `alert` so
  *   an unexpected dialog is still reported rather than dropped.

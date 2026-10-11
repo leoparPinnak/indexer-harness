@@ -120,6 +120,7 @@ import {
   PAGE_ACTIVITY_EXPRESSION, /* plan15-hidden */
   readPageActivity, /* plan15-hidden */
   UNVERIFIED_ACTIVITY, /* plan15-hidden */
+  type EvalOutcome,
   type ExecOptions,
   type ExecOutcome,
   type PageActivityProbe,
@@ -281,8 +282,14 @@ const { version: CDP_VERSION } = createRequire(import.meta.url)('../package.json
 
 /**
  * Adapter bridging {@link CdpConnection} to {@link TargetRegistry}'s connection interface.
+ * @param connection - the raw CDP connection to wrap.
+ * @returns a `send`/`on` pair that forwards commands and subscriptions to the
+ *   connection without its target bookkeeping.
  */
-export function createTargetConnectionAdapter(connection: CdpConnection) {
+export function createTargetConnectionAdapter(connection: CdpConnection): {
+  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>
+  on: (event: string, listener: (params: unknown) => void) => () => void
+} {
   return {
     send: (method: string, params?: Record<string, unknown>) => connection.send(method, params),
     on: (event: string, listener: (params: unknown) => void) => connection.on(event, (cdpEvent) => {
@@ -293,8 +300,14 @@ export function createTargetConnectionAdapter(connection: CdpConnection) {
 
 /**
  * Adapter bridging {@link CdpConnection} to {@link PageSession}'s connection interface.
+ * @param connection - the raw CDP connection to wrap.
+ * @returns a `send`/`on` pair that passes the session id through, so commands
+ *   and session-scoped events reach the page session they belong to.
  */
-export function createPageConnectionAdapter(connection: CdpConnection) {
+export function createPageConnectionAdapter(connection: CdpConnection): {
+  send: (method: string, params: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => Promise<unknown>
+  on: (event: string, listener: (params: unknown, sessionId: string | undefined) => void) => () => void
+} {
   return {
     send: (method: string, params: Record<string, unknown>, sessionId?: string, timeoutMs?: number) =>
       connection.send(method, params, sessionId, timeoutMs),
@@ -306,8 +319,13 @@ export function createPageConnectionAdapter(connection: CdpConnection) {
 
 /**
  * Adapter bridging {@link CdpConnection} to {@link HumanInput}'s connection interface.
+ * @param connection - the raw CDP connection to wrap.
+ * @returns a `send`-only handle that routes input commands to the session
+ *   id they name; input never subscribes to events.
  */
-export function createInputConnectionAdapter(connection: CdpConnection) {
+export function createInputConnectionAdapter(connection: CdpConnection): {
+  send: (method: string, params: Record<string, unknown>, sessionId?: string) => Promise<unknown>
+} {
   return {
     send: (method: string, params: Record<string, unknown>, sessionId?: string) => connection.send(method, params, sessionId),
   }
@@ -665,6 +683,13 @@ function toViewportMetrics(observation: ViewportObservation): ViewportMetrics {
   }
 }
 
+/**
+ * The session coordinator every `cdp_*` tool runs through: owns the browser
+ * launch, the raw CDP WebSocket connection, target-registry bookkeeping and
+ * per-target page sessions, and layers the tool operations — snapshot
+ * weaving, human-like input, eval/exec envelopes, waits, downloads, PDF,
+ * dialogs, and context lifecycle — on top of them.
+ */
 export class CdpService {
   private connection: CdpConnection | undefined
   private registry: TargetRegistry | undefined
@@ -2277,7 +2302,7 @@ export class CdpService {
    * @param targetId - the requested target, when one was given.
    * @returns the failure envelope.
    */
-  buildEvalFailure(error: unknown, expression: string, targetId?: string) {
+  buildEvalFailure(error: unknown, expression: string, targetId?: string): EvalOutcome {
     // plan10-fix: evalWithMeta tags a terminated timeout's error with
     // `terminated`/`documentHidden`; carry them into the envelope so cdp_eval
     // reports zombie cancellation exactly like cdp_exec does.
@@ -2302,7 +2327,7 @@ export class CdpService {
    * @param documentHidden - plan10-fix: the pre-run hidden probe answer, when known.
    * @returns the envelope.
    */
-  buildEvalOutcome(evaluation: PageEvaluation, targetId: string, url: string, documentHidden?: boolean) {
+  buildEvalOutcome(evaluation: PageEvaluation, targetId: string, url: string, documentHidden?: boolean): EvalOutcome {
     return buildEvalOutcome(evaluation, targetId, url, documentHidden !== undefined ? { documentHidden } : undefined)
   }
 
@@ -2474,6 +2499,10 @@ export class CdpService {
   /**
    * plan03: the only sanctioned way to open a tab — `Target.createTarget`
    * followed by an explicit report (no silent about:blank anywhere else).
+   * @param options - what to open: the landing URL and whether the tab takes
+   *   focus (both defaulting when omitted).
+   * @returns the new tab's id, reported URL and title, focus state, and the
+   *   resulting tab/page counts.
    */
   async createTab(options: CdpTabCreateOptions = {}): Promise<CdpTabCreateResult> {
     if (this.connection === undefined || this.registry === undefined) {
@@ -2547,6 +2576,10 @@ export class CdpService {
    * plan03: guarded close. Closing the active tab needs `confirmActive`, and
    * the last remaining page tab needs `force` — both refusals are actionable.
    * The legacy REST `POST /api/server/cdp/close` keeps its unguarded path.
+   * @param options - which tab to close (defaults to the active one) plus the
+   *   `confirmActive`/`force` overrides the two guards accept.
+   * @returns the closed tab's id, whether it was active, the remaining page
+   *   count, the new active target, and whether the browser reported the close.
    */
   async closeTab(options: CdpTabCloseOptions = {}): Promise<CdpTabCloseResult> {
     if (this.connection === undefined || this.registry === undefined) {
@@ -2604,6 +2637,11 @@ export class CdpService {
   /**
    * plan03: make a tab the resolution base, and tell the real browser so the
    * window focus matches the model's belief (`Target.activateTarget`).
+   * @param targetId - the tab to focus; must be a tracked target.
+   * @param activateBrowser - whether the OS-level browser window is activated
+   *   too (false only moves the registry's active target).
+   * @returns the newly focused tab's identity and page, the previous active
+   *   target when it changed, and whether the browser was activated.
    */
   async focusTab(targetId: string, activateBrowser = true): Promise<CdpTabFocusResult> {
     if (this.connection === undefined || this.registry === undefined) {
@@ -2641,6 +2679,10 @@ export class CdpService {
   /**
    * plan03: scroll a page — human-like wheel steps, keyboard paging, or
    * anchor/edge jumps — always reporting the verified post-scroll position.
+   * @param request - what to do: strategy (`mode`), deltas or target
+   *   (`selector`/`anchor`), repetitions, settle delay, and the target id.
+   * @returns the executed strategy and the before/after position boxes read
+   *   from the page.
    */
   async scroll(request: CdpScrollRequest = {}): Promise<CdpScrollReport> {
     const session = await this.getPageSession(request.targetId)
@@ -2842,7 +2884,7 @@ export class CdpService {
     if (this.proxy?.isListening) return { active: true, port: this.proxy.port }
     const epoch = this.proxyEpoch
     // plan04-fix2: idle-port scan. The configured port can be permanently
-    // occupied in a shared environment (live: the Shellbox Edge holds 9333),
+    // occupied in a shared environment (another local service can sit on 9333),
     // so try it plus the next few loopback ports and take the first bind that
     // succeeds. Port 0 already means "any free port" — one attempt only.
     const configured = this.serviceOptions.proxyListenPort ?? 9333
@@ -3274,7 +3316,11 @@ export class CdpService {
     return await this.downloadManager.arm(options)
   }
 
-  /** plan10: every tracked download, newest first; empty when none exist. */
+  /**
+   * plan10: every tracked download, newest first; empty when none exist.
+   * @returns the recorded downloads, or an empty array before any manager
+   *   instance exists.
+   */
   downloadStatus(): DownloadRecord[] {
     return this.downloadManagerInstance?.status() ?? []
   }
@@ -3808,6 +3854,11 @@ export class CdpService {
    * Read the visible text behind a locator. Polls until the element resolves
    * unambiguously and is visible, or until the budget runs out (0 = single
    * attempt); every failure returns in-band with reason + candidate evidence.
+   * @param spec - the locator naming whose visible text is read.
+   * @param options - poll budget (`timeoutMs`), text cap (`maxChars`), and
+   *   the target id to read against.
+   * @returns the outcome: matched text (with the truncation flag when capped),
+   *   or an in-band failure carrying reason and candidate evidence.
    */
   async readText(spec: LocatorSpec, options: ReadTextOptions = {}): Promise<TextOutcome> {
     const started = Date.now()
@@ -3847,6 +3898,10 @@ export class CdpService {
    * Poll one expect check until it passes or the budget runs out (default 0 =
    * single attempt, capped at 30s). Expected conditions never throw: mismatch,
    * not-found, and ambiguity all come back as `passed:false` + reason.
+   * @param options - the assertion: the `check` to run, its `expected` value,
+   *   the locator supplying it (ignored by `urlMatches`), timeout, and target.
+   * @returns the verdict with actual/expected evidence on success, or
+   *   `passed:false` plus the failure reason; never throws on mismatch.
    */
   async expectCheck(options: ExpectOptions): Promise<ExpectOutcome> {
     const started = Date.now()
@@ -3888,6 +3943,11 @@ export class CdpService {
    * Coordinate-mode evidence for `cdp_click`: whatever sits at the viewport
    * point plus the page URL. Best-effort — undefined when the page cannot
    * answer; the click itself never depends on it.
+   * @param x - viewport CSS x of the point.
+   * @param y - viewport CSS y of the point.
+   * @param targetId - optional target id.
+   * @returns the resolved target and page URL plus the node hit at the point,
+   *   or undefined when the page could not answer.
    */
   async describePoint(x: number, y: number, targetId?: string): Promise<PointEvidence | undefined> {
     const session = await this.getPageSession(targetId)
@@ -3899,7 +3959,13 @@ export class CdpService {
     return { targetId: resolved, url: reply.url, ...(reply.info !== undefined ? { hit: reply.info } : {}) }
   }
 
-  /** Focus evidence for `cdp_type`: where keystrokes are about to go. Best-effort, like {@link describePoint}. */
+  /**
+   * Focus evidence for `cdp_type`: where keystrokes are about to go.
+   * Best-effort, like {@link describePoint}.
+   * @param targetId - optional target id.
+   * @returns the resolved target and page URL plus the focused-node info, or
+   *   undefined when the page could not answer.
+   */
   async describeFocus(targetId?: string): Promise<FocusEvidence | undefined> {
     const session = await this.getPageSession(targetId)
     const resolved = this.registry?.active()?.targetId ?? targetId ?? ''
@@ -4005,6 +4071,11 @@ export class CdpService {
    * Resolve a locator for a CLICK (§4.1/§4.2): poll like {@link readText}, but
    * succeed only when every actionability axis passes. The click point is the
    * centre of the visible rect; a final failure carries reason + candidates.
+   * @param spec - the locator to resolve and test for actionability.
+   * @param targetId - optional target id; defaults to the active target.
+   * @param timeoutMs - poll budget for resolution; defaults to 5s, clamped.
+   * @returns the centre point and actionability evidence when every axis
+   *   passes, or an in-band failure with reason and candidates.
    */
   async resolveForAction(spec: LocatorSpec, targetId?: string, timeoutMs?: number): Promise<ActionResolution> {
     const started = Date.now()
@@ -4084,6 +4155,12 @@ export class CdpService {
    * focused + selected the element for it). Locator failures poll until the
    * budget; kind rejections (file input, non-fillable element, missing
    * option) stop immediately.
+   * @param spec - the locator naming the field to fill.
+   * @param value - the text to write into it.
+   * @param options - fill knobs: `clear`, `verify`, poll budget `timeoutMs`,
+   *   and the target id.
+   * @returns the outcome: the written length with read-back evidence, or an
+   *   in-band failure carrying the reason (kind rejections stop immediately).
    */
   async fill(spec: LocatorSpec, value: string, options: FillOptions = {}): Promise<FillOutcome> {
     const started = Date.now()
@@ -4125,6 +4202,8 @@ export class CdpService {
    * `Input.insertText` — the fallback write for a framework that reverted the
    * setter value. The element must already be focused + selected (the fill
    * script does both before reporting `fallbackNeeded`).
+   * @param text - the raw text to insert.
+   * @param targetId - optional target id.
    */
   async insertText(text: string, targetId?: string): Promise<void> {
     const session = await this.getPageSession(targetId)
@@ -4136,6 +4215,11 @@ export class CdpService {
    * network-idle (§4.7): count requests through session-scoped connection
    * events and pass after `idleMs` of quiet. The Network domain is enabled
    * only for the wait and is always disabled + unsubscribed afterwards.
+   * @param timeoutMs - overall budget for the wait.
+   * @param idleMs - quiet period with no counted requests that satisfies it.
+   * @param targetId - optional target id.
+   * @returns the verdict: whether idle was reached, the time actually waited,
+   *   and whether the budget ran out first.
    */
   async waitNetworkIdle(timeoutMs: number, idleMs: number, targetId?: string): Promise<WaitNetworkReply> {
     const session = await this.getPageSession(targetId)

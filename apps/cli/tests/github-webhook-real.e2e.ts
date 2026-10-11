@@ -24,23 +24,6 @@ const SECRET = 'github-webhook-real-e2e-secret'
 const DELIVERY = 'github-webhook-real-e2e-delivery'
 const MARKER = 'DSH_GITHUB_WEBHOOK_REAL_E2E_OK'
 const TITLE = 'GitHub webhook real e2e'
-const authenticatedCookies = new Map<string, Promise<{ origin: string; cookie: string }>>()
-
-/** Exchange the printed process token once for Node-side API probes. */
-function authenticatedWeb(launchUrl: string): Promise<{ origin: string; cookie: string }> {
-  const existing = authenticatedCookies.get(launchUrl)
-  if (existing !== undefined) return existing
-  const exchange = (async () => {
-    const response = await fetch(launchUrl, { redirect: 'manual' })
-    const setCookie = response.headers.get('set-cookie')
-    if (response.status !== 303 || setCookie === null) {
-      throw new Error(`dsh web authentication returned HTTP ${String(response.status)}`)
-    }
-    return { origin: new URL(launchUrl).origin, cookie: setCookie.split(';', 1)[0]! }
-  })()
-  authenticatedCookies.set(launchUrl, exchange)
-  return exchange
-}
 
 interface SessionList {
   items: Array<{
@@ -129,10 +112,9 @@ async function freePort(): Promise<number> {
 
 /** Invoke one public Remote method over its HTTP carrier. */
 async function remoteRpc<T>(baseUrl: string, endpoint: string, args: object): Promise<T> {
-  const authenticated = await authenticatedWeb(baseUrl)
-  const response = await fetch(`${authenticated.origin}/api/${endpoint}`, {
+  const response = await fetch(`${new URL(baseUrl).origin}/api/${endpoint}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: authenticated.cookie },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       type: 'client-request',
       rpcId: `github-webhook-real-${endpoint}-${randomUUID()}`,
@@ -159,10 +141,7 @@ async function openingStreamItem(
   args: object,
   accepts: (value: unknown) => boolean,
 ): Promise<Record<string, unknown>> {
-  const authenticated = await authenticatedWeb(baseUrl)
-  const socket = new WebSocket(`${authenticated.origin.replace(/^http/u, 'ws')}/api/remote.mux`, {
-    headers: { cookie: authenticated.cookie },
-  })
+  const socket = new WebSocket(`${new URL(baseUrl).origin.replace(/^http/u, 'ws')}/api/remote.mux`)
   const streamId = `github-webhook-real-${endpoint}-${randomUUID()}`
   try {
     await new Promise<void>((resolve, reject) => {

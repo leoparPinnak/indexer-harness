@@ -60,6 +60,10 @@ import {
 
 export type { JsonlCompression } from './format.ts'
 
+// Re-export the shared jitter schedule so consumers (e.g. agent-presets' mount
+// backoff) reach it through the packed main entry, not a deep `src/` import.
+export * from './retry-jitter.ts'
+
 /**
  * Internal handoff-reuse policy, not deployment configuration: a cold
  * observation and the resume that immediately follows it reuse one parsed

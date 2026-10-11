@@ -100,6 +100,9 @@ No direct invalidation; the consuming editors own any request-prefix changes.
 <a id="known-limitations-and-deferred-work"></a>
 
 - Model-facing prompt and README wording for the consuming editors still describe only the literal path; advertising the hashline form belongs to the documentation slices that own those files.
+- Routing keys on shape, not intent: an `old_string` that looks like a patch (`<path>:<hash>` header plus a `@@ <line>` opener) but is meant literally is routed into the hashline arm and fails there — the literal string-replace fallback is only consulted when the input is not hashline-shaped.
+- An insert-only hunk whose `+` line carries no text anchors at its declared line, inserts nothing, and reports success: an empty patch is accepted as a no-op rather than refused.
+- A patch that routed into the hashline arm but ends with two newlines is rejected by the parser (one trailing newline is tolerated; the leftover empty line carries no marker) instead of falling back to literal replace.
 - `hashlineStripPrefixes` cannot distinguish a display prefix from literal text that genuinely starts with `12| `, so inserting such a line requires the prefix-free form.
 - Only Update hunks are implemented; the OMP `PUT`/`CUT`/`PASTE` operation grammar is out of scope for this wave.
 

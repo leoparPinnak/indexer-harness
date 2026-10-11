@@ -86,8 +86,10 @@ kind: "package-reference"
 - 每个 home 与每个种子只有一个端点：同一台机器上的两个进程共享一个连接目标，而同一扇流被一个服务端扇出给多个读者并未建模——每个读者各自开连接。
 - 传输仅限本机。Windows 命名管道与 unix domain socket 没有跨机器形态，此处也不协商 TLS。
 - 上限按设计是硬失败：超过 64 KiB 的请求或超过 512 KiB 的响应块会关闭连接，因此更大的负载必须在本层之上自行分块。
-- `deamon.transport: 'http'` 在 D9 移除之前仍与管道并行服务旧的回环路径；无法挂载网关的对端会回落到该路径并记录降级。
+- `deamon.transport: 'http'` 的回环回落已在 D9 移除：无法挂载网关的对端没有其他路径，必须挂载它。
 - 密钥文件在端点旁以明文落盘（权限 `0600`）。希望使用外部管理的密钥的部署应改设 `DSH_GATEWAY_KEY`。
+- 在 win32 上，已半关闭的对端收不到迟到的应答：写入侧得到 `EPIPE`（libuv/OS 语义——在纯 Node 中即可复现，并非 ipc-pipe 的缺陷；POSIX unix socket 行为在此未经验证），因此对端应使用协议的 `bye` 消息而非裸 FIN 来干净收尾。
+- 处理器 flush 响应头之后，正文阶段不再携带逐请求预算，只能由以 `request()` 缓冲完整应答的调用方承担：把预算限定在头部是有意为之（实时流必须继续运行），正文一旦停滞，调用方只能等待连接关闭——把预算扩展到整个正文阶段的契约变更已列入延期。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -95,7 +97,7 @@ kind: "package-reference"
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-线格式由 `packages/ipc/ipc-pipe/tests/ipc-pipe.spec.ts` 演练：握手成功与拒绝、两种大小上限、请求预算、单实例竞争、半关闭容忍，以及读者离开后仍继续的流。Deamon 侧经 `packages/bundle/deamon/tests/deamon.spec.ts` 与 `sandbox-routes.spec.ts` 钉住同一传输。
+线格式由 `packages/ipc/ipc-pipe/tests/ipc-pipe.spec.ts` 演练：握手成功与拒绝、两种大小上限、请求预算、单实例竞争、半关闭容忍，以及读者离开后仍继续的流。Deamon 侧经 `protop/shellbox/deamon/tests/deamon.spec.ts` 与 `sandbox-routes.spec.ts` 钉住同一传输。
 
 端点名沿用 Hermes `control_socket.py` 的形状（`\\.\pipe\dsh-gateway-<homehash16>` 加 unix socket 回落），但代码为全新编写；摘要握手沿用 OMP `omp-daemon` 模式。帧携带 `timeoutMs`，使服务端装配与调用方相同的预算，钳制在 100 毫秒到 60 秒之间。
 

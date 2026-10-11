@@ -427,10 +427,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-client-connection`
 
-需要：`credentials`
-
 ```ts config-catalog
-/** Browser authentication, request limits, and connection recovery configuration. */
+/** Request limits, trust fence, and connection recovery configuration. */
 export interface ConnectionConfig {
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
@@ -443,8 +441,6 @@ export interface ConnectionConfig {
    * bind. An entry that is not a bare, canonical authority fails plugin load.
    */
   trustedHosts?: string[]
-  /** Absolute browser-session lifetime in days. Default: 30. */
-  cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
@@ -467,7 +463,7 @@ export interface ConnectionRecoveryConfig {
 }
 ```
 
-来源： [`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
+来源： [`packages/client/connection/src/index.ts:70`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -894,6 +890,60 @@ export interface Config {
 
 来源：[`packages/goal/goal/src/index.ts:172`](../packages/goal/goal/src/index.ts)
 
+<a id="deepseek-aidsh-guard-taxonomy"></a>
+
+## `@deepseek-ai/dsh-guard-taxonomy`
+
+需要：`tools`
+
+```ts config-catalog
+/**
+ * Plugin config. Defaults to no rules: with an empty rule list every call is
+ * uncategorised and behaves exactly as before the taxonomy was mounted.
+ */
+export interface Config {
+  /**
+   * Rules evaluated in order against each pending call; first match per
+   * class wins and the class precedence is hard > allow > soft.
+   */
+  rules?: GuardRule[]
+}
+
+/**
+ * One rule assigning matching calls to one taxonomy id. A call may match
+ * several rules; the verdict resolves HARD first (no exception clears a hard
+ * block), then a mandatory ALLOW exception (it clears soft blocks), then SOFT.
+ */
+export interface GuardRule {
+  /** Taxonomy id the matched call is gated by. */
+  category: GuardPolicyId
+  /** Exact tool names this rule categorises (e.g. `bash`). */
+  tools?: string[]
+  /**
+   * RegExp source matched against the call's string `command` argument (the
+   * `bash`/`pwsh` shell tools); calls without one never match this clause.
+   */
+  command?: string
+}
+
+/** Every id a rule may assign to a call: 66 deny categories + 17 exceptions. */
+export type GuardPolicyId = GuardCategory | GuardAllowException
+
+/** Category id of one deny category: the 66 salvaged HARD + SOFT entries. */
+export type GuardCategory = HardGuardCategory | SoftGuardCategory
+
+/** Id of one mandatory ALLOW exception. */
+export type GuardAllowException = typeof ALLOW_GUARD_EXCEPTIONS[number]
+
+/** Category id of the single HARD BLOCK rule. */
+export type HardGuardCategory = typeof HARD_GUARD_CATEGORIES[number]
+
+/** Category id of one SOFT BLOCK rule. */
+export type SoftGuardCategory = typeof SOFT_GUARD_CATEGORIES[number]
+```
+
+来源： [`packages/guard/guard-taxonomy/src/index.ts:46`](../packages/guard/guard-taxonomy/src/index.ts)
+
 <a id="deepseek-aidsh-headless"></a>
 
 ## `@deepseek-ai/dsh-headless`
@@ -1053,7 +1103,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/open-in-app/src/index.ts:50`](../packages/host/open-in-app/src/index.ts)
+来源：[`packages/host/open-in-app/src/index.ts:52`](../packages/host/open-in-app/src/index.ts)
 
 <a id="deepseek-aidsh-host-webserver"></a>
 
@@ -3346,7 +3396,9 @@ export interface Config {
    * The deployment's default {@link ApprovalPolicy} for sessions without an
    * `approval/policy` override — `'ask'` delegates to the composed answerers
    * (fail-closed with none); `'never'` auto-rejects every ask without
-   * prompting (the deterministic CI/unattended stance).
+   * prompting (the deterministic CI/unattended stance). Omitted, the schema
+   * defaults to the import-time {@link APPROVAL_POSTURE_FROZEN} posture, so a
+   * re-parse after an environment mutation cannot move it.
    */
   readonly policy?: ApprovalPolicy
 }
@@ -3364,7 +3416,7 @@ export interface Config {
 export type ApprovalPolicy = 'ask' | 'never'
 ```
 
-来源：[`packages/interaction/user-approval/src/index.ts:128`](../packages/interaction/user-approval/src/index.ts)
+来源：[`packages/interaction/user-approval/src/index.ts:145`](../packages/interaction/user-approval/src/index.ts)
 
 <a id="deepseek-aidsh-web"></a>
 
@@ -3699,6 +3751,7 @@ export interface Config {
 - `@deepseek-ai/dsh-deque`（[`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-profile`（[`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile`（[`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts)）
+- `@deepseek-ai/dsh-experimental-cua-native`（[`packages/experimental/cua-native/src/index.ts`](../packages/experimental/cua-native/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-webworker-packer`（[`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-webworker-runtime`（[`packages/experimental/webworker-runtime/src/index.ts`](../packages/experimental/webworker-runtime/src/index.ts)）
 - `@deepseek-ai/dsh-home-paths`（[`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts)）

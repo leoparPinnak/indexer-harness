@@ -118,6 +118,11 @@ const STRATEGIES: Array<{
 /**
  * Try each strategy until `parsesClean` accepts the proposal.
  * Returns `undefined` when every proposal still fails to parse.
+ * @param text - the unparsable source text whose tail is being repaired.
+ * @param parsesClean - acceptance probe run against each candidate; true only
+ *   when the proposal parses with no diagnostics.
+ * @returns the accepted replacement text with its repair report, or undefined
+ *   when no strategy produced a clean parse.
  */
 export function attemptParseRepair(
   text: string,

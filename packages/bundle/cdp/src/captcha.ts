@@ -1754,6 +1754,8 @@ export function parseDragMeasureReply(raw: string): (SliderGeometry & { readonly
 export type DragVerdictSource = 'value-moved' | 'state-changed' | 'both' | 'none'
 
 /**
+ * Diff the page-published slider state read before the press against the
+ * state read after the release, one line per field that moved.
  * @param before - the state signature read before the press.
  * @param after - the state signature read after the release.
  * @returns the fields that differ, as `name: before → after` lines; empty when
@@ -1840,7 +1842,12 @@ export function judgeDrag(
   }
 }
 
-/** @param raw - a raw page-side string row. @returns the trimmed string. */
+/**
+ * Canonicalize one raw row scraped from the page: every run of whitespace
+ * collapses to a single space and the ends are trimmed.
+ * @param raw - a raw page-side string row.
+ * @returns the trimmed string.
+ */
 export function cleanRow(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim()
 }

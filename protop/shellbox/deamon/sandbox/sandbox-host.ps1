@@ -10,6 +10,13 @@ painting order. The canvas is what a viewer sees.
 Modes:
   -CaptureOnce -Out <png>            one composite frame, for testing
   -Stream -Width <n> -Height <n>     base64 JPEG frames, one per line, on stdout
+  -TargetDecision <json-path>        run the retarget policy over one scenario
+                                     document and print its decisions, no desktop
+
+Desktop rule: a requested desktop must compose or the helper exits non-zero with
+a stderr line naming it. `-DesktopName Default` (the session's real desktop)
+also requires the explicit `-AllowHostDesktop` opt-in; the bridge passes it only
+for a request that named the host-desktop target.
 
 The process becomes per-monitor DPI aware at startup, so `-Width`/`-Height` and
 every `size` command are PHYSICAL pixels: the panel sends its CSS box multiplied
@@ -31,6 +38,23 @@ slot would drop every batch but the last. The helper sorts by name, reads one
 file completely before deleting it, and drains at most 8 files per frame. All
 command lines are ASCII; non-ASCII never crosses this channel.
 
+Input modes: delivery is `PostMessage`-family by default (a private desktop has
+no input surface, so posted messages are the only measured path that reaches
+its windows). The opt-in grammar line `input mode send` switches the batch to
+real input synthesis (`SendInput`/`SetCursorPos`), and the helper injects only
+while the session's input desktop IS this sandbox desktop (otherwise the
+events would land on the user's real desktop) and only from a worker thread
+bound to that desktop with `SetThreadDesktop` (measured: `SendInput` from any
+other desktop's thread returns zero events). A refused gate drops the batch's
+send lines and reports once on stderr. Every batch starts back in `post` mode.
+
+Accessibility: `uia <hwnd> [max]` (command file or input spool) writes
+`<commandFile>.uia` — a bounded JSON read of that window's accessibility tree
+(control type, name, value, bounds, enabled/offscreen, per-node hwnd), capped
+at 256 nodes, for `GET/POST /api/server/sandbox/uia`. `-UiaOnce -UiaHwnd <n>`
+prints the same document for one existing window and exits, without creating a
+desktop or a shell.
+
 Run it through the agent's PowerShell interpreter:
   powershell -NoProfile -ExecutionPolicy Bypass -File sandbox-host.ps1 -CaptureOnce -Out frame.png
 #>
@@ -48,13 +72,26 @@ param(
   [string]$InputDir = '',
   [string]$Launch = '',
   [int]$ShellWaitSeconds = 20,
-  [switch]$KillShellsOnExit
+  [switch]$KillShellsOnExit,
+  [switch]$UiaOnce,
+  [int]$UiaHwnd = 0,
+  [int]$UiaMax = 128,
+  # Explicit opt-in required before -DesktopName Default may stream the
+  # session's interactive (user) desktop; the bridge passes it only for an
+  # explicitly requested host-desktop target.
+  [switch]$AllowHostDesktop,
+  # Probe mode for the vitest target-policy spec: a path to a JSON scenario
+  # document; prints one decision per step as JSON and exits, no desktop.
+  [string]$TargetDecision = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
+# UIA client: the managed wrapper over the UIAutomationCore COM surface
+# (IUIAutomation), so no compiled component and no additional interop layer.
+Add-Type -AssemblyName UIAutomationClient
 Add-Type @'
-using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
+using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Threading;
 public class Sandbox {
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
   public struct SI { public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
@@ -99,6 +136,13 @@ public class Sandbox {
   [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr o);
   [DllImport("user32.dll")] public static extern int FillRect(IntPtr dc, ref RECT r, IntPtr brush);
   [DllImport("gdi32.dll")] public static extern IntPtr CreateSolidBrush(uint color);
+  // Capture fallbacks for the DComp-painted taskbar: a window DC BitBlt where
+  // PrintWindow paints uniformly black, and a forced repaint before retrying.
+  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetDCEx(IntPtr h, IntPtr rgn, uint flags);
+  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
+  [DllImport("user32.dll")] public static extern bool InvalidateRect(IntPtr h, IntPtr r, bool erase);
+  [DllImport("user32.dll")] public static extern bool UpdateWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 
@@ -329,18 +373,97 @@ public class Sandbox {
   }
 
   /** Composite the desktop into `canvas`, painting each window at its own position. */
-  public static int Composite(IntPtr desk, Canvas canvas) {
+  public static int Composite(IntPtr desk, Canvas canvas, out string taskbar) {
     var layer = Layer(desk);
     int painted = 0;
+    taskbar = "";
     foreach (var win in layer) {
       var scratch = new Canvas(win.W, win.Ht);
-      if (PrintWindow(win.H, scratch.Dc, 2)) {
+      string source;
+      if (CaptureWin(win, scratch, out source)) {
         BitBlt(canvas.Dc, win.X, win.Y, win.W, win.Ht, scratch.Dc, 0, 0, SRCCOPY);
         painted++;
       }
+      if (IsTaskbar(win)) taskbar = source;
       scratch.Release();
     }
     return painted;
+  }
+
+  /** Reusable scan buffer: the black check copies the taskbar-sized DIB into
+   *  it once per attempt, growing it once if a display ever reports a wider
+   *  band than the first allocation covers (3600x96 taskbar = 1.38 MB). */
+  static byte[] blackScan = new byte[1 << 20];
+
+  /**
+   * Whether a 32bpp BGRA snapshot holds no lit pixel: every blue, green, and
+   * red byte zero (the unused alpha byte does not count). A uniform black fill
+   * from PrintWindow means the window's composition surface has no readable
+   * pixels on this desktop, which the fallback ladder keys on.
+   */
+  public static bool LooksUniformBlack(byte[] bgra, int count) {
+    int n = count < bgra.Length ? count : bgra.Length;
+    for (int i = 0; i + 3 < n; i += 4) {
+      if (bgra[i] != 0 || bgra[i + 1] != 0 || bgra[i + 2] != 0) return false;
+    }
+    return true;
+  }
+
+  static bool UniformBlack(IntPtr bits, int w, int h) {
+    long len = (long)w * h * 4;
+    if (len <= 0) return false;
+    if (len > blackScan.Length) blackScan = new byte[len];
+    Marshal.Copy(bits, blackScan, 0, (int)len);
+    return LooksUniformBlack(blackScan, (int)len);
+  }
+
+  /** Shell taskbar classes: the windows measured to paint uniformly black on a private desktop. */
+  static bool IsTaskbar(Win w) {
+    return w.Cls == "Shell_TrayWnd" || w.Cls == "Shell_SecondaryTrayWnd";
+  }
+
+  /**
+   * One window's pixels into `scratch`. The default path is PrintWindow with
+   * PW_RENDERFULLCONTENT, unchanged for every window. The taskbar is the
+   * measured exception — its content is composed by DirectComposition with no
+   * GDI backing store on a private desktop — so it gets a measured fallback
+   * ladder: window-DC BitBlt, DCX_WINDOW|DCX_CACHE|DCX_USEWINDOW BitBlt, then
+   * a forced repaint before PrintWindow again. When every rung is still black
+   * the taskbar is left UNPAINTED, so the frame shows the desktop pixels
+   * beneath it instead of a dead black band (taskbar UI itself needs Windows
+   * Graphics Capture, deferred). `source` names the rung that supplied the
+   * content for the caller's stderr attribution.
+   */
+  public static bool CaptureWin(Win win, Canvas scratch, out string source) {
+    source = "pw2";
+    if (PrintWindow(win.H, scratch.Dc, 2)) {
+      if (!IsTaskbar(win) || !UniformBlack(scratch.Bits, win.W, win.Ht)) return true;
+    } else if (!IsTaskbar(win)) {
+      return false;
+    }
+    // Rung 1: the window's device context, copied without asking the window to paint.
+    IntPtr dc = GetDC(win.H);
+    if (dc != IntPtr.Zero) {
+      bool ok = BitBlt(scratch.Dc, 0, 0, win.W, win.Ht, dc, 0, 0, SRCCOPY);
+      ReleaseDC(win.H, dc);
+      if (ok && !UniformBlack(scratch.Bits, win.W, win.Ht)) { source = "dc"; return true; }
+    }
+    // Rung 2: the same with DCX_WINDOW, which includes the non-client surface.
+    dc = GetDCEx(win.H, IntPtr.Zero, 0x0001 | 0x0002 | 0x0040);
+    if (dc != IntPtr.Zero) {
+      bool ok = BitBlt(scratch.Dc, 0, 0, win.W, win.Ht, dc, 0, 0, SRCCOPY);
+      ReleaseDC(win.H, dc);
+      if (ok && !UniformBlack(scratch.Bits, win.W, win.Ht)) { source = "dcex"; return true; }
+    }
+    // Rung 3: invalidate and update the window, then ask it to paint again.
+    InvalidateRect(win.H, IntPtr.Zero, true);
+    UpdateWindow(win.H);
+    if (PrintWindow(win.H, scratch.Dc, 2) && !UniformBlack(scratch.Bits, win.W, win.Ht)) {
+      source = "repaint";
+      return true;
+    }
+    source = "skipped-black";
+    return false;
   }
 
   /**
@@ -408,6 +531,14 @@ public class Sandbox {
       return true; }, IntPtr.Zero);
     return on;
   }
+
+  /**
+   * Public membership test for grammar lines that address a window by id from
+   * outside the class: `uia` refuses to read an accessibility tree for a
+   * window that is not one of this desktop's own, so a guessed id cannot
+   * reach across into another desktop's windows.
+   */
+  public static bool OwnsWindow(IntPtr desk, IntPtr h) { return OnDesktop(h, desk); }
 
   /** Window of this desktop under a screen point: top-level first, then its deepest visible child. */
   public static IntPtr ResolveAt(IntPtr desk, int sx, int sy) {
@@ -553,17 +684,427 @@ public class Sandbox {
   public static bool CloseWin(IntPtr desk, IntPtr hwnd) {
     return OnDesktop(hwnd, desk) && PostMessage(hwnd, 0x0010u, IntPtr.Zero, IntPtr.Zero);
   }
+
+  // ---- Real input synthesis: the opt-in `input mode send` batch mode. ----
+  // Struct layouts are the ABI x64 expects: MOUSEINPUT 32, KEYBDINPUT 24,
+  // INPUT 40 with its union at offset 8 (verified by Marshal.SizeOf in the
+  // D8 spec). One static array and a cached size keep every injection
+  // allocation-free on the frame loop.
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct HARDWAREINPUT { public uint uMsg; public ushort wParamL, wParamH; }
+  [StructLayout(LayoutKind.Explicit)]
+  public struct INPUTUNION { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; [FieldOffset(0)] public HARDWAREINPUT hi; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct INPUT { public uint type; public INPUTUNION u; }
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern uint SendInput(uint n, [MarshalAs(UnmanagedType.LPArray)] INPUT[] p, int cb);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "OpenDesktopW")]
+  public static extern IntPtr OpenDesktop(string name, uint flags, bool inherit, uint access);
+  [DllImport("user32.dll")] public static extern bool SetThreadDesktop(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool GetUserObjectInformation(IntPtr h, int idx, byte[] buf, int len, out int need);
+
+  static readonly int InputBytes = Marshal.SizeOf(typeof(INPUT));
+  static readonly INPUT[] oneInput = new INPUT[1];
+  static readonly INPUT[] twoInputs = new INPUT[2];
+
+  const uint INPUT_MOUSE = 0;
+  const uint INPUT_KEYBOARD = 1;
+  const uint MOUSEEVENTF_LEFTDOWN = 0x0002, MOUSEEVENTF_LEFTUP = 0x0004;
+  const uint MOUSEEVENTF_RIGHTDOWN = 0x0008, MOUSEEVENTF_RIGHTUP = 0x0010;
+  const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020, MOUSEEVENTF_MIDDLEUP = 0x0040;
+  const uint MOUSEEVENTF_WHEEL = 0x0800, MOUSEEVENTF_HWHEEL = 0x1000;
+  const uint KEYEVENTF_EXTENDEDKEY = 0x0001, KEYEVENTF_KEYUP = 0x0002, KEYEVENTF_UNICODE = 0x0004;
+  const int UOI_NAME = 2;
+
+  /** Name of an open desktop handle; "" when the handle cannot be queried. */
+  public static string DeskName(IntPtr h) {
+    byte[] buf = new byte[512];
+    int need;
+    if (!GetUserObjectInformation(h, UOI_NAME, buf, buf.Length, out need)) return "";
+    return Encoding.Unicode.GetString(buf, 0, need > 2 ? need - 2 : 0);
+  }
+
+  /**
+   * Whether the session's input desktop — the one hardware and injected input
+   * is actually delivered on — IS the named sandbox desktop. SendInput events
+   * reach only that desktop; on a normal session it is the interactive one, so
+   * without this gate an injected batch would type into the user's real
+   * desktop instead of the private sandbox windows. Measured on this host:
+   * input desktop `Default`, sandbox `dsh-shellbox` -> refused.
+   */
+  public static bool InputDesktopIs(string name) {
+    IntPtr h = OpenInputDesktop(0, false, 0x01FF);
+    if (h == IntPtr.Zero) return false;
+    try { return string.Equals(DeskName(h), name, StringComparison.Ordinal); }
+    finally { CloseDesktop(h); }
+  }
+
+  /** SetCursorPos for `input move` in send mode: the cursor position is session-global. */
+  public static bool SendCursor(int x, int y) { return SetCursorPos(x, y); }
+
+  /** One mouse button transition at the current cursor position. which: 0 left, 1 right, 2 middle. */
+  public static bool SendMouseButton(int which, bool down) {
+    uint f = which == 1 ? (down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP)
+           : which == 2 ? (down ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP)
+           : (down ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP);
+    var a = oneInput[0];
+    a.type = INPUT_MOUSE;
+    a.u.mi = new MOUSEINPUT();
+    a.u.mi.dwFlags = f;
+    oneInput[0] = a;
+    return SendInput(1, oneInput, InputBytes) == 1;
+  }
+
+  /** One wheel tick: vertical by default, horizontal when `horizontal` is set. */
+  public static bool SendWheelDelta(bool horizontal, int delta) {
+    var a = oneInput[0];
+    a.type = INPUT_MOUSE;
+    a.u.mi = new MOUSEINPUT();
+    a.u.mi.dwFlags = horizontal ? MOUSEEVENTF_HWHEEL : MOUSEEVENTF_WHEEL;
+    a.u.mi.mouseData = (uint)delta;
+    oneInput[0] = a;
+    return SendInput(1, oneInput, InputBytes) == 1;
+  }
+
+  /** One virtual-key transition with its scan code and extended flag, as the OS would report it. */
+  public static bool SendVirtualKey(uint vk, bool down) {
+    var a = oneInput[0];
+    a.type = INPUT_KEYBOARD;
+    a.u.ki = new KEYBDINPUT();
+    a.u.ki.wVk = (ushort)vk;
+    a.u.ki.wScan = (ushort)(MapVirtualKey(vk, 0) & 0xFF);
+    uint f = down ? 0u : KEYEVENTF_KEYUP;
+    if (IsExtended(vk)) f |= KEYEVENTF_EXTENDEDKEY;
+    a.u.ki.dwFlags = f;
+    oneInput[0] = a;
+    return SendInput(1, oneInput, InputBytes) == 1;
+  }
+
+  /**
+   * One UTF-16 unit as a KEYEVENTF_UNICODE pair: the system derives the
+   * character under the focused control's own keyboard handling, so no
+   * WM_CHAR injection and no layout dependency.
+   */
+  public static bool SendUnicodeChar(uint code) {
+    var down = twoInputs[0];
+    down.type = INPUT_KEYBOARD;
+    down.u.ki = new KEYBDINPUT();
+    down.u.ki.wScan = (ushort)code;
+    down.u.ki.dwFlags = KEYEVENTF_UNICODE;
+    twoInputs[0] = down;
+    var up = twoInputs[1];
+    up.type = INPUT_KEYBOARD;
+    up.u.ki = new KEYBDINPUT();
+    up.u.ki.wScan = (ushort)code;
+    up.u.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+    twoInputs[1] = up;
+    return SendInput(2, twoInputs, InputBytes) == 2;
+  }
+
+  // ---- Send worker: real input is injected only from a thread whose desktop
+  // IS the sandbox desktop. Measured on this host: SendInput from a thread on
+  // any other desktop returns 0 events, while the same call from a thread
+  // bound to the input desktop returns its full count. One background thread
+  // is bound on the first armed `input mode send` batch and drains a small op
+  // queue there; a post-mode helper run never creates it.
+  struct SendOp { public int Kind; public int A; public int B; }
+  static readonly Queue<SendOp> sendOps = new Queue<SendOp>();
+  static readonly AutoResetEvent sendSignal = new AutoResetEvent(false);
+  static readonly object sendLock = new object();
+  static IntPtr sendWorkerDesk = IntPtr.Zero;
+  static volatile bool sendWorkerReady = false;
+  static volatile bool sendWorkerFailed = false;
+
+  /** One queued op executed on the worker thread: kind 0 cursor, 1 button, 2 wheel, 3 key, 4 unicode. */
+  static void SendOpExecute(SendOp op) {
+    switch (op.Kind) {
+      case 0: SetCursorPos(op.A, op.B); break;
+      case 1: SendMouseButton(op.A, op.B != 0); break;
+      case 2: SendWheelDelta(op.A != 0, op.B); break;
+      case 3: SendVirtualKey((uint)op.A, op.B != 0); break;
+      case 4: SendUnicodeChar((uint)op.A); break;
+    }
+  }
+
+  /**
+   * Bind one background thread to the named desktop and drain send ops there.
+   * Idempotent per helper run: the second armed batch reuses the thread, and a
+   * bind failure answers false so the caller drops the batch's send lines
+   * instead of injecting from the wrong desktop.
+   */
+  public static bool StartSendWorker(string desktopName) {
+    if (sendWorkerDesk != IntPtr.Zero) return sendWorkerReady && !sendWorkerFailed;
+    IntPtr desk = OpenDesktop(desktopName, 0, false, 0x01FF);
+    if (desk == IntPtr.Zero) return false;
+    sendWorkerDesk = desk;
+    var thread = new Thread(() => {
+      if (!SetThreadDesktop(desk)) {
+        sendWorkerFailed = true;
+        sendSignal.Set();
+        return;
+      }
+      sendWorkerReady = true;
+      sendSignal.Set();
+      while (true) {
+        sendSignal.WaitOne();
+        while (true) {
+          SendOp op;
+          lock (sendLock) {
+            if (sendOps.Count == 0) break;
+            op = sendOps.Dequeue();
+          }
+          SendOpExecute(op);
+        }
+      }
+    });
+    thread.IsBackground = true;
+    thread.Name = "dsh-send-input";
+    thread.Start();
+    // The frame loop waits only for the bind result, not for queue work.
+    for (int i = 0; i < 100 && !sendWorkerReady && !sendWorkerFailed; i++) Thread.Sleep(10);
+    return sendWorkerReady && !sendWorkerFailed;
+  }
+
+  /** One send-mode event queued for the worker; false when no worker is bound. */
+  public static bool QueueSendOp(int kind, int a, int b) {
+    if (!sendWorkerReady || sendWorkerFailed) return false;
+    lock (sendLock) {
+      var op = new SendOp();
+      op.Kind = kind; op.A = a; op.B = b;
+      sendOps.Enqueue(op);
+    }
+    sendSignal.Set();
+    return true;
+  }
 }
 '@
 
-if (-not ($CaptureOnce -or $Stream)) { Write-Error 'pass -CaptureOnce or -Stream'; exit 1 }
+# One retarget decision: which subject size the canvas commits to. Pure on
+# purpose — the vitest target-policy spec drives it through -TargetDecision
+# without composing a desktop. Policy, in order:
+#   1. Below the floor (320x240: PickApp already refuses subjects under
+#      120x80, and the logged degenerate 314x50 sliver must never take the
+#      canvas) a transient window is held over by the previous valid target;
+#      with no previous target — or with a degenerate desktop fallback — the
+#      candidate is clamped up to the floor instead of a tiny canvas.
+#   2. Same subject within 8 px on both axes (window-manager rounding jitter,
+#      identical retargets) is a no-op: hold and clear any pending state.
+#   3. A different subject at the same size follows immediately — the canvas
+#      already fits it, so only the subject changes.
+#   4. Anything else must hold still for 3 consecutive frames or 500 ms
+#      (bounded wait at the protocol's 1 fps floor) before it commits; a
+#      different size or subject restarts the wait, so the logged bursts — the
+#      828x620->946x676->988x700 staircase and the 1168x2182<->1168x1554
+#      oscillation — coalesce into one commit or none.
+function Resolve-SandboxTarget {
+  param(
+    [hashtable]$Current,
+    [hashtable]$Candidate,
+    [hashtable]$Pending,
+    [long]$NowMs
+  )
+  $floorW = 320
+  $floorH = 240
+  $nearPx = 8
+  $stableFrames = 3
+  $stableMs = 500
+  $cW = [int]$Candidate.W
+  $cH = [int]$Candidate.H
+  $cHwnd = [int64]$Candidate.Hwnd
+
+  if ($cW -lt $floorW -or $cH -lt $floorH) {
+    # A degenerate desktop fallback (no natural size yet) is not a transient
+    # window: it must reach the clamped branch even with a subject tracked, or
+    # a dead subject would pin the canvas forever.
+    if ($null -ne $Current -and $cHwnd -ne 0) {
+      return @{ Action = 'hold'; Target = $Current; Pending = $null; Reason = 'below-floor' }
+    }
+    $clamped = @{ Hwnd = [IntPtr]$cHwnd; W = [Math]::Max($cW, $floorW); H = [Math]::Max($cH, $floorH) }
+    return @{ Action = 'commit'; Target = $clamped; Pending = $null; Reason = 'clamped-floor' }
+  }
+
+  if ($null -eq $Current) {
+    # A clean-slate start (first frame or a frame-error rebuild) takes the
+    # fresh pick at face value; there is no previous target to protect.
+    $fresh = @{ Hwnd = [IntPtr]$cHwnd; W = $cW; H = $cH }
+    return @{ Action = 'commit'; Target = $fresh; Pending = $null; Reason = 'initial' }
+  }
+
+  $dW = [Math]::Abs($cW - [int]$Current.W)
+  $dH = [Math]::Abs($cH - [int]$Current.H)
+  $sameSubject = $cHwnd -eq ([int64]$Current.Hwnd)
+  if ($dW -le $nearPx -and $dH -le $nearPx) {
+    if ($sameSubject) {
+      return @{ Action = 'hold'; Target = $Current; Pending = $null; Reason = 'near-identical' }
+    }
+    $swap = @{ Hwnd = [IntPtr]$cHwnd; W = $cW; H = $cH }
+    return @{ Action = 'commit'; Target = $swap; Pending = $null; Reason = 'subject-swap' }
+  }
+
+  $pendingMatches = ($null -ne $Pending) `
+    -and ([int]$Pending.W -eq $cW) -and ([int]$Pending.H -eq $cH) `
+    -and ([int64]$Pending.Hwnd -eq $cHwnd)
+  if ($pendingMatches) {
+    $count = [int]$Pending.Count + 1
+    $firstMs = [long]$Pending.FirstMs
+    if ($count -ge $stableFrames -or ($NowMs - $firstMs) -ge $stableMs) {
+      $settled = @{ Hwnd = [IntPtr]$cHwnd; W = $cW; H = $cH }
+      return @{ Action = 'commit'; Target = $settled; Pending = $null; Reason = 'stable' }
+    }
+    $waiting = @{ Hwnd = [IntPtr]$cHwnd; W = $cW; H = $cH; Count = $count; FirstMs = $firstMs }
+    return @{ Action = 'hold'; Target = $Current; Pending = $waiting; Reason = 'pending' }
+  }
+  $started = @{ Hwnd = [IntPtr]$cHwnd; W = $cW; H = $cH; Count = 1; FirstMs = $NowMs }
+  return @{ Action = 'hold'; Target = $Current; Pending = $started; Reason = 'pending-started' }
+}
+
+# -TargetDecision <json-path>: run a document of named scenarios through
+# Resolve-SandboxTarget and print one decision list per scenario as JSON, then
+# exit before any desktop exists. The document is a file rather than an
+# argument so no quote in the JSON ever crosses a command line — the same rule
+# the launch materialisation follows.
+if ($TargetDecision -ne '') {
+  $document = Get-Content -LiteralPath $TargetDecision -Raw | ConvertFrom-Json
+  $output = [ordered]@{}
+  foreach ($property in $document.PSObject.Properties) {
+    $scenario = $property.Value
+    $current = $null
+    if ($null -ne $scenario.start) {
+      $current = @{ Hwnd = [IntPtr]([int64]$scenario.start.hwnd); W = [int]$scenario.start.w; H = [int]$scenario.start.h }
+    }
+    $pending = $null
+    $results = New-Object System.Collections.ArrayList
+    foreach ($step in $scenario.steps) {
+      $candidate = @{ Hwnd = [IntPtr]([int64]$step.hwnd); W = [int]$step.w; H = [int]$step.h }
+      $decision = Resolve-SandboxTarget -Current $current -Candidate $candidate -Pending $pending -NowMs ([long]$step.nowMs)
+      if ($decision.Action -eq 'commit') { $current = $decision.Target }
+      $pending = $decision.Pending
+      $targetOut = $null
+      if ($null -ne $decision.Target) {
+        $targetOut = @{ hwnd = [int64]$decision.Target.Hwnd; w = [int]$decision.Target.W; h = [int]$decision.Target.H }
+      }
+      $pendingOut = $null
+      if ($null -ne $decision.Pending) {
+        $pendingOut = @{ hwnd = [int64]$decision.Pending.Hwnd; w = [int]$decision.Pending.W; h = [int]$decision.Pending.H; count = [int]$decision.Pending.Count; firstMs = [long]$decision.Pending.FirstMs }
+      }
+      [void]$results.Add(@{ action = $decision.Action; reason = $decision.Reason; target = $targetOut; pending = $pendingOut })
+    }
+    $output[$property.Name] = @($results.ToArray())
+  }
+  [Console]::Out.WriteLine((ConvertTo-Json -InputObject ([pscustomobject]$output) -Compress -Depth 8))
+  [Environment]::Exit(0)
+}
+
+if (-not ($CaptureOnce -or $Stream -or $UiaOnce)) { Write-Error 'pass -CaptureOnce, -Stream, or -UiaOnce'; exit 1 }
 
 # Before the desktop handle, the shell, or any bitmap: one unit must mean one
 # physical pixel from here on.
 $dpi = [Sandbox]::BeDpiAware()
 
+# Bounded accessibility read of one window: RawViewWalker pre-order, at most
+# <cap> nodes (hard maximum 256), each node carrying control type, class, name,
+# value, bounds clamped to the protocol's 0..5120 range, enabled/offscreen
+# flags, and its native hwnd. UIA is served by the target process itself, so
+# the read crosses desktops; measured live against a private-desktop window.
+function Get-UiaTree {
+  param([IntPtr]$Hwnd, [int]$MaxNodes)
+  $cap = [Math]::Min([Math]::Max($MaxNodes, 1), 256)
+  $result = [ordered]@{ ok = $false; error = ''; hwnd = [int64]$Hwnd; max = $cap; truncated = $false; nodes = @() }
+  try {
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($Hwnd)
+    if ($null -eq $root) { $result.error = 'no accessibility root for this window'; return [pscustomobject]$result }
+    $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+    $stack = [System.Collections.Generic.Stack[System.Windows.Automation.AutomationElement]]::new()
+    $stack.Push($root)
+    $nodes = New-Object System.Collections.Generic.List[object]
+    while ($stack.Count -gt 0) {
+      if ($nodes.Count -ge $cap) { $result.truncated = $true; break }
+      $el = $stack.Pop()
+      $c = $el.Current
+      $rect = $c.BoundingRectangle
+      $x = 0; $y = 0; $w = 0; $h = 0
+      if (-not [double]::IsNaN($rect.X)) {
+        $x = [Math]::Min(5120, [Math]::Max(0, [int][Math]::Round($rect.X)))
+        $y = [Math]::Min(5120, [Math]::Max(0, [int][Math]::Round($rect.Y)))
+        $w = [Math]::Min(5120, [Math]::Max(0, [int][Math]::Round($rect.Width)))
+        $h = [Math]::Min(5120, [Math]::Max(0, [int][Math]::Round($rect.Height)))
+      }
+      $name = [string]$c.Name
+      if ($name.Length -gt 200) { $name = $name.Substring(0, 200) }
+      $value = ''
+      if ($c.IsValuePatternAvailable) {
+        try {
+          $vp = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+          if ($vp -is [System.Windows.Automation.ValuePattern]) {
+            $value = [string]$vp.Current.Value
+            if ($value.Length -gt 200) { $value = $value.Substring(0, 200) }
+          }
+        } catch { $value = '' }
+      }
+      $ct = [string]$c.ControlType.ProgrammaticName -replace '^ControlType\.', ''
+      $nodes.Add([ordered]@{
+        ct = $ct
+        name = $name
+        cls = [string]$c.ClassName
+        value = $value
+        x = $x; y = $y; w = $w; h = $h
+        enabled = [bool]$c.IsEnabled
+        offscreen = [bool]$c.IsOffscreen
+        hwnd = [int64]$c.NativeWindowHandle
+      })
+      $children = New-Object 'System.Collections.Generic.List[System.Windows.Automation.AutomationElement]'
+      $child = $walker.GetFirstChild($el)
+      while ($null -ne $child) { $children.Add($child); $child = $walker.GetNextSibling($child) }
+      for ($i = $children.Count - 1; $i -ge 0; $i--) { $stack.Push($children[$i]) }
+    }
+    $result.ok = $true
+    $result.nodes = $nodes.ToArray()
+  } catch {
+    $result.error = $_.Exception.Message
+  }
+  return [pscustomobject]$result
+}
+
+# `-UiaOnce`: the same document for one already-existing window, with no
+# desktop, no shell, and no frame loop — the desktop-gated spec reads it.
+if ($UiaOnce) {
+  if ($UiaHwnd -eq 0) { Write-Error '-UiaOnce needs -UiaHwnd'; exit 1 }
+  $uiaJson = Get-UiaTree -Hwnd ([IntPtr]$UiaHwnd) -MaxNodes $UiaMax | ConvertTo-Json -Compress -Depth 5
+  [Console]::Out.WriteLine($uiaJson)
+  [Environment]::Exit(0)
+}
+
+# The interactive desktop is the user's real screen: CreateDesktop('Default')
+# composes it (measured on this host: it succeeds and owns 600 windows), so
+# streaming it without an explicit opt-in would put the user's own desktop in
+# the pane. The bridge passes -AllowHostDesktop only for a request that named
+# the host-desktop target.
+if ($DesktopName -eq 'Default' -and -not $AllowHostDesktop) {
+  [Console]::Error.WriteLine("sandbox-host: desktop 'Default' is the interactive host desktop; pass -AllowHostDesktop to stream it")
+  exit 1
+}
 $desk = [Sandbox]::CreateDesktopOwned($DesktopName)
-if ($desk -eq [IntPtr]::Zero) { Write-Error "CreateDesktop failed (err=$([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"; exit 1 }
+if ($desk -eq [IntPtr]::Zero) {
+  # Loud and non-zero: a private desktop that will not compose must never fall
+  # back to some other surface (the logged failure shipped as a silent Default).
+  $composeErr = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  [Console]::Error.WriteLine("sandbox-host: desktop '$DesktopName' failed to compose (CreateDesktopW error=$composeErr)")
+  exit 1
+}
+$composedName = [Sandbox]::DeskName($desk)
+if ($composedName -ine $DesktopName) {
+  [Console]::Error.WriteLine("sandbox-host: desktop '$DesktopName' composed as '$composedName'; refusing to stream a foreign desktop")
+  [Sandbox]::CloseDesktop($desk) | Out-Null
+  exit 1
+}
 
 # In stream mode stdout carries frames only, so every diagnostic goes to stderr.
 function Write-Status {
@@ -687,16 +1228,17 @@ if ($CaptureOnce) {
   $box = Get-SandboxTarget -Desk $desk
   $canvas = New-Object Sandbox+Canvas($box.W, $box.H)
   $canvas.Fill(0x00202020)
+  $taskbarSource = ''
   if ($box.Hwnd -ne [IntPtr]::Zero) {
     [Sandbox]::PrintWindow($box.Hwnd, $canvas.Dc, 2) | Out-Null
   } else {
-    [Sandbox]::Composite($desk, $canvas) | Out-Null
+    [Sandbox]::Composite($desk, $canvas, [ref]$taskbarSource) | Out-Null
   }
   $scaled = ConvertTo-Viewport -Dib $canvas.Bmp -NatW $box.W -NatH $box.H -OutW $Width -OutH $Height
   $scaled.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
   $scaled.Dispose()
   $canvas.Release()
-  Write-Output "target=$($box.W)x$($box.H) fallback=$($box.Hwnd -eq [IntPtr]::Zero) out=$Out"
+  Write-Output "target=$($box.W)x$($box.H) fallback=$($box.Hwnd -eq [IntPtr]::Zero) taskbar=$taskbarSource out=$Out"
   [Sandbox]::CloseDesktop($desk) | Out-Null
   exit 0
 }
@@ -707,7 +1249,8 @@ if ($CaptureOnce) {
 # observes half a document. UTF-8 without a byte-order mark, because the host
 # parses the bytes directly; Out-File and Set-Content would write UTF-16.
 $script:statePath = ''
-if ($CommandFile -ne '') { $script:statePath = "$CommandFile.state" }
+$script:uiaPath = ''
+if ($CommandFile -ne '') { $script:statePath = "$CommandFile.state"; $script:uiaPath = "$CommandFile.uia" }
 $script:stateGen = 0
 $script:stateFrames = 30
 $script:stateLastMs = 0
@@ -729,13 +1272,39 @@ function Write-State {
   }
 }
 
+# One accessibility read answered as a sidecar beside the command file, staged
+# as .tmp and renamed so a reader never observes a partial document — the same
+# discipline as the state file. A refused window answers `ok:false` in the
+# same document rather than by silence, so the route can tell "the helper
+# answered" from "the helper never saw the line".
+function Write-UiaResult {
+  param([IntPtr]$Hwnd, [int]$MaxNodes)
+  if ($script:uiaPath -eq '') { return }
+  if (-not [Sandbox]::OwnsWindow($desk, $Hwnd)) {
+    $doc = '{"ok":false,"error":"not a window of this desktop","hwnd":' + $Hwnd.ToInt64() + ',"max":0,"truncated":false,"nodes":[]}'
+  } else {
+    $doc = Get-UiaTree -Hwnd $Hwnd -MaxNodes $MaxNodes | ConvertTo-Json -Compress -Depth 5
+  }
+  $tmp = $script:uiaPath + '.tmp'
+  try {
+    [IO.File]::WriteAllText($tmp, $doc, $script:stateUtf8)
+    Move-Item -LiteralPath $tmp -Destination $script:uiaPath -Force
+  } catch {
+    Write-Status "uia-error=$($_.Exception.Message)"
+  }
+}
+
 # Stream mode: base64 JPEG frames, one per line, so the Node bridge can relay them.# The tracked window is re-picked every frame, so opening another application in
 # the sandbox moves the view; the canvas follows its size.
 $script:viewW = $Width
 $script:viewH = $Height
-$script:target = Get-SandboxTarget -Desk $desk
-Sync-TargetToViewport -Target $script:target -W $script:viewW -H $script:viewH
-$script:target = Get-SandboxTarget -Desk $desk
+$script:pending = $null
+$initial = Get-SandboxTarget -Desk $desk
+Sync-TargetToViewport -Target $initial -W $script:viewW -H $script:viewH
+$initial = Get-SandboxTarget -Desk $desk
+$boot = Resolve-SandboxTarget -Current $null -Candidate $initial -Pending $null -NowMs ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+$script:target = $boot.Target
+$script:pending = $boot.Pending
 $canvas = New-Object Sandbox+Canvas($script:target.W, $script:target.H)
 $stdout = [Console]::OpenStandardOutput()
 $frameInterval = [int](1000 / $Fps)
@@ -752,30 +1321,94 @@ $script:cacheHas = $false
 $script:mk = 0        # MK_LBUTTON|MK_RBUTTON|MK_MBUTTON latched by button messages
 $script:kShift = $false
 $script:kCtrl = $false
+$script:lastTaskbarSource = ''
+# Delivery mode of the current batch: 'post' (PostMessage family, the default
+# and unchanged path) or 'send' (opt-in SendInput/SetCursorPos synthesis).
+# The host opens only send batches with `input mode send`, and every drained
+# spool file starts back at 'post', so one batch can never leak its mode into
+# the next.
+$script:inputMode = 'post'
+$script:sendGate = $false
+$script:sendGateLogged = $false
+$script:sendGateArmedLogged = $false
 function Invoke-InputLine([string]$line) {
   if ($null -eq $line) { return }
   $line = $line.Trim()
   if ($line -eq '') { return }
   try {
+    if ($line -match '^input mode (post|send)$') {
+      $script:inputMode = $Matches[1]
+      if ($script:inputMode -eq 'send') {
+        # Two measured conditions must hold before any send line runs: the
+        # session's input desktop must BE this sandbox desktop (else the
+        # events would reach the user's real session), and the injection
+        # worker thread must have bound to it (SendInput from any other
+        # thread's desktop returns zero events). Both re-evaluate at every
+        # mode line; a refusal drops the batch's send lines once, reported.
+        $reason = ''
+        if ([Sandbox]::InputDesktopIs($DesktopName)) {
+          if ([Sandbox]::StartSendWorker($DesktopName)) {
+            $script:sendGate = $true
+          } else {
+            $script:sendGate = $false
+            $reason = 'worker-bind-failed'
+          }
+        } else {
+          $script:sendGate = $false
+          $reason = 'input-desktop!=sandbox-desktop'
+        }
+        if ($script:sendGate) {
+          if (-not $script:sendGateArmedLogged) { Write-Status 'send-input=armed' }
+          $script:sendGateArmedLogged = $true
+          $script:sendGateLogged = $false
+        } else {
+          if (-not $script:sendGateLogged) { Write-Status "send-input=refused $reason" }
+          $script:sendGateLogged = $true
+          $script:sendGateArmedLogged = $false
+        }
+      }
+      return
+    }
     if ($line -match '^input move (\d+) (\d+)$') {
       if ($null -eq $script:target) { $script:cacheHas = $false; return }
       $mdx = 0; $mdy = 0
       $ok = [Sandbox]::FrameToDesk([IntPtr]$script:target.Hwnd, 0, 0, [int]$script:target.W, [int]$script:target.H,
         [int]$script:viewW, [int]$script:viewH, [int]$Matches[1], [int]$Matches[2], [ref]$mdx, [ref]$mdy)
-      if ($ok) { $script:cacheX = $mdx; $script:cacheY = $mdy; $script:cacheHas = $true }
+      if ($ok) {
+        $script:cacheX = $mdx; $script:cacheY = $mdy; $script:cacheHas = $true
+        # The mapping caches in both modes; only the physical cursor move is
+        # a send-mode effect, and only behind the gate (queue op 0 = cursor).
+        if ($script:inputMode -eq 'send' -and $script:sendGate) {
+          [void][Sandbox]::QueueSendOp(0, $mdx, $mdy)
+        }
+      }
       else { $script:cacheHas = $false }
       return
     }
     if ($line -match '^input button (left|right|middle) (down|up)$') {
       if (-not $script:cacheHas) { return }
+      $bit = 1; $dn = [uint32]0x0201; $up = [uint32]0x0202
+      $which = 0
+      if ($Matches[1] -eq 'right') { $bit = 2; $dn = [uint32]0x0204; $up = [uint32]0x0205; $which = 1 }
+      elseif ($Matches[1] -eq 'middle') { $bit = 16; $dn = [uint32]0x0207; $up = [uint32]0x0208; $which = 2 }
+      $isDown = ($Matches[2] -eq 'down')
+      if ($script:inputMode -eq 'send') {
+        # Latch the viewer's belief about held buttons in both modes; only the
+        # delivery differs. Post path below keeps its original order: the
+        # mouse-move posts before this button's bit is latched. Queue ops:
+        # 0 = cursor to the cached point, 1 = button (which, down).
+        if ($isDown) { $script:mk = $script:mk -bor $bit } else { $script:mk = $script:mk -band (-bnot $bit) }
+        if ($script:sendGate) {
+          [void][Sandbox]::QueueSendOp(0, $script:cacheX, $script:cacheY)
+          [void][Sandbox]::QueueSendOp(1, $which, [int]$isDown)
+        }
+        return
+      }
       $hwnd = [Sandbox]::ResolveAt($desk, $script:cacheX, $script:cacheY)
       if ($hwnd -eq [IntPtr]::Zero) { return }
-      $bit = 1; $dn = [uint32]0x0201; $up = [uint32]0x0202
-      if ($Matches[1] -eq 'right') { $bit = 2; $dn = [uint32]0x0204; $up = [uint32]0x0205 }
-      elseif ($Matches[1] -eq 'middle') { $bit = 16; $dn = [uint32]0x0207; $up = [uint32]0x0208 }
       # WM_MOUSEMOVE first so the window has a current position when the button flips.
       [void][Sandbox]::MouseMsg([uint32]0x0200, $hwnd, $script:cacheX, $script:cacheY, $script:mk)
-      if ($Matches[2] -eq 'down') {
+      if ($isDown) {
         $script:mk = $script:mk -bor $bit
         [void][Sandbox]::MouseMsg($dn, $hwnd, $script:cacheX, $script:cacheY, $script:mk)
       } else {
@@ -786,12 +1419,21 @@ function Invoke-InputLine([string]$line) {
     }
     if ($line -match '^input wheel (-?\d+) (-?\d+)$') {
       if (-not $script:cacheHas) { return }
+      $wDX = [int]$Matches[1]; $wDY = [int]$Matches[2]
+      if ($script:inputMode -eq 'send') {
+        # Queue ops: 0 = cursor, 2 = wheel (horizontal?, delta), order preserved.
+        if ($script:sendGate) {
+          [void][Sandbox]::QueueSendOp(0, $script:cacheX, $script:cacheY)
+          if ($wDY -ne 0) { [void][Sandbox]::QueueSendOp(2, 0, $wDY) }
+          if ($wDX -ne 0) { [void][Sandbox]::QueueSendOp(2, 1, $wDX) }
+        }
+        return
+      }
       $hwnd = [Sandbox]::ResolveAt($desk, $script:cacheX, $script:cacheY)
       if ($hwnd -eq [IntPtr]::Zero) { return }
       $mkNow = $script:mk
       if ($script:kShift) { $mkNow = $mkNow -bor 4 }
       if ($script:kCtrl) { $mkNow = $mkNow -bor 8 }
-      $wDX = [int]$Matches[1]; $wDY = [int]$Matches[2]
       if ($wDY -ne 0) { [void][Sandbox]::WheelMsg($hwnd, $false, $wDY, $script:cacheX, $script:cacheY, $mkNow) }
       if ($wDX -ne 0) { [void][Sandbox]::WheelMsg($hwnd, $true, $wDX, $script:cacheX, $script:cacheY, $mkNow) }
       return
@@ -799,13 +1441,24 @@ function Invoke-InputLine([string]$line) {
     if ($line -match '^input key (\d+) (down|up)$') {
       $vk = [uint32][int]$Matches[1]
       if ($vk -lt 1 -or $vk -gt 254) { return }
+      $isDown = ($Matches[2] -eq 'down')
+      if ($script:inputMode -eq 'send') {
+        # Real synthesis needs no target window: the system routes the event to
+        # the focused control, scan code and extended flag included, and the
+        # character a key stands for follows from the key itself — so no
+        # WM_CHAR is appended here. Modifier latches stay coherent with what
+        # the viewer believes is held.
+        if ($vk -eq 16) { $script:kShift = $isDown }
+        if ($vk -eq 17) { $script:kCtrl = $isDown }
+        if ($script:sendGate) { [void][Sandbox]::QueueSendOp(3, [int]$vk, [int]$isDown) }
+        return
+      }
       # Keys address the window under the pointer, or without a pointer yet the
       # subject itself, so a click-to-focus flow types where the user is looking.
       if ($script:cacheHas) { $hwnd = [Sandbox]::ResolveAt($desk, $script:cacheX, $script:cacheY) }
       elseif ($null -ne $script:target) { $hwnd = [IntPtr]$script:target.Hwnd }
       else { $hwnd = [IntPtr]::Zero }
       if ($hwnd -eq [IntPtr]::Zero) { return }
-      $isDown = ($Matches[2] -eq 'down')
       if ($vk -eq 16) { $script:kShift = $isDown }
       if ($vk -eq 17) { $script:kCtrl = $isDown }
       [void][Sandbox]::KeyMsg($hwnd, $vk, $isDown)
@@ -819,6 +1472,13 @@ function Invoke-InputLine([string]$line) {
     if ($line -match '^input char (\d+)$') {
       $code = [int]$Matches[1]
       if ($code -lt 0 -or $code -gt 65535) { return }
+      if ($script:inputMode -eq 'send') {
+        # KEYEVENTF_UNICODE pair on the worker (queue op 4): the system
+        # delivers the character under the focused control's own handling,
+        # with no EM_REPLACESEL and no WM_CHAR injection involved.
+        if ($script:sendGate) { [void][Sandbox]::QueueSendOp(4, $code, 0) }
+        return
+      }
       if ($script:cacheHas) { $hwnd = [Sandbox]::ResolveAt($desk, $script:cacheX, $script:cacheY) }
       elseif ($null -ne $script:target) { $hwnd = [IntPtr]$script:target.Hwnd }
       else { $hwnd = [IntPtr]::Zero }
@@ -871,12 +1531,17 @@ function Invoke-HelperLine([string]$line) {
       Write-Status "launch=$cmdToLaunch result=$spawnRes"
     }
   }
+  elseif ($line -match '^uia (\d+)(?: (\d+))?$') {
+    $uiaTarget = [IntPtr]([int64]$Matches[1])
+    $uiaCap = 128
+    if ($Matches[2] -ne '') { $uiaCap = [int]$Matches[2] }
+    Write-UiaResult -Hwnd $uiaTarget -MaxNodes $uiaCap
+  }
   else {
     Invoke-InputLine $line
   }
 }
 
-$script:loopCount = 0
 $reader = [Console]::In
 $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
 $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters 1
@@ -897,6 +1562,10 @@ while ($true) {
       $text = Get-Content -LiteralPath $CommandFile -Raw -ErrorAction SilentlyContinue
       if ($null -ne $text -and $text.Trim() -ne '') {
         Remove-Item -LiteralPath $CommandFile -Force -ErrorAction SilentlyContinue
+        # A drained file is one batch: mode is batch-scoped, so a send batch
+        # can never bleed into whatever arrives next (the host opens every
+        # input batch with its own `input mode` line regardless).
+        $script:inputMode = 'post'
         foreach ($line in ($text -split "`r?`n")) {
           Invoke-HelperLine $line
         }
@@ -911,6 +1580,9 @@ while ($true) {
         $batch = Get-Content -LiteralPath $sf.FullName -Raw -ErrorAction SilentlyContinue
         if ($null -ne $batch -and $batch.Trim() -ne '') {
           Remove-Item -LiteralPath $sf.FullName -Force -ErrorAction SilentlyContinue
+          # One spool file is one batch; mode starts at 'post' and the batch's
+          # own `input mode` line opts into synthesis when asked for.
+          $script:inputMode = 'post'
           foreach ($line in ($batch -split "`r?`n")) {
             if ($line.Trim() -ne '') { Invoke-HelperLine $line }
           }
@@ -918,32 +1590,33 @@ while ($true) {
       }
     }
     if ($script:stopping) { break }
-    # Follow the sandbox's own activity: a new application becomes the subject, and
-    # the canvas is rebuilt only when its size actually changes.
-    $script:loopCount = ($script:loopCount + 1) % 30
-    $recheck = ($script:loopCount -eq 0) -or ($null -eq $script:target) -or ($script:target.Hwnd -eq [IntPtr]::Zero) -or (-not [Sandbox]::IsWindowVisible($script:target.Hwnd))
-    if ($recheck) {
+    # Follow the sandbox's own activity: the top window is re-picked every
+    # frame (the documented contract), so each candidate is an observation of
+    # what is actually on top — a new application, a resize, or a revert —
+    # and only Resolve-SandboxTarget may commit it to the canvas.
+    $box = Get-SandboxTarget -Desk $desk
+    if ($null -eq $script:target -or $box.Hwnd -ne $script:target.Hwnd) {
+      # A subject the loop has not committed yet (first frame after a rebuild)
+      # or a freshly picked one is fitted to the panel first, then re-read, so
+      # the decision sees the size the window settled on.
+      Sync-TargetToViewport -Target $box -W $script:viewW -H $script:viewH
       $box = Get-SandboxTarget -Desk $desk
-    } else {
-      $rect = New-Object Sandbox+RECT
-      if ([Sandbox]::GetWindowRect($script:target.Hwnd, [ref]$rect)) {
-        $box = @{ Hwnd = $script:target.Hwnd; W = $rect.R - $rect.L; H = $rect.B - $rect.T }
-      } else {
-        $box = Get-SandboxTarget -Desk $desk
-      }
     }
-    if ($null -eq $script:target -or $box.W -ne $script:target.W -or $box.H -ne $script:target.H) {
-      # A newly opened application becomes the subject, and is fitted to the panel
-      # before its first frame so the view never shows a mismatched window.
-      if ($null -eq $script:target -or $box.Hwnd -ne $script:target.Hwnd) {
-        Sync-TargetToViewport -Target $box -W $script:viewW -H $script:viewH
-        $box = Get-SandboxTarget -Desk $desk
+    # One decision point for every retarget: floor, dedupe, and stability all
+    # live in Resolve-SandboxTarget, so the canvas rebuilds only on a commit.
+    $decision = Resolve-SandboxTarget -Current $script:target -Candidate $box -Pending $script:pending -NowMs ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+    $script:pending = $decision.Pending
+    if ($decision.Action -eq 'commit') {
+      $committed = $decision.Target
+      $sizeChanged = ($null -eq $script:target) -or ($committed.W -ne $script:target.W) -or ($committed.H -ne $script:target.H)
+      $subjectChanged = ($null -eq $script:target) -or ($committed.Hwnd -ne $script:target.Hwnd)
+      if ($sizeChanged) {
+        $canvas.Release()
+        $canvas = New-Object Sandbox+Canvas($committed.W, $committed.H)
+        Write-Status "target=$($committed.W)x$($committed.H) fallback=$($committed.Hwnd -eq [IntPtr]::Zero)"
       }
-      $script:target = $box
-      $script:cacheHas = $false   # the cached point was mapped in the old subject's space
-      $canvas.Release()
-      $canvas = New-Object Sandbox+Canvas($box.W, $box.H)
-      Write-Status "target=$($box.W)x$($box.H) fallback=$($box.Hwnd -eq [IntPtr]::Zero)"
+      if ($sizeChanged -or $subjectChanged) { $script:cacheHas = $false }
+      $script:target = $committed
     }
     # State cadence: startup, then every 30 frames or 1000 ms, whichever first.
     $script:stateFrames = $script:stateFrames + 1
@@ -951,15 +1624,20 @@ while ($true) {
     if ($script:stateFrames -ge 30 -or ($stateNowMs - $script:stateLastMs) -ge 1000) {
       $script:stateFrames = 0
       $script:stateLastMs = $stateNowMs
-      Write-State -Subject $box.Hwnd
+      Write-State -Subject $script:target.Hwnd
     }
     $canvas.Fill(0x00202020)
-    if ($box.Hwnd -ne [IntPtr]::Zero) {
-      [Sandbox]::PrintWindow($box.Hwnd, $canvas.Dc, 2) | Out-Null
+    $taskbarSource = ''
+    if ($script:target.Hwnd -ne [IntPtr]::Zero) {
+      [Sandbox]::PrintWindow($script:target.Hwnd, $canvas.Dc, 2) | Out-Null
     } else {
-      [Sandbox]::Composite($desk, $canvas) | Out-Null
+      [Sandbox]::Composite($desk, $canvas, [ref]$taskbarSource) | Out-Null
+      if ($taskbarSource -ne $script:lastTaskbarSource) {
+        $script:lastTaskbarSource = $taskbarSource
+        Write-Status "taskbar=$taskbarSource"
+      }
     }
-    $scaled = ConvertTo-Viewport -Dib $canvas.Bmp -NatW $box.W -NatH $box.H -OutW $script:viewW -OutH $script:viewH
+    $scaled = ConvertTo-Viewport -Dib $canvas.Bmp -NatW $script:target.W -NatH $script:target.H -OutW $script:viewW -OutH $script:viewH
     $ms = New-Object System.IO.MemoryStream
     $scaled.Save($ms, $codec, $encoderParams)
     $scaled.Dispose()
@@ -970,8 +1648,8 @@ while ($true) {
     # Release the capture surface and force a clean-slate rebuild next frame.
     try { $canvas.Release() } catch { }
     $script:target = $null
+    $script:pending = $null
     $script:cacheHas = $false
-    $script:loopCount = 0
   }
   if ($null -ne $b64) {
     $payload = [Text.Encoding]::ASCII.GetBytes($b64 + "`n")

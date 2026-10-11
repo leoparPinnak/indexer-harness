@@ -199,6 +199,8 @@ export class TargetRegistry {
   }
 
   /**
+   * Look one tracked target up in the local registry without a browser round
+   * trip (unlike {@link list}, which refreshes from the browser first).
    * @param targetId - browser target id.
    * @returns the tracked target, or undefined when the registry does not track it.
    */
@@ -207,6 +209,8 @@ export class TargetRegistry {
   }
 
   /**
+   * The tracked target currently selected as the active tab — the default
+   * page-session target for commands that do not name one.
    * @returns the active target, or undefined when none was selected or the
    *   selected target was destroyed, closed, or dropped by a later `list` reply.
    */
@@ -252,6 +256,8 @@ export class TargetRegistry {
   }
 
   /**
+   * The flattened session this registry attached for a target, read without
+   * attaching — use {@link attach} to establish one.
    * @param targetId - browser target id.
    * @returns the flattened session this registry attached for the target, or
    *   undefined when it is not attached here.

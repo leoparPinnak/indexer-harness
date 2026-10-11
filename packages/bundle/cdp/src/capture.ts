@@ -166,7 +166,11 @@ export interface CdpErrorEnvelope {
   readonly error: { readonly name: string; readonly message: string }
 }
 
-/** Wrap any thrown value into the shared `{ok:false, error:{name,message}}` envelope. */
+/**
+ * Wrap any thrown value into the shared `{ok:false, error:{name,message}}` envelope.
+ * @param err - the thrown value; non-`Error` values are stringified into the message.
+ * @returns the failure envelope with a non-empty name and a string message.
+ */
 export function errorEnvelope(err: unknown): CdpErrorEnvelope {
   if (err instanceof Error) {
     return { ok: false, error: { name: err.name.length > 0 ? err.name : 'Error', message: err.message } }

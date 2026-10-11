@@ -32,9 +32,7 @@ interface BrowserOpenRecord {
 }
 
 function normalizeLocalUrl(url: string): string {
-  return url
-    .replace(/:\d+/u, ':{{port}}')
-    .replace(/token=[^&]+/u, 'token={{token}}')
+  return url.replace(/:\d+/u, ':{{port}}')
 }
 
 describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot', () => {

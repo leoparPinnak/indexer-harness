@@ -46,6 +46,9 @@ import {
 } from './composition-inventory.ts'
 import type { AgentPreset, Config, PresetRoot } from './preset.ts'
 import { agentPresetProjectionDefinition } from './session.ts'
+import {
+  failureMemoTtlMs, MOUNT_BACKOFF_PRODUCTION_SEAMS, withMountBackoff,
+} from './mount-backoff.ts'
 export type * from './types.ts'
 export type {
   AgentPresetComposition, AgentPresetCompositionRow, CompositionRowEnablement,
@@ -402,15 +405,28 @@ export class AgentPresets extends TypertRemoteService {
   /**
    * Standing mounts by preset id, single-flight so two agents racing the
    * first use of one preset share one composition. A settled failure is
-   * removed so a later session retries a preset whose file has been fixed; a
-   * settled success serves until the composition FILE visibly changes — each
-   * generation records its file stamp, and a stale stamp starts the next
-   * generation for sessions created afterwards. Sessions already joined keep
-   * the generation they run on; a superseded one is never disposed while the
-   * process lives (reclaimed only by whole-tree teardown), so editing files
-   * is bounded by how often compositions change, not by session count.
+   * removed from here and RETAINED in {@link mountFailures}, which is what an
+   * immediate follow-up meets; a settled success serves until the composition
+   * FILE visibly changes — each generation records its file stamp, and a
+   * stale stamp starts the next generation for sessions created afterwards.
+   * Sessions already joined keep the generation they run on; a superseded one
+   * is never disposed while the process lives (reclaimed only by whole-tree
+   * teardown), so editing files is bounded by how often compositions change,
+   * not by session count.
    */
   private readonly standing = new Map<string, Promise<StandingMount>>()
+
+  /**
+   * Negative memo of the last failed mount per preset id.
+   *
+   * Single-flight alone forgets a failure the moment it settles, so the next
+   * session re-ran the exact attempt that had just failed; this record is
+   * what makes an immediate follow-up surface THAT failure instead of
+   * re-mounting. It releases to a fresh attempt when the composition file no
+   * longer holds the stamp it failed against (a fixed file is retried at
+   * once) or when its growing TTL elapses, and a successful mount clears it.
+   */
+  private readonly mountFailures = new Map<string, StandingFailure>()
 
   /**
    * Parent bindings of the agents this roster composed, keyed by the agent's
@@ -765,7 +781,14 @@ export class AgentPresets extends TypertRemoteService {
     return (await this.ensureStanding(preset)).key
   }
 
-  /** Resolve (or create, single-flight) the standing mount of one preset. */
+  /**
+   * Resolve (or create, single-flight) the standing mount of one preset.
+   *
+   * Three gates in order: an in-flight generation wins (single-flight), then
+   * the failure the last attempt recorded (negative memoize), then a fresh
+   * attempt run under a bounded jittered backoff whose success clears that
+   * record.
+   */
   private async ensureStanding(preset: AgentPreset): Promise<StandingMount> {
     const pending = this.standing.get(preset.id)
     if (pending !== undefined) {
@@ -788,32 +811,85 @@ export class AgentPresets extends TypertRemoteService {
       if (this.standing.get(preset.id) === pending) this.standing.delete(preset.id)
       return this.ensureStanding(preset)
     }
+    const recorded = this.mountFailures.get(preset.id)
+    // Negative memoize: a follow-up meets the failure that already happened
+    // instead of re-running the attempt that produced it, until the record
+    // releases (a file that moved on, or an elapsed TTL).
+    if (recorded !== undefined && !await this.mayRetryMount(preset, recorded)) {
+      throw recorded.error
+    }
     const created = (async (): Promise<StandingMount> => {
       const key: ScopeKey = { agentPreset: preset.id }
-      const scope = createScope(this.selfCtx, key)
+      // Observed by whichever attempt settles last: the record needs the stamp
+      // the failure was made against, not a fresh stat taken after it.
+      let stamp: CompositionStamp | undefined
       try {
-        // Stamped before the file is read: an edit racing the mount makes the
-        // stamp stale rather than silently current, so the next session
-        // refreshes instead of trusting a composition older than its stamp.
-        const stamp = await compositionStamp(preset.path)
-        if (stamp === undefined) {
-          const reason = `composition file is unreadable: ${preset.path}`
-          throw new RemoteError(
-            'agent-preset/invalid',
-            `agent-presets: preset "${preset.id}" failed to mount: ${reason}`,
-            { agentPreset: preset.id, reason },
-          )
-        }
-        await mountPreset(scope.ctx, preset)
-        return { key, scope, stamp }
+        const mounted = await withMountBackoff(async () => {
+          // A fresh scope per attempt: a failed attempt disposes its own, and
+          // both are keyed by the one standing key either way.
+          const scope = createScope(this.selfCtx, key)
+          // Stamped before the file is read: an edit racing the mount makes the
+          // stamp stale rather than silently current, so the next session
+          // refreshes instead of trusting a composition older than its stamp.
+          const observed = await compositionStamp(preset.path)
+          stamp = observed
+          try {
+            if (observed === undefined) {
+              const reason = `composition file is unreadable: ${preset.path}`
+              throw new RemoteError(
+                'agent-preset/invalid',
+                `agent-presets: preset "${preset.id}" failed to mount: ${reason}`,
+                { agentPreset: preset.id, reason },
+              )
+            }
+            await mountPreset(scope.ctx, preset)
+            return { key, scope, stamp: observed }
+          } catch (error) {
+            await scope.dispose()
+            throw error
+          }
+        }, MOUNT_BACKOFF_PRODUCTION_SEAMS)
+        // Only a settled success is one: the record outlives every failed
+        // attempt until an attempt actually mounts.
+        this.mountFailures.delete(preset.id)
+        return mounted
       } catch (error) {
         this.standing.delete(preset.id)
-        await scope.dispose()
+        const previous = this.mountFailures.get(preset.id)
+        this.mountFailures.set(preset.id, {
+          error,
+          // The count survives a released record: it is what grows the TTL of
+          // the next failure, so an unchanged file stops being re-mounted.
+          attempts: (previous?.attempts ?? 0) + 1,
+          failedAt: Date.now(),
+          stamp,
+        })
         throw error
       }
     })()
     this.standing.set(preset.id, created)
     return created
+  }
+
+  /**
+   * Whether a recorded failure has released its preset to a fresh attempt.
+   *
+   * The composition file no longer holds the state the failure was recorded
+   * against — the fix a caller is waiting for lands immediately, whatever the
+   * TTL — or that TTL has elapsed. Until either happens the record answers.
+   * @param preset - the preset the record belongs to.
+   * @param record - the recorded failure.
+   * @returns whether a fresh attempt may run; false replays the record.
+   */
+  private async mayRetryMount(preset: AgentPreset, record: StandingFailure): Promise<boolean> {
+    const current = await compositionStamp(preset.path)
+    // The file moved on when the state is no longer what the record holds;
+    // two unstattable reads are the SAME state (it is still gone).
+    const movedOn = record.stamp === undefined || current === undefined
+      ? record.stamp !== current
+      : !sameStamp(record.stamp, current)
+    if (movedOn) return true
+    return Date.now() - record.failedAt >= failureMemoTtlMs(record.attempts)
   }
 }
 
@@ -850,6 +926,23 @@ interface StandingMount {
   readonly scope: Scope
   /** Stamp of the composition file this generation was mounted from. */
   readonly stamp: CompositionStamp
+}
+
+/**
+ * One preset's recorded mount failure: what a follow-up replays until the
+ * record releases. Kept per id beside the single-flight map, because a
+ * failure that is deleted the moment it settles is a failure the next caller
+ * re-runs.
+ */
+interface StandingFailure {
+  /** The failure itself; rethrown verbatim, so a replay is that same object. */
+  readonly error: unknown
+  /** Consecutive failures recorded for the preset; grows the release TTL. */
+  readonly attempts: number
+  /** When the failure was recorded, in `Date.now()` milliseconds. */
+  readonly failedAt: number
+  /** Composition state the failed attempt observed, undefined when unstattable. */
+  readonly stamp: CompositionStamp | undefined
 }
 
 export default AgentPresets

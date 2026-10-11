@@ -34,7 +34,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-/* plan13-profile: the directory name, under `$DSH_HOME`, holding every profile. */
+/** plan13-profile: the directory name, under `$DSH_HOME`, holding every profile. */
 export const PROFILES_DIR_NAME = 'profiles'
 
 /** The only profile-name shape accepted; anything else is refused. */

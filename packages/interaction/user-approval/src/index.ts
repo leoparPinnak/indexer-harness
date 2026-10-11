@@ -62,6 +62,23 @@ export type ApprovalPolicy = 'ask' | 'never'
 /** Every {@link ApprovalPolicy}, for option advertisement and runtime validation of untrusted policy strings. */
 export const APPROVAL_POLICIES: readonly ApprovalPolicy[] = ['ask', 'never']
 
+/**
+ * The approval posture frozen once at module import — the environment is read
+ * exactly HERE and never again, because reading `process.env` per call or per
+ * config re-parse would let any code running in this process flip the posture
+ * after boot and bypass the approval flow (prompt-injection escalation path).
+ * Mirrors hermes `tools/approval.py` `_YOLO_MODE_FROZEN`.
+ *
+ * `DSH_PERMISSION_MODE=danger-full-access` freezes to `'never'` (never
+ * prompt); every other value freezes to `'ask'`. The shipped composition's
+ * own posture expression resolves from the frozen launch-environment snapshot
+ * (`packages/bundle/base/cordis.patch.yml`); this constant is the default for
+ * a composition that mounts the service without an explicit `policy`, and it
+ * cannot move once this module has been imported.
+ */
+export const APPROVAL_POSTURE_FROZEN: ApprovalPolicy
+  = process.env.DSH_PERMISSION_MODE === 'danger-full-access' ? 'never' : 'ask'
+
 /** Model-facing statement for the deterministic `'never'` policy. */
 const NEVER_SENTENCE = 'Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`).'
 /** Model-facing statement for an interactive policy that may still fail closed. */
@@ -130,7 +147,9 @@ export interface Config {
    * The deployment's default {@link ApprovalPolicy} for sessions without an
    * `approval/policy` override — `'ask'` delegates to the composed answerers
    * (fail-closed with none); `'never'` auto-rejects every ask without
-   * prompting (the deterministic CI/unattended stance).
+   * prompting (the deterministic CI/unattended stance). Omitted, the schema
+   * defaults to the import-time {@link APPROVAL_POSTURE_FROZEN} posture, so a
+   * re-parse after an environment mutation cannot move it.
    */
   readonly policy?: ApprovalPolicy
 }
@@ -142,7 +161,7 @@ export interface Config {
  */
 export class ApprovalService extends Service {
   static Config: z<Config> = z.object({
-    policy: z.union(['ask', 'never'] as const).default('ask'),
+    policy: z.union(['ask', 'never'] as const).default(APPROVAL_POSTURE_FROZEN),
   })
 
   constructor(ctx: Context, public config: Config) {
@@ -229,12 +248,14 @@ export class ApprovalService extends Service {
   /**
    * The session's effective policy: its own `approval/policy` fold, else the
    * configured default (the schema already defaulted an omitted policy to
-   * `'ask'`; the `??` only narrows the optional-input TYPE).
+   * {@link APPROVAL_POSTURE_FROZEN}; the final `??` covers a construction that
+   * bypassed the schema, so every path lands on the import-time posture
+   * instead of a re-derivable one).
    * @param session - the exact accepted session whose policy applies.
    * @returns the policy every ask for this session resolves under right now.
    */
   private effectivePolicy(session: Session): ApprovalPolicy {
-    return this.overrideOf(session) ?? this.config.policy ?? 'ask'
+    return this.overrideOf(session) ?? this.config.policy ?? APPROVAL_POSTURE_FROZEN
   }
 
   /**

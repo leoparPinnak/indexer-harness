@@ -131,6 +131,8 @@ function effectiveStrategy(args: WaitArgs): unknown {
  * undefined when the plan is sound. Defaults apply: `strategy` → `css`,
  * `timeoutMs` → {@link WAIT_DEFAULT_TIMEOUT_MS}, `idleMs` →
  * {@link WAIT_DEFAULT_IDLE_MS}.
+ * @param args - raw `cdp_wait` arguments as parsed from the call.
+ * @returns the first problem found, or undefined when the plan is sound.
  */
 export function validateWaitArgs(args: WaitArgs): string | undefined {
   const strategy = effectiveStrategy(args)
@@ -178,6 +180,8 @@ export function validateWaitArgs(args: WaitArgs): string | undefined {
  * strategy keeps the caller's raw timeout (or 10000) so the legacy
  * `waitForSelector` command is byte-identical; every other strategy clamps
  * into the locator budget.
+ * @param args - the already-validated `cdp_wait` arguments.
+ * @returns the fully defaulted {@link WaitPlan} for the resolved strategy.
  */
 export function waitPlan(args: WaitArgs): WaitPlan {
   const resolved = effectiveStrategy(args)
@@ -228,6 +232,11 @@ export function waitPlan(args: WaitArgs): WaitPlan {
 /**
  * Poll one URL pattern until it matches (or the budget expires). One attempt
  * always runs, so `timeoutMs: 0` degrades to a single read.
+ * @param getUrl - reads the current page URL once per attempt (errors read as `''`).
+ * @param pattern - the regular expression the URL must match.
+ * @param timeoutMs - budget for the whole wait; `0` still runs one read.
+ * @param pollMs - delay between attempts, when given.
+ * @returns the outcome: `ok`, `waitedMs`, `timedOut`, the last `actual` URL and a `reason` on failure.
  */
 export async function waitForUrlPattern(
   getUrl: () => Promise<string>,
@@ -292,6 +301,11 @@ export interface NetworkIdleSeam {
  * Pass once no request has been in flight for `idleMs`. Enables the Network
  * domain for the wait and always disables it + drops the listeners again —
  * the disposer contract of §9.6.
+ * @param seam - the connection used to enable/disable Network and subscribe.
+ * @param timeoutMs - budget for the whole wait; `0` fails on the first check.
+ * @param idleMs - required quiet period before the wait passes.
+ * @param pollMs - delay between checks, when given.
+ * @returns the reply: `ok` once idle, otherwise `timedOut` with a reason.
  */
 export async function waitForNetworkIdle(
   seam: NetworkIdleSeam,
@@ -345,6 +359,9 @@ export async function waitForNetworkIdle(
  * in-band with `timedOut:true`; `CdpTimeoutError` from the legacy session
  * waits converts to the same envelope; anything else (protocol/session/page
  * errors) propagates as infrastructure.
+ * @param seam - the session-backed operations each strategy dispatches to.
+ * @param plan - the validated, defaulted plan from {@link waitPlan}.
+ * @returns the wait outcome envelope for the tool's reply.
  */
 export async function runWait(seam: WaitSeam, plan: WaitPlan): Promise<WaitOutcome> {
   const started = Date.now()
@@ -448,6 +465,8 @@ export async function runWait(seam: WaitSeam, plan: WaitPlan): Promise<WaitOutco
 /**
  * Render one `cdp_wait` outcome. The legacy css-success line is preserved
  * verbatim; every other line names the strategy and the measured wait.
+ * @param value - the outcome to render; missing fields degrade to safe defaults.
+ * @returns the one-line result text shown to the caller.
  */
 export function renderWait(value: WaitRenderInput): string {
   const strategy = typeof value.strategy === 'string' ? value.strategy : 'css'

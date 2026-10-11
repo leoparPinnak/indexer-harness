@@ -496,6 +496,8 @@ export class PageSession {
   /* plan05: dialog queue/history, per-session policy, answer, and race primitives. */
 
   /**
+   * The dialog at the head of this session's queue — the one
+   * {@link answerDialog} would answer next.
    * @returns the dialog still pending on this session, or undefined — a
    *   closed session never reports one (its dialogs died with it).
    */
@@ -505,6 +507,8 @@ export class PageSession {
   }
 
   /**
+   * The ring of recent dialogs this session saw — kept after they settle so
+   * tool outputs can report dialogs that were already answered or closed.
    * @returns a copy of the session's recent-dialog ring, oldest first.
    */
   recentDialogs(): readonly DialogRecord[] {
@@ -512,6 +516,8 @@ export class PageSession {
   }
 
   /**
+   * Read the auto-answer policy this session applies the moment a dialog
+   * opens; callers get a detached copy, not the live policy object.
    * @returns the current auto-answer policy (a copy).
    */
   getDialogPolicy(): DialogPolicy {
@@ -519,6 +525,8 @@ export class PageSession {
   }
 
   /**
+   * Replace the auto-answer policy for this session: the new action applies
+   * to dialogs that open from now on, never to one already pending.
    * @param policy - replacement policy applied to future opening events.
    */
   setDialogPolicy(policy: DialogPolicy): void {
