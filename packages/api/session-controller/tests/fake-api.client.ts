@@ -235,6 +235,16 @@ export class FakeApiClient {
           payload,
           Promise.resolve(ok({ cancelled: true })),
         ),
+        resume: payload => this.record(
+          'session.resume',
+          payload,
+          Promise.resolve(ok({ resumed: true })),
+        ),
+        resumeState: payload => this.record(
+          'session.resumeState',
+          payload,
+          Promise.resolve(ok({ kind: 'not-cut' as const })),
+        ),
         rename: payload => this.record('session.rename', payload, this.onRename(payload)),
         fork: payload => this.record('session.fork', payload, this.onFork(payload)),
         prompt: payload => this.record('session.prompt', payload, this.onPrompt(payload)),

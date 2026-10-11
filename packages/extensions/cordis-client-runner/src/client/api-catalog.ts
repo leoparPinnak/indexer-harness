@@ -507,6 +507,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CommonKeyOf = LocaleNamespaceMap extends {\n    common: infer C;\n} ? C & string : never;',
   },
   {
+    name: 'CompactionId',
+    declaration: 'export type CompactionId = Branded<\'CompactionId\'>;',
+  },
+  {
+    name: 'CompactionLiveEvent',
+    declaration: 'export interface CompactionLiveEvent {\n    readonly type: \'compaction/live-chunk\';\n    readonly seq: number;\n    readonly time: number;\n    readonly data: CompactionStreamFrame & {\n        readonly attemptId?: never;\n    };\n}',
+  },
+  {
+    name: 'CompactionStreamCall',
+    declaration: 'export interface CompactionStreamCall {\n    readonly stage: \'window\' | \'merge\' | \'summary\';\n    readonly index: number;\n    readonly total: number | null;\n}',
+  },
+  {
+    name: 'CompactionStreamFrame',
+    declaration: 'export interface CompactionStreamFrame {\n    readonly compactionId: CompactionId;\n    readonly sourceCommandId?: CommandId;\n    readonly sessionId: SessionId;\n    readonly time: number;\n    readonly call: CompactionStreamCall;\n    readonly phase: CompactionStreamPhase;\n    readonly maxTokens: number;\n    readonly text?: string;\n    readonly reasoning?: string;\n}',
+  },
+  {
+    name: 'CompactionStreamPhase',
+    declaration: 'export type CompactionStreamPhase = \'requested\' | \'streaming\' | \'done\' | \'failed\' | \'cancelled\';',
+  },
+  {
     name: 'ComposedProps',
     declaration: 'export type ComposedProps<K extends keyof SlotMap & string, EntryKey extends EntryKeyOf<K>, S extends keyof SlotMap & string, H, I extends object, M = never, N = undefined> = PropsRuntime<K, EntryKey> & PropsRenderSlots<S> & PropsStore<H> & InjectFace<I> & MatchedShare<SlotMap[K], M> & PropsLocale<N>;',
   },
@@ -772,7 +792,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventLikeEntry',
-    declaration: 'export type SessionEventLikeEntry = {\n    readonly type: \'event\';\n    readonly event: SessionEvent;\n} | {\n    readonly type: \'transient\';\n    readonly event: AssistantLiveChunkEvent;\n};',
+    declaration: 'export type SessionEventLikeEntry = {\n    readonly type: \'event\';\n    readonly event: SessionEvent;\n} | {\n    readonly type: \'transient\';\n    readonly event: AssistantLiveChunkEvent | CompactionLiveEvent;\n};',
   },
   {
     name: 'SessionEventSource',

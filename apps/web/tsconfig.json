@@ -105,6 +105,7 @@
     "tests/sidebar-subagent-activity.e2e.ts",
     "tests/background-job-list.e2e.ts",
     "tests/bash-abort-row.e2e.ts",
+    "tests/resume-control.e2e.ts",
     "tests/skill-tool-row.e2e.ts",
     "tests/turn-tail-actions.e2e.ts",
     "tests/goal-multi-turn-actions.e2e.ts",

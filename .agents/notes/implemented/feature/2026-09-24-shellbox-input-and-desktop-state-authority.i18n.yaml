@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-24-shellbox-input-and-desktop-state-authority.md
-2026-09-24-shellbox-input-and-desktop-state-authority.md: f000eb6bc4372ffb23a1d61113b1a81875ef5d19
-2026-09-24-shellbox-input-and-desktop-state-authority.zh.md: f9edbb21f3dbd8a7311b2968c1ec5f69c53d51ec
+2026-09-24-shellbox-input-and-desktop-state-authority.md: e98e26f0c9c4fcb5a0ec1100e7cd201b9a1893ff
+2026-09-24-shellbox-input-and-desktop-state-authority.zh.md: 27fb773440b552f2679305ca1780c0a8f73b62f4

@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { UiConversation } from './conversation/assembly.ts'
 import type { ViewTab } from './contract/views.ts'
 import type {
-  ComposerBarInjected, ConversationInjected, ConversationSessionHeaderInjected,
+  ComposerBarInjected, ComposerResumeState, ConversationInjected, ConversationSessionHeaderInjected,
   ConversationSessionInjected, DraftFileUploads,
 } from './contract/slots.ts'
 import type { InputNotice } from './contract/input.ts'
@@ -339,6 +339,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           retryFileUpload: undefined,
           toggleCommandMenu: undefined,
           stop: undefined,
+          resume: undefined,
+          resumeState: { kind: 'not-cut' },
           command: undefined,
           hooks: {
             busyEnter: submissionPolicy.busyEnter,
@@ -392,6 +394,13 @@ export function apply(ctx: Context, config: Config = Config({})): void {
             // Stop failure is published through Session promptError.
           })
         },
+        // Operator RESUME: dispatch + shared-fold verdict, mirroring stop's
+        // session-scoped lane (never register-time RPC). The verdict is a
+        // READER, never an inject-time value: the fold must run per render —
+        // the event window fills asynchronously and a captured value freezes
+        // `not-cut` forever (an invisible RESUME pill after every cut).
+        resume: () => scopedConversation(sessions, sessionId).resume(),
+        resumeState: (): ComposerResumeState => scopedConversation(sessions, sessionId).resumeState(),
         command: async (line) => {
           const session = sessions.binding(sessionId)?.session
           if (session === undefined) return false

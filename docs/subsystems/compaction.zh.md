@@ -190,6 +190,18 @@ abstract compactNow( agent: ManualCompactAgentContext, signal: AbortSignal, sour
  * @returns the appended event seqs, summary, replaced range, and token accounting.
  */
 abstract compactRegion( start: SessionSeq, end: SessionSeq, agent: CompactionAgentContext, signal?: AbortSignal, ): Promise<CompactionResult>
+
+/**
+ * Stop the compaction currently running under `compactionId`: abort its
+ * in-flight summarizer request (the abort reaches the provider transport),
+ * prevent any further windowed/merge call from starting, and close the
+ * durable bracket with the NEUTRAL `compaction/end` `cancelled` marker — a
+ * cancelled run is not a failure and never checkpoints a partial summary.
+ * Implementations override this with their active-transaction registry.
+ * @param _compactionId - transaction identity from `compaction/start`.
+ * @returns whether a live compaction was cancelled; `false` when none is running.
+ */
+cancelCompaction(_compactionId: CompactionId): boolean
 ```
 
 Types: [CommandId](commands.zh.md) · [SessionSeq](session.zh.md)
@@ -237,4 +249,26 @@ pruneSession(session: Session): PruneResult
 Types: [ContentBlock](llm-streaming.zh.md) · [Session](session.zh.md)
 
 Source: [`packages/compaction/compaction-tool-result-pruner/src/index.ts`](../../packages/compaction/compaction-tool-result-pruner/src/index.ts)
+
+<a id="compaction-events"></a>
+
+### `compaction/*` events
+
+<a id="compactionstream--emit"></a>
+
+#### `compaction/stream` — emit
+
+Live compaction summarize-call progress — process-local and transient, published per stream chunk while a compaction runs.
+
+```ts cordis-catalog
+/**
+ * Live compaction summarize-call progress — process-local and transient,
+ * published per stream chunk while a compaction runs.
+ * @mode emit
+ * @param payload - one ordered live frame of the running compaction.
+ */
+'compaction/stream'(payload: CompactionStreamFrame): void
+```
+
+Source: [`packages/compaction/compaction/src/types.ts`](../../packages/compaction/compaction/src/types.ts)
 <!-- END GENERATED cordis-surface -->

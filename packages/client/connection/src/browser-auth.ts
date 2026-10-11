@@ -12,12 +12,23 @@ import type {
 const AUTH_RECORD_KEY = credentialKey('client-connection', 'browser-session')
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000
 const SECRET_BYTES = 32
-const TOKEN_QUERY = 'token'
 const COOKIE_PREFIX = 'dsh-auth-'
 const COOKIE_PAYLOAD_VERSION = 1
 const STORED_SECRET_VERSION = 1
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
-const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
+
+/**
+ * Username/password presented by a browser that has no session cookie yet —
+ * the prompt replaces the old `?token=` launch URL. The defaults are what a
+ * local deployment ships; `DSH_WEB_USER` / `DSH_WEB_PASSWORD` override them
+ * for a deployment reachable beyond this machine (a tunnel hostname).
+ */
+const CREDENTIAL_USER = process.env.DSH_WEB_USER ?? 'dsh'
+const CREDENTIAL_PASSWORD = process.env.DSH_WEB_PASSWORD ?? 'dsh'
+/** Realm shown by the browser's native username/password prompt. */
+const BASIC_REALM = 'dsh web'
+const BASIC_CHALLENGE = `Basic realm="${BASIC_REALM}", charset="UTF-8"`
+const BASIC_SCHEME_PATTERN = /^Basic\s+(\S+)$/iu
 
 interface StoredSecretPayload {
   readonly version: typeof STORED_SECRET_VERSION
@@ -47,14 +58,6 @@ function decodeBase64Url(value: string): Buffer | undefined {
   const padding = '='.repeat((4 - value.length % 4) % 4)
   const decoded = Buffer.from(value.replaceAll('-', '+').replaceAll('_', '/') + padding, 'base64')
   return encodeBase64Url(decoded) === value ? decoded : undefined
-}
-
-function processLaunchToken(owner: object): string {
-  const existing = PROCESS_LAUNCH_TOKENS.get(owner)
-  if (existing !== undefined) return existing
-  const created = encodeBase64Url(randomBytes(SECRET_BYTES))
-  PROCESS_LAUNCH_TOKENS.set(owner, created)
-  return created
 }
 
 function header(
@@ -101,6 +104,26 @@ function tokenMatches(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual, 'utf8')
   const expectedBytes = Buffer.from(expected, 'utf8')
   return actualBytes.byteLength === expectedBytes.byteLength && timingSafeEqual(actualBytes, expectedBytes)
+}
+
+/**
+ * Validate an `Authorization: Basic …` header against the deployment
+ * credentials. Both halves are compared even when the username already failed,
+ * so a wrong password costs the same time as a wrong username.
+ * @param headers - request headers carrying `authorization`.
+ * @returns true only for a well-formed header naming both credentials.
+ */
+function basicAuthorized(headers: ConnectionTrustRequest['headers']): boolean {
+  const raw = header(headers, 'authorization')
+  if (raw === undefined) return false
+  const match = BASIC_SCHEME_PATTERN.exec(raw.trim())
+  if (match?.[1] === undefined) return false
+  const decoded = Buffer.from(match[1], 'base64').toString('utf8')
+  const at = decoded.indexOf(':')
+  if (at === -1) return false
+  const userOk = tokenMatches(decoded.slice(0, at), CREDENTIAL_USER)
+  const passwordOk = tokenMatches(decoded.slice(at + 1), CREDENTIAL_PASSWORD)
+  return userOk && passwordOk
 }
 
 function cookieName(authority: string): string {
@@ -178,20 +201,24 @@ async function initializeSecret(credentials: CredentialProvider): Promise<Buffer
 }
 
 /**
- * Process launch-token exchange and persistent signed-cookie verification.
- * Connection loads the credential provider's signing secret during activation
- * and retains it for synchronous request authentication.
+ * Username/password exchange and persistent signed-cookie verification.
+ *
+ * A browser arriving with no cookie is challenged once (the native HTTP Basic
+ * prompt); the answered challenge mints the authority-bound cookie that every
+ * later request — index, Host API and WebSocket — authenticates with, so an
+ * established browser is never prompted again. Connection loads the credential
+ * provider's signing secret during activation and retains it for synchronous
+ * request authentication.
  */
 export class BrowserAuth {
-  private readonly launchToken: string
   private readonly maxAgeMilliseconds: number
 
   private constructor(
-    processOwner: object,
+    /** Root application context owning this activation (signature kept for callers). */
+    _processOwner: object,
     private readonly secret: Buffer,
     maxAgeDays: number,
   ) {
-    this.launchToken = processLaunchToken(processOwner)
     this.maxAgeMilliseconds = maxAgeDays * DAY_MILLISECONDS
     if (!Number.isSafeInteger(this.maxAgeMilliseconds)
       || !Number.isSafeInteger(Date.now() + this.maxAgeMilliseconds)) {
@@ -202,10 +229,10 @@ export class BrowserAuth {
   /**
    * Initialize browser authentication and create its durable signing secret
    * when this Harness home has none.
-   * @param processOwner - root application context retaining one token across Connection reloads.
+   * @param processOwner - root application context retaining activation scope.
    * @param credentials - persistent credential provider for the Web profile.
    * @param maxAgeDays - positive absolute browser-cookie lifetime in days.
-   * @returns initialized authentication owner with the process owner's launch token.
+   * @returns initialized authentication owner.
    */
   static async create(
     processOwner: object,
@@ -216,35 +243,33 @@ export class BrowserAuth {
   }
 
   /**
-   * Add this process's launch token to the ordinary application root URL.
+   * Resolve the ordinary application root URL: authentication is the browser
+   * prompt, so the printed address carries no credential of its own.
    * @param baseUrl - canonical browser origin without credentials.
-   * @returns root URL carrying the process token as its sole authentication input.
+   * @returns clean root URL.
    */
   authenticatedUrl(baseUrl: string): string {
     const url = new URL(baseUrl)
     url.pathname = '/'
     url.search = ''
     url.hash = ''
-    url.searchParams.set(TOKEN_QUERY, this.launchToken)
     return url.href
   }
 
   /**
-   * Authenticate an index request. A valid root query token mints the cookie
-   * and redirects to clean `/`; a valid cookie lets the caller serve the
-   * index; every other request receives the same minimal 401 response.
+   * Authenticate an index request. A valid cookie lets the caller serve the
+   * index directly; valid username/password mints the cookie and redirects to
+   * clean `/`; every other request receives a 401 carrying the Basic challenge
+   * that makes the browser prompt for username and password.
    * @param req - incoming root or configured-index request.
    * @param res - response owned when this method returns false.
    * @returns true only when the caller may serve index.html.
    */
   authorizeIndex(req: ConnectionIndexRequest, res: ConnectionIndexResponse): boolean {
-    /* v8 ignore next -- node:http always supplies url on server requests. */
-    const url = new URL(req.url ?? '/', 'http://dsh.invalid')
-    const tokens = url.searchParams.getAll(TOKEN_QUERY)
-    if (tokens.length > 0) {
+    // 1. Username/password answered: mint the cookie once, then serve.
+    if (basicAuthorized(req.headers)) {
       const authority = requestAuthority(req.headers)
-      if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
-        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
+      if (authority !== undefined && !this.hasValidCookie(req)) {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
@@ -264,29 +289,31 @@ export class BrowserAuth {
         res.end()
         return false
       }
-      if (req.method === 'GET' && url.pathname === '/' && this.isAuthenticated(req)) {
-        res.writeHead(303, {
-          'cache-control': 'no-store',
-          'location': '/',
-          'referrer-policy': 'no-referrer',
-        })
-        res.end()
-        return false
-      }
-      this.writeUnauthorized(req, res)
-      return false
+      return true
     }
-    if (this.isAuthenticated(req)) return true
+
+    // 2. An established browser keeps its cookie — never prompted again.
+    if (this.hasValidCookie(req)) return true
+
+    // 3. A new browser: challenge it so the browser prompts for username/password.
     this.writeUnauthorized(req, res)
     return false
   }
 
   /**
-   * Verify the authority-bound browser cookie on a Host request.
-   * @param request - request headers carrying Host and Cookie.
-   * @returns true only for an unexpired cookie signed by this activation's loaded secret.
+   * Verify the authority-bound browser cookie, or valid username/password,
+   * on a Host request.
+   * @param request - request headers carrying Host, Cookie and Authorization.
+   * @returns true only for an unexpired cookie signed by this activation's
+   *   loaded secret, or a header naming both deployment credentials.
    */
   isAuthenticated(request: ConnectionTrustRequest): boolean {
+    if (basicAuthorized(request.headers)) return true
+    return this.hasValidCookie(request)
+  }
+
+  /** Verify only the persistent authority-bound cookie (never credentials). */
+  private hasValidCookie(request: ConnectionTrustRequest): boolean {
     const authority = requestAuthority(request.headers)
     const rawCookie = header(request.headers, 'cookie')
     if (authority === undefined || rawCookie === undefined) return false
@@ -305,9 +332,10 @@ export class BrowserAuth {
     res.writeHead(401, {
       'cache-control': 'no-store',
       'content-type': 'text/plain; charset=utf-8',
+      'www-authenticate': BASIC_CHALLENGE,
     })
     res.end(req.method === 'HEAD'
       ? undefined
-      : 'dsh web authentication required; reopen the URL printed by dsh web.\n')
+      : 'dsh web username/password required; enter dsh / dsh in the browser prompt.\n')
   }
 }

@@ -1,10 +1,9 @@
 /**
  * @deepseek-ai/dsh-cdp/skill — plan09: the bundle's single skill provider. It
  * exposes the `cdp-browser-control` skill (manual body + guide resource base)
- * through the same `SkillProvider` contract `@deepseek-ai/dsh-deamon` uses for
- * its `shellbox` manual: name/description/invocation live in code, the body is
- * read from disk on demand, and a missing or unreadable base degrades to "skill
- * not listed" instead of failing plugin load.
+ * through the `SkillProvider` contract: name/description/invocation live in
+ * code, the body is read from disk on demand, and a missing or unreadable base
+ * degrades to "skill not listed" instead of failing plugin load.
  *
  * @module @deepseek-ai/dsh-cdp/skill
  */
@@ -52,7 +51,7 @@ export const DESCRIPTION = 'Drive Chrome/Edge over the DevTools protocol with th
 /** Extra routing hint carried beside the description in the catalog row. */
 export const WHEN_TO_USE = 'Any task that must observe or change a live browser page; load before the first cdp_* call of a session.'
 
-/** Both invocation surfaces — deamon's `shellbox` precedent. */
+/** Both invocation surfaces. */
 const INVOCATION = { modelInvocable: true, userInvocable: true } as const
 
 /**

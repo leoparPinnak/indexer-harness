@@ -8,7 +8,7 @@
  */
 import type { ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
-import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { CompactionId } from './brand.ts'
 export type { CompactionId }
 /** Policy fields shared by every summarizer route choice in {@link CompactionSessionMode}. */
@@ -25,6 +25,17 @@ interface CompactionSessionModePolicy {
      * ratio.
      */
   thresholdTokens?: number
+  /**
+     * Summarization output cap in tokens for this session's summary calls.
+     * Absent applies the backend's configured `maxTokens`.
+     */
+  maxTokens?: number
+  /**
+     * Dynamic visual window of the compaction replay: replay at most the NEWEST
+     * N images to the summarizer and drop/mark the rest. Absent applies the
+     * adapter profile default; `0` replays no images at all.
+     */
+  keepLatestImages?: number
 }
 /**
  * One session's compaction mode — whole-value replace: every `compaction/mode`
@@ -77,6 +88,8 @@ export interface CompactionPolicyState {
   } | null
   /** Latest routed model capacity in tokens; null when the route advertises none. */
   modelCapacity: number | null
+  /** Session replay visual window (`keepLatestImages`); absent means the adapter default. */
+  keepLatestImages?: number
 }
 /**
  * Client value of the `compactionPolicy` session projection: the stored mode
@@ -92,6 +105,8 @@ export interface CompactionPolicyView {
   contextBudgetTokens: number | null
   /** Effective automatic-compaction trigger point in tokens; null when the budget is unknown. */
   thresholdTokens: number | null
+  /** Effective summarization output cap: the session's override or the backend's configured `maxTokens`. */
+  maxTokens: number
 }
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
@@ -191,6 +206,13 @@ declare module '@deepseek-ai/dsh-session/types' {
              * single-call arm below.
              */
       intermediateCalls?: CompactionSummaryCall[]
+      /**
+             * Media accounting for the shadowed span: how many images entered the
+             * compacted context, how many the replay withheld behind placeholders,
+             * the payload characters recovered, and per-image preview identities.
+             * Absent when the backend predates the figures.
+             */
+      media?: CompactionMediaReport
     } & ({
       /** Complete provider output before the backend's safe summary projection. */
       rawOutput: ContentBlock[]
@@ -205,12 +227,18 @@ declare module '@deepseek-ai/dsh-session/types' {
     /**
          * Marks the end of a compaction — log-only, releases the lock. Its owner
          * matches `compaction/start`; `error` records an unsuccessful attempt.
+         * `cancelled` closes the bracket NEUTRALLY when the operator (or an
+         * enclosing cancellation) stopped the run: a cancelled attempt is not a
+         * failure, never checkpoints a partial summary, and its close carries no
+         * `error`.
          */
     'compaction/end': {
       compactionId: CompactionId
       sourceCommandId?: CommandId
       turn: number | null
       error?: string
+      /** Present (true) on a neutral operator/agent cancellation close. */
+      cancelled?: true
     }
     /**
          * Shadow price of one model-free prune replacement — log-only, no
@@ -240,6 +268,100 @@ declare module '@deepseek-ai/dsh-session/types' {
          */
     'compaction/mode': CompactionSessionMode
   }
+}
+/** One summarizer call inside a compaction run, identified for live display. */
+export interface CompactionStreamCall {
+  /** Pipeline stage owning the call; `summary` is the single one-shot call. */
+  readonly stage: 'window' | 'merge' | 'summary'
+  /** Zero-based index of this call within its stage across the run. */
+  readonly index: number
+  /** Planned call count for the stage when known (window map passes); null otherwise. */
+  readonly total: number | null
+}
+/**
+ * Lifecycle of the request behind one live frame: `requested` the moment the
+ * summarize call dispatches (before any provider bytes), `streaming` on the
+ * first output chunk, then one terminal phase. `cancelled` is the neutral
+ * operator-stop close and never pairs with a failure presentation.
+ */
+export type CompactionStreamPhase = 'requested' | 'streaming' | 'done' | 'failed' | 'cancelled'
+/**
+ * One live compaction stream frame — transient (process-local, never durable):
+ * the compaction analog of `assistant/live-chunk`. Deltas are per-chunk slices
+ * of the summarizer's raw output (`text`) and its reasoning (`reasoning`); a
+ * non-delta frame carries neither. Consumers accumulate deltas per `call`.
+ */
+export interface CompactionStreamFrame {
+  /** Transaction identity shared with the durable `compaction/*` bracket. */
+  readonly compactionId: CompactionId
+  /** Initiating command identity when the run is a manual compaction. */
+  readonly sourceCommandId?: CommandId
+  /** Session whose surface is being compacted; scopes the frame's routing. */
+  readonly sessionId: SessionId
+  /** Unix epoch ms when the frame was published. */
+  readonly time: number
+  /** Summarizer call this frame belongs to. */
+  readonly call: CompactionStreamCall
+  /** Lifecycle phase of the call. */
+  readonly phase: CompactionStreamPhase
+  /** Generation cap (`maxTokens`) sent with this call. */
+  readonly maxTokens: number
+  /** Visible summary-text delta for `streaming` frames. */
+  readonly text?: string
+  /** Reasoning delta for `streaming` frames. */
+  readonly reasoning?: string
+}
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+         * Live compaction summarize-call progress — process-local and transient,
+         * published per stream chunk while a compaction runs.
+         * @mode emit
+         * @param payload - one ordered live frame of the running compaction.
+         */
+    'compaction/stream'(payload: CompactionStreamFrame): void
+  }
+}
+/** One image's preview identity as the media accounting reports it. */
+export interface CompactionMediaPreview {
+  /** Durable attachment identity; the client renders previews through its image loader. */
+  attachmentId: string
+  /** Original file name when the attachment carried one. */
+  name: string | null
+  /** MIME type of the payload. */
+  mediaType: string
+  /** Payload size in bytes as reported by the attachment. */
+  bytes: number
+  /** Whether the image rode the summarizer replay (`kept`) or became a placeholder (`pruned`). */
+  disposition: 'kept' | 'pruned'
+}
+/**
+ * Media accounting for one compacted span: what the summarizer replay withheld
+ * and what the replacement no longer carries into the model context. Counts are
+ * computed host-side from the replay-sanitization walk so every client shows
+ * one set of numbers.
+ */
+export interface CompactionMediaReport {
+  /** Image blocks found in the shadowed span (inline payloads included). */
+  images: number
+  /** Images replayed as real images (the newest one survives the replay policy). */
+  imagesKept: number
+  /** Images replaced by explicit placeholders in the summarizer replay. */
+  imagesPruned: number
+  /** Inline base64 runs scrubbed from free text, reasoning, and tool-call arguments. */
+  inlineRunsPruned: number
+  /**
+     * Payload characters withheld from the replay: scrubbed base64 characters
+     * plus the pruned images' reported payload bytes.
+     */
+  charactersPruned: number
+  /**
+     * Rough token equivalent of {@link CompactionMediaReport.charactersPruned}
+     * (four characters per token) — an ESTIMATE, labeled as such in the UI.
+     */
+  tokensPrunedEstimate: number
+  /** Per-image preview identities in replay order. */
+  previews: CompactionMediaPreview[]
 }
 /** Result of a successful compaction operation. */
 export interface CompactionResult {
@@ -271,5 +393,7 @@ export interface CompactionResult {
   shadowedSeqs: SessionSeq[]
   /** Estimated token count of the shadowed content. */
   shadowedTokenCount: number
+  /** Media accounting for the shadowed span, when the backend computed it. */
+  media?: CompactionMediaReport
 }
 //# sourceMappingURL=types.d.ts.map

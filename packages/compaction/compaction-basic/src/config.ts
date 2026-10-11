@@ -9,6 +9,7 @@ import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
   BasicCompactionConfig,
   CompactionPolicyConfig,
+  FallbackTarget,
   ModelCompactPolicyConfig,
   ResolvedCompactSpec,
   ResolvedConfig,
@@ -32,6 +33,7 @@ const POLICY_CONFIG_KEYS = [
   'maxTokens',
   'compactionRetries',
   'maxOverflowRetries',
+  'fallbackTargets',
 ] as const
 
 /** Complete public top-level configuration key set. */
@@ -60,6 +62,35 @@ export class TargetPressureConfigError extends Error {
 }
 
 /**
+ * Resolve and validate the fallback summarizer target chain.
+ * @param raw - untrusted chain from configuration (defaults empty).
+ * @returns detached validated chain: non-empty provider/model pairs, no
+ *   duplicates, first four entries kept (a longer chain is a configuration
+ *   mistake, not extra resilience).
+ */
+export function resolveFallbackTargets(
+  raw: readonly FallbackTarget[] | undefined,
+): FallbackTarget[] {
+  if (raw === undefined) return []
+  const seen = new Set<string>()
+  const chain: FallbackTarget[] = []
+  for (const [index, entry] of raw.slice(0, 4).entries()) {
+    const provider = entry.provider.trim()
+    const model = entry.model.trim()
+    if (provider.length === 0 || model.length === 0) {
+      throw new Error(`BasicCompactionConfig: fallbackTargets[${index}] provider and model must be non-empty`)
+    }
+    const key = `${provider}/${model}`
+    if (seen.has(key)) {
+      throw new Error(`BasicCompactionConfig: fallbackTargets[${index}] duplicates "${key}"`)
+    }
+    seen.add(key)
+    chain.push({ provider, model })
+  }
+  return chain
+}
+
+/**
  * Resolve and validate service defaults plus exact-target partial overrides.
  * @param config - untrusted plugin configuration after Loader normalization.
  * @returns detached immutable defaults and validated exact-target overrides.
@@ -81,6 +112,7 @@ export function resolveConfig(config: BasicCompactionConfig = {}): ResolvedConfi
       resolveRetention(policy, retention),
       `BasicCompactionConfig: modelPolicies[${index}]`,
     )
+    resolveFallbackTargets(policy.fallbackTargets)
   }
 
   return deepFreeze({
@@ -92,6 +124,7 @@ export function resolveConfig(config: BasicCompactionConfig = {}): ResolvedConfi
     compactionRetries: config.compactionRetries ?? 1,
     maxOverflowRetries: config.maxOverflowRetries ?? 1,
     modelPolicies,
+    fallbackTargets: resolveFallbackTargets(config.fallbackTargets),
     auto: config.auto ?? true,
   })
 }
@@ -121,6 +154,7 @@ export function resolveTargetPolicy(
     maxTokens: override?.maxTokens ?? config.maxTokens,
     compactionRetries: override?.compactionRetries ?? config.compactionRetries,
     maxOverflowRetries: override?.maxOverflowRetries ?? config.maxOverflowRetries,
+    fallbackTargets: override?.fallbackTargets ?? config.fallbackTargets,
   })
 }
 
@@ -173,6 +207,7 @@ export function resolveCompactSpec(
     target: { ...policy.target },
     contextWindow,
     thresholdRatio: policy.thresholdRatio,
+    fallbackTargets: policy.fallbackTargets,
     thresholdTokens,
     retainTokens,
     summarizationProvider: policy.summarizationProvider,

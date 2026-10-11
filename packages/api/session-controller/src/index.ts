@@ -36,6 +36,10 @@ import type {
   SessionFollowFrame,
   SessionCancelCompactionRequest,
   SessionCancelCompactionValue,
+  SessionResumeRequest,
+  SessionResumeStateRequest,
+  SessionResumeStateValue,
+  SessionResumeValue,
   SessionFollowRequest,
   SessionForkRequest,
   SessionForkValue,
@@ -271,6 +275,33 @@ export class SessionController extends TypertRemoteService {
     request: SessionCancelCompactionRequest,
   ): Promise<SessionCancelCompactionValue> {
     return this.commands.cancelCompaction(request)
+  }
+
+  /**
+   * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+   * resume checkpoint (the last COMPLETED model request).
+   * @param request - owning Session identity.
+   * @returns whether a continuation turn was dispatched.
+   */
+  @Remote('resume')
+  resume(
+    request: SessionResumeRequest,
+  ): Promise<SessionResumeValue> {
+    return this.commands.resume(request)
+  }
+
+  /**
+   * Read the operator RESUME verdict over the full durable journal (no side
+   * effects): the client window cannot answer this honestly because it omits
+   * turn lifecycle events.
+   * @param request - owning Session identity.
+   * @returns the folded verdict behind the RESUME affordance.
+   */
+  @Remote('resumeState')
+  resumeState(
+    request: SessionResumeStateRequest,
+  ): Promise<SessionResumeStateValue> {
+    return this.commands.resumeState(request)
   }
 
   /**

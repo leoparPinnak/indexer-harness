@@ -349,6 +349,40 @@ export class Session implements SessionFace {
   }
 
   /**
+   * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+   * resume checkpoint (the last COMPLETED model request). Unlike stop, the
+   * failure is NOT filed under promptError — the resume row surfaces it, so the
+   * strip keeps exactly one error owner. Narrow face while the generated typert
+   * remote client regenerates with `resume`; the runtime proxy dispatches by name.
+   * @returns the dispatch verdict, or the honest Host refusal.
+   */
+  async resume(): Promise<RemoteResult<{ resumed: boolean }>> {
+    return await (this.remote.session as unknown as {
+      resume(request: { sessionId: SessionId }): Promise<RemoteResult<{ resumed: boolean }>>
+    }).resume({ sessionId: this.sessionId })
+  }
+
+  /**
+   * Read the RESUME verdict over the full durable journal (side-effect free).
+   * The conversation window cannot answer this: it is a paginated,
+   * presentation-filtered slice without the turn lifecycle events the fold
+   * needs, so a window fold reports "nothing happened" after every cut.
+   * @returns the folded verdict (`ready` names the checkpoint), or the honest
+   *   Host refusal when the Session cannot answer.
+   */
+  async resumeState(): Promise<RemoteResult<{
+    kind: 'ready' | 'busy' | 'not-cut' | 'no-checkpoint'
+    checkpoint?: { turn: number; step: number }
+  }>> {
+    return await (this.remote.session as unknown as {
+      resumeState(request: { sessionId: SessionId }): Promise<RemoteResult<{
+        kind: 'ready' | 'busy' | 'not-cut' | 'no-checkpoint'
+        checkpoint?: { turn: number; step: number }
+      }>>
+    }).resumeState({ sessionId: this.sessionId })
+  }
+
+  /**
    * Rename: contract session.rename 1:1. On success settle the 'title'
    * projection cell from the response's `{title, seq}` under the store's
    * higher-seq-wins rule (the push frame arriving later is a no-op replay),

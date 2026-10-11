@@ -43,7 +43,7 @@ export type InputBarProps = ComposerBarProps
 export const InputBar = memo(function InputBar({
   useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
   retryFileUpload,
-  toggleCommandMenu, stop, command, t,
+  toggleCommandMenu, stop, resume, resumeState, command, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
@@ -519,7 +519,10 @@ export const InputBar = memo(function InputBar({
           <div className={css.trailing}>
             {input === undefined || sessionId === undefined
               ? null
-              : renderSlot('conversation.input.right', {})}
+              : renderSlot('conversation.input.right', {
+                ...(resumeState === undefined ? {} : { resumeState }),
+                ...(resume === undefined ? {} : { resume }),
+              })}
             {sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
             {sessionId === undefined
               ? null

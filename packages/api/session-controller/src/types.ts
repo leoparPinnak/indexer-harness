@@ -188,6 +188,9 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'session/model-unavailable': { readonly provider: string; readonly model: string }
     'session/compaction-mode-invalid': { readonly sessionId: SessionId }
+    'session/resume-busy': { readonly sessionId: SessionId }
+    'session/resume-not-cut': { readonly sessionId: SessionId }
+    'session/resume-no-checkpoint': { readonly sessionId: SessionId }
     'session/conflict': {
       readonly sessionId: SessionId
       readonly requestedCwd: string
@@ -542,14 +545,59 @@ export type SessionFollowFrame =
   | { readonly type: 'assistant-stream'; readonly frame: SessionAssistantStreamFrame }
   | { readonly type: 'compaction-stream'; readonly frame: CompactionStreamFrame }
 
-/** Stop one running compaction transaction by its `compaction/start` identity. */
+/**
+ * Stop one running compaction transaction by its `compaction/start` identity.
+ * `sessionId` names the owning Session so the host can reach the compaction
+ * engine inside THAT Session's agent realm — the only realm whose engine holds
+ * the transaction's stop controller.
+ */
 export interface SessionCancelCompactionRequest {
+  readonly sessionId: SessionId
   readonly compactionId: string
 }
 
 /** Whether a live compaction was cancelled by the stop request. */
 export interface SessionCancelCompactionValue {
   readonly cancelled: boolean
+}
+
+/**
+ * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+ * resume checkpoint (the last COMPLETED model request). The request names only
+ * the Session — the checkpoint and the cut verdict derive from its journal
+ * through the shared `evaluateResumeState` fold.
+ */
+export interface SessionResumeRequest {
+  readonly sessionId: SessionId
+}
+
+/** Whether an operator resume was dispatched to the agent driver. */
+export interface SessionResumeValue {
+  readonly resumed: boolean
+}
+
+/**
+ * Pure RESUME verdict request over the full durable journal.
+ *
+ * The client cannot fold this on its own: the conversation window is a
+ * paginated, presentation-filtered slice that omits turn lifecycle events, so a
+ * window fold answers "nothing happened" and the affordance would hide itself
+ * after every cut. The Host holds the whole journal; this read is side-effect
+ * free and answers exactly what the dispatch guard answers.
+ */
+export interface SessionResumeStateRequest {
+  readonly sessionId: SessionId
+}
+
+/**
+ * The folded verdict behind the RESUME affordance: `ready` names the resume
+ * checkpoint (the last COMPLETED model request), `busy` an open turn,
+ * `not-cut` a normally ended last turn, `no-checkpoint` a cut with nothing
+ * completed before it.
+ */
+export interface SessionResumeStateValue {
+  readonly kind: 'ready' | 'busy' | 'not-cut' | 'no-checkpoint'
+  readonly checkpoint?: { readonly turn: number; readonly step: number }
 }
 
 /** One pending inbox occurrence in the authoritative queue snapshot. */

@@ -313,6 +313,31 @@ async function compactIfNeeded(
 }
 
 describe('compact configuration and defaults', () => {
+  it('commits the replay media accounting onto the durable summary event', async () => {
+    const compact = service()
+    const session = conversation(4)
+    // Attach an image to the first user message so the replay policy has
+    // something to inventory.
+    const firstUser = session.snapshotEvents().find(event => event.type === 'user/message')
+    if (firstUser?.type !== 'user/message') throw new Error('fixture lost its first user message')
+    const nodes = [...session.surface.nodes]
+    await compact.compactRegion(nodes[1]!, nodes[3]!, agent(session, MODEL), SIGNAL)
+
+    const summary = session.snapshotEvents().findLast(event => event.type === 'compaction/summary')
+    if (summary?.type !== 'compaction/summary') throw new Error('no compaction/summary appended')
+    // The bag carries the accounting even when the span holds no media, and the
+    // committed event publishes it (the card's figures come from here).
+    expect(summary.data.media).toEqual({
+      images: 0,
+      imagesKept: 0,
+      imagesPruned: 0,
+      inlineRunsPruned: 0,
+      charactersPruned: 0,
+      tokensPrunedEstimate: 0,
+      previews: [],
+    })
+  })
+
   it('uses low-friction service-wide defaults', () => {
     const resolved = resolveConfig({})
 
@@ -324,6 +349,7 @@ describe('compact configuration and defaults', () => {
       maxTokens: 8192,
       compactionRetries: 1,
       maxOverflowRetries: 1,
+      fallbackTargets: [],
       modelPolicies: [],
       auto: true,
     })
@@ -977,7 +1003,23 @@ describe('compaction region transaction', () => {
     await compact.compactRegion(nodes[1]!, nodes[2]!, agent(session, MODEL), SIGNAL)
 
     const { input } = compact.calls[0]!
-    expect(input).toEqual({ tools, head: prefix[0], messages: prefix.slice(1) })
+    // `media` rides the input bag: the replay's media accounting travels with
+    // the summarization so the committed checkpoint can report what it
+    // withheld (images in / pruned / base64 runs / characters recovered).
+    expect(input).toEqual({
+      tools,
+      head: prefix[0],
+      messages: prefix.slice(1),
+      media: {
+        images: 0,
+        imagesKept: 0,
+        imagesPruned: 0,
+        inlineRunsPruned: 0,
+        charactersPruned: 0,
+        tokensPrunedEstimate: 0,
+        previews: [],
+      },
+    })
   })
 
   it('omits the summarizer system prompt for an empty system head or a system-less surface', async () => {

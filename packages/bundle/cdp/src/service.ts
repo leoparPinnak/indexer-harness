@@ -37,7 +37,10 @@ import {
   type CdpDomNode,
   type CdpViewport,
 } from './snapshot.ts'
-import { launchBrowser, type LaunchedBrowser, type BrowserLaunchOptions } from './launch.ts'
+import { launchBrowser, renderLaunchFlagBlock, type LaunchedBrowser, type BrowserLaunchOptions } from './launch.ts'
+/* plan18-session-scope: the session→target ownership vault — a session drives its
+   own target ids and no other, mechanically. */
+import { SessionTargetScope } from './session-scope.ts'
 /* plan17-port-survey: the parallel pre-launch scan, the occupied-port diagnosis
    and the operator `userNotice` that rides back on the same call. */
 import {
@@ -968,6 +971,35 @@ export class CdpService {
    * @param options - open options.
    * @returns endpoint URL, live target count, pool id, and the reuse verdict.
    */
+  /* plan18-session-scope: the ownership vault backing the per-session target
+     fence. Tool calls grant through the sanctioned creation paths and assert
+     through {@link SessionTargetScope.resolveTargetId}/`assertRaw`; the operator
+     REST surface is deliberately unscoped (it is the user's own console). */
+  readonly scope = new SessionTargetScope()
+
+  /** plan18-flags: what the last launch actually spawned with. */
+  #lastLaunch: { executablePath: string; args: readonly string[] } | undefined
+
+  /**
+   * plan18-flags: render the current launch flag block (the prompt text `cdp_open`
+   * injects into the model).
+   * @returns the fenced block, or undefined when this service launched nothing.
+   */
+  launchFlagBlock(): string | undefined {
+    if (this.#lastLaunch === undefined) return undefined
+    return renderLaunchFlagBlock(this.#lastLaunch.executablePath, this.#lastLaunch.args)
+  }
+
+  /**
+   * plan18-session-scope: mint ownership for the targets `cdp_open` adopted.
+   * The opening session claims exactly what the endpoint had at adoption time.
+   * @param sessionId - the opening session.
+   * @param targetIds - every live target id at adoption.
+   */
+  adoptTargets(sessionId: string, targetIds: readonly string[]): void {
+    for (const targetId of targetIds) this.scope.grant(sessionId, targetId, 'open')
+  }
+
   async open(options: CdpOpenOptions = {}): Promise<CdpOpenResult> {
     // plan13-profile: `switchTo` is the named answer to a `needsChoice`
     // envelope; it means exactly what `port` means, so it is folded in here and
@@ -1153,6 +1185,9 @@ export class CdpService {
       // --remote-debugging-port=0 — so a TOCTOU race cannot occur.
       const portSurvey = scanLoopbackPorts()
       launched = await launchBrowser(launchOpts)
+      // plan18-flags: remember exactly what spawned — cdp_open renders it into
+      // the model prompt so the flag block is stated, never folklore.
+      this.#lastLaunch = { executablePath: launched.executablePath, args: launched.launchArgs }
       portAllocation = await buildPortAllocationNotice(
         await portSurvey,
         await detectCdpInstances((await portSurvey).occupiedPorts),

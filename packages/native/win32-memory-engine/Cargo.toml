@@ -1,0 +1,25 @@
+[package]
+name = "win32-memory-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Win32 bellek/gozlem/girdi motoru: C-ABI + JSON satir IPC (DSH win32-memory-bridge)"
+publish = false
+
+[lib]
+name = "win32_memory_engine"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Media",
+  "Win32_Security",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Performance",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }

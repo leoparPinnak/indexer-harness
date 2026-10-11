@@ -1,0 +1,33 @@
+{
+  "setId": "agent-team",
+  "title": "Alt Ajan Takımı",
+  "capabilitySet": "agent-orchestration",
+  "authority": "process",
+  "personaSummary": "Kendi alt ajanlarını doğurabilir, görev dağıtabilir, sonuçları birleştirebilirsin.",
+  "tools": [
+    {
+      "id": "spawn_agent",
+      "authority": "process",
+      "guide": "tools/spawn_agent.md",
+      "code": "tools/spawn_agent.json",
+      "fireEmbed": "code",
+      "summary": "Adlandırılmış rol ve bütçeyle bağımsız alt ajan doğurur."
+    },
+    {
+      "id": "send_agent",
+      "authority": "process",
+      "guide": "tools/send_agent.md",
+      "code": "tools/send_agent.json",
+      "fireEmbed": "code",
+      "summary": "Yaşayan bir ajana yeni girdi yollar (mesaj kutusu üzerinden)."
+    },
+    {
+      "id": "agent_outcome",
+      "authority": "observe",
+      "guide": "tools/agent_outcome.md",
+      "code": "tools/agent_outcome.json",
+      "fireEmbed": "code",
+      "summary": "Alt ajan tur sonucunu (AgentTurnOutcome) okur."
+    }
+  ]
+}

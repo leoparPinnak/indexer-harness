@@ -85,10 +85,14 @@ export function apply(ctx: Context): void {
     if (options.port !== undefined && !/^\d+$/.test(options.port)) {
       program.error(`error: --port must be a number, got ${JSON.stringify(options.port)}`)
     }
+    const resolvedPort = options.port !== undefined ? Number(options.port) : undefined
+    if (resolvedPort !== undefined) {
+      process.env['DSH_WEB_PORT'] = String(resolvedPort)
+    }
     ctx.provide(WEB_STARTUP_SERVICE, {
       openBrowser: options.open,
       ...options.host !== undefined && { host: options.host },
-      ...options.port !== undefined && { port: Number(options.port) },
+      ...resolvedPort !== undefined && { port: resolvedPort },
       trustedHosts: options.trustedHost ?? [],
     } satisfies WebStartupValues)
   })

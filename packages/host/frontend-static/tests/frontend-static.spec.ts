@@ -103,7 +103,14 @@ describe('real Loader composition', () => {
     const server = loaded.webServer
     const port = server.port
     const launchUrl = loaded.connection.authenticatedUrl(`http://127.0.0.1:${String(port)}`)
-    const exchange = await fetch(launchUrl, { redirect: 'manual' })
+    const authorization = `Basic ${Buffer.from(
+      `${process.env.DSH_WEB_USER ?? 'dsh'}:${process.env.DSH_WEB_PASSWORD ?? 'dsh'}`, 'utf8',
+    ).toString('base64')}`
+    // A new browser is challenged first; the answered prompt mints the cookie.
+    const challenge = await fetch(launchUrl, { redirect: 'manual' })
+    expect(challenge.status).toBe(401)
+    expect(challenge.headers.get('www-authenticate')).toBe('Basic realm="dsh web", charset="UTF-8"')
+    const exchange = await fetch(launchUrl, { redirect: 'manual', headers: { authorization } })
     expect(exchange.status).toBe(303)
     expect(exchange.headers.get('location')).toBe('/')
     const setCookie = exchange.headers.get('set-cookie')
@@ -118,7 +125,7 @@ describe('real Loader composition', () => {
     expect(await request(port, '/')).toMatchObject({
       status: 401,
       type: 'text/plain; charset=utf-8',
-      body: 'dsh web authentication required; reopen the URL printed by dsh web.\n',
+      body: 'dsh web username/password required; enter dsh / dsh in the browser prompt.\n',
     })
 
     // Real assets with their MIME types; a live rebuild is served on the next read.

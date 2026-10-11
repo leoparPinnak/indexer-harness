@@ -113,6 +113,11 @@ export interface SummarizationInput {
   readonly head?: Message
   /** The shadowed region's derived messages in surface order. */
   readonly messages: readonly Message[]
+  /**
+   * Media accounting of the replayed span — record cargo for the committed
+   * `compaction/summary`, never part of any model request.
+   */
+  readonly media?: CompactionMediaReport
 }
 
 /** Safe summary content plus the exact auxiliary call envelope recorded with it. */
@@ -180,138 +185,13 @@ interface PartialCheckpoint {
   call: SummarizerCall
 }
 
-/** Longest inline base64 payload replayed verbatim before it is marked. */
-const BASE64_MARK_THRESHOLD = 256
+// Replay media policy and accounting live in `./replay-media.ts`; this module
+// binds them locally (a re-export alone would not) and re-exposes the entry
+// point so the summarizer's public surface stays unchanged for its callers.
+import { sanitizeReplayMedia } from './replay-media.ts'
+import type { CompactionMediaReport } from './replay-media.ts'
 
-/** A `data:*;base64,` payload of marker-worthy length inside free text. */
-const DATA_URI_BASE64_PATTERN = /data:[\w.+#/-]*;base64,[A-Za-z0-9+/=]{256,}/g
-
-/** A JSON string value of marker-worthy length that looks like raw base64. */
-const JSON_BASE64_VALUE_PATTERN = /"[^"\n]{1,64}"\s*:\s*"[A-Za-z0-9+/=]{256,}"/g
-
-/** Stand-in text for one scrubbed inline base64 payload. */
-function base64Marker(characters: number): string {
-  return `[inline base64 omitted at compaction: ${characters} chars]`
-}
-
-/** Stand-in text block for one dropped image block. */
-function imageMarker(block: Extract<ContentBlock, { type: 'image' }>): ContentBlock {
-  return {
-    type: 'text',
-    text: `[image omitted at compaction: ${block.attachment.mediaType}, ${block.attachment.bytes} bytes]`,
-  }
-}
-
-/**
- * Replace marker-worthy inline base64 runs inside one string. Data-URI
- * payloads keep their `data:...;base64,` prefix; JSON-string values keep the
- * key and quoting, so the surrounding structure survives the scrub.
- * @param text - free text (visible text, reasoning, or raw tool arguments).
- * @returns the same string when nothing was scrubbed, otherwise the marked copy.
- */
-function scrubBase64Runs(text: string): string {
-  if (text.length < BASE64_MARK_THRESHOLD) return text
-  const scrubbed = text
-    .replace(DATA_URI_BASE64_PATTERN, (match: string) => {
-      const cut = match.lastIndexOf(',') + 1
-      return `${match.slice(0, cut)}${base64Marker(match.length - cut)}`
-    })
-    .replace(JSON_BASE64_VALUE_PATTERN, (match: string) => {
-      const cut = match.lastIndexOf('":"') + 3
-      return `${match.slice(0, cut)}${base64Marker(match.length - cut - 1)}"`
-    })
-  return scrubbed === text ? text : scrubbed
-}
-
-/** Count every replayed image block, including tool-result nests. */
-function countImageBlocks(blocks: readonly ContentBlock[]): number {
-  let count = 0
-  for (const block of blocks) {
-    if (block.type === 'image') count += 1
-    else if (block.type === 'tool-result') count += countImageBlocks(block.content)
-  }
-  return count
-}
-
-/** Mutable traversal state: how many image blocks the walk has passed. */
-interface ReplayWalkState {
-  imagesSeen: number
-}
-
-/**
- * Sanitize one block list in replay order: scrub every inline base64 run,
- * keep only the image block whose ordinal equals `keepIndex`, and mark the
- * rest. Tool results recurse; tool-call arguments are scrubbed as free text.
- */
-function sanitizeBlocks(
-  blocks: readonly ContentBlock[],
-  state: ReplayWalkState,
-  keepIndex: number,
-): ContentBlock[] {
-  let next: ContentBlock[] | undefined
-  for (const [index, block] of blocks.entries()) {
-    let replacement: ContentBlock | undefined
-    if (block.type === 'image') {
-      const keep = state.imagesSeen === keepIndex
-      state.imagesSeen += 1
-      replacement = keep ? block : imageMarker(block)
-    } else if (block.type === 'tool-result') {
-      const content = sanitizeBlocks(block.content, state, keepIndex)
-      if (content !== block.content) replacement = { ...block, content }
-    } else if (block.type === 'text' || block.type === 'reasoning') {
-      const text = scrubBase64Runs(block.text)
-      if (text !== block.text) replacement = { ...block, text }
-    } else if (block.type === 'tool-call') {
-      const args = scrubBase64Runs(block.arguments)
-      if (args !== block.arguments) replacement = { ...block, arguments: args }
-    }
-    if (replacement !== undefined) {
-      next ??= blocks.slice(0, index)
-      next.push(replacement)
-    } else {
-      next?.push(block)
-    }
-  }
-  return next ?? blocks as ContentBlock[]
-}
-
-/** Apply {@link sanitizeBlocks} to one message under the shared walk state. */
-function sanitizeMessage(
-  message: Message,
-  state: ReplayWalkState,
-  keepIndex: number,
-): Message {
-  const content = sanitizeBlocks(message.content, state, keepIndex)
-  return content === message.content ? message : { ...message, content }
-}
-
-/**
- * Compaction replay media policy: inline base64 never reaches the summarizer,
- * and only the NEWEST image block is replayed as a real image — the freshest
- * visual is the only one the checkpoint can meaningfully describe. Every
- * earlier image becomes an explicit placeholder carrying its media type and
- * byte size, and every base64 run in free text, reasoning, or tool-call
- * arguments becomes a character-count marker. Walk order is the replay order
- * (head first, then messages in surface order, tool results depth-first), so
- * `keepIndex` selects the chronologically last image.
- * @param head - optional system head of the replayed prefix.
- * @param messages - the replayed region messages in surface order.
- * @returns the sanitized head and messages; identity is preserved wherever
- *   nothing was scrubbed or dropped.
- */
-export function sanitizeReplayMedia(
-  head: Message | undefined,
-  messages: readonly Message[],
-): { head: Message | undefined; messages: Message[] } {
-  const totalImages = (head === undefined ? 0 : countImageBlocks(head.content))
-    + messages.reduce((count, message) => count + countImageBlocks(message.content), 0)
-  const keepIndex = totalImages - 1
-  const state: ReplayWalkState = { imagesSeen: 0 }
-  return {
-    head: head === undefined ? undefined : sanitizeMessage(head, state, keepIndex),
-    messages: messages.map(message => sanitizeMessage(message, state, keepIndex)),
-  }
-}
+export { sanitizeReplayMedia }
 
 /**
  * Run the default cache-reusing `ctx.llm.stream()` summarization: replay

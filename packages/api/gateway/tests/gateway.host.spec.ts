@@ -174,14 +174,21 @@ async function serveRoute(route: WebRoute): Promise<{ readonly origin: string; c
   }
 }
 
-/** Exchange a Connection launch token without mounting the frontend fallback. */
+/** The answered browser prompt: base64(username:password) of the deployment credentials. */
+function basicAuthorization(): string {
+  const user = process.env.DSH_WEB_USER ?? 'dsh'
+  const password = process.env.DSH_WEB_PASSWORD ?? 'dsh'
+  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+/** Answer the username/password prompt without mounting the frontend fallback. */
 function browserCookie(connection: HostConnectionHandle, origin: string): string {
   const target = new URL(connection.authenticatedUrl(origin))
   let setCookie: string | undefined
   connection.authorizeIndex({
     method: 'GET',
-    url: `${target.pathname}${target.search}`,
-    headers: { host: target.host },
+    url: '/',
+    headers: { host: target.host, authorization: basicAuthorization() },
   }, {
     writeHead(_status, headers) { setCookie = headers?.['set-cookie'] },
     end() {},

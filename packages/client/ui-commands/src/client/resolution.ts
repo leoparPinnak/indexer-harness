@@ -8,6 +8,7 @@ const BUILTINS = {
   plan: '@deepseek-ai/dsh-plan-mode',
   feedback: '@deepseek-ai/dsh-command-feedback',
   compact: '@deepseek-ai/dsh-command-compact',
+  dsh_restart: '@deepseek-ai/dsh-command-restart',
   permission: '@deepseek-ai/dsh-permission-presets',
   export: '@deepseek-ai/dsh-session-log-export',
 } as const

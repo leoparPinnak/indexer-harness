@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-23-ws-sandbox-frame-stream.md
-2026-09-23-ws-sandbox-frame-stream.md: 0c6f458276a77f8189e80db494bee2c258a07f2f
-2026-09-23-ws-sandbox-frame-stream.zh.md: d85b4948258741e49e871192ae51c5da980cae25
+2026-09-23-ws-sandbox-frame-stream.md: 06afebafe50c13bd94fbbf191460257a3a5b6fbc
+2026-09-23-ws-sandbox-frame-stream.zh.md: 56e2f2c4e08665c4ad2445b746cbfa09adc72030

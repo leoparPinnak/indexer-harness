@@ -104,16 +104,22 @@ async function mounted(config?: ConnectionConfig): Promise<{
   }
 }
 
-/** Exchange a service's process token for one authority-bound Cookie header. */
+/** The answered browser prompt: base64(username:password) of the deployment credentials. */
+function basicAuthorization(): string {
+  const user = process.env.DSH_WEB_USER ?? 'dsh'
+  const password = process.env.DSH_WEB_PASSWORD ?? 'dsh'
+  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+/** Answer the username/password prompt for one authority-bound Cookie header. */
 function browserCookie(connection: HostConnectionHandle, authority: string): string {
-  const url = new URL(connection.authenticatedUrl(`http://${authority}`))
   const exchanged = fakeResponse()
   connection.authorizeIndex(
-    fakeRequest({ host: authority }, `${url.pathname}${url.search}`),
+    fakeRequest({ host: authority, authorization: basicAuthorization() }, '/'),
     exchanged.response,
   )
   const setCookie = exchanged.state.headers?.['set-cookie']
-  if (setCookie === undefined) throw new Error('browser token exchange did not set a cookie')
+  if (setCookie === undefined) throw new Error('username/password answer did not set a cookie')
   return setCookie.split(';', 1)[0]!
 }
 

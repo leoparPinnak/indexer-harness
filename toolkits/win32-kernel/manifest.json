@@ -1,0 +1,41 @@
+{
+  "setId": "win32-kernel",
+  "title": "Win32 Çekirdek Müdahale Motoru",
+  "capabilitySet": "kernel-intervention",
+  "authority": "kernel",
+  "personaSummary": "Çekirdek müdahalesi: MmCopyVirtualMemory ile süreçler arası sanal bellek kopyalama ve pencere sınıfına göre girdi enjeksiyonu. Dört araç; PPL dahil çekirdek süreç bağlanma ve APC tabanlı çalıştırma başlatma. IOCTL tabanlı sürücü yüzeyinde çalışır; ne zaman kullanacağına sen karar verirsin.",
+  "tools": [
+    {
+      "id": "kcopy",
+      "authority": "kernel",
+      "guide": "tools/kcopy.md",
+      "code": "tools/kcopy.c",
+      "fireEmbed": "code+guide",
+      "summary": "MmCopyVirtualMemory ile iki PID'in sanal adres alanları arasında blok kopyalar"
+    },
+    {
+      "id": "kattach",
+      "authority": "kernel",
+      "guide": "tools/kattach.md",
+      "code": "tools/kattach.c",
+      "fireEmbed": "code",
+      "summary": "PID'e çekirdek süreç kolu üretir (PPL dahil); koruma sınıfı yoklaması yapar"
+    },
+    {
+      "id": "kinput",
+      "authority": "kernel",
+      "guide": "tools/kinput.md",
+      "code": "tools/kinput.c",
+      "fireEmbed": "code+guide",
+      "summary": "pencere sınıfı adına göre pencereyi bulur, öne alır ve win32k üzerinden girdi enjekte eder"
+    },
+    {
+      "id": "kapc",
+      "authority": "kernel",
+      "guide": "tools/kapc.md",
+      "code": "tools/kapc.c",
+      "fireEmbed": "code+guide",
+      "summary": "payload'ı hedef VA'ya yerleştirip kullanıcı APC ile çalıştırma başlatır"
+    }
+  ]
+}

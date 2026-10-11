@@ -23,11 +23,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## Use this package
 
-常见路径：`@deepseek-ai/dsh-deamon` 在其辅助守护进程中挂载服务端、在宿主桥接中挂载客户端，于是命令与事件以管道帧穿越，而浏览器继续使用它的 HTTP 与 WebSocket 表面。
+常见路径：宿主桥接挂载客户端、其辅助守护进程挂载服务端，于是命令与事件以管道帧穿越，而浏览器继续使用它的 HTTP 与 WebSocket 表面。
 
 ### When to choose it
 
-当同机跳转发生在两个 dsh 进程之间、且消息需要预算、大小上限与已认证的对端时，选择本网关；`@deepseek-ai/dsh-deamon` 的 `deamon.transport` 以 `pipe`（默认）选择它，回环旧路径为 `http`（D9 移除）。当调用方是浏览器或外部工具时仍用 HTTP——管道端点为单个 home 私有，从不绑定 TCP 端口。
+当同机跳转发生在两个 dsh 进程之间、且消息需要预算、大小上限与已认证的对端时，选择本网关；调用方的传输选项以 `pipe`（默认）选择它，回环旧路径为 `http`（D9 移除）。当调用方是浏览器或外部工具时仍用 HTTP——管道端点为单个 home 私有，从不绑定 TCP 端口。
 
 ### Minimal configuration
 
@@ -74,9 +74,9 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [dsh-deamon](../bundle/deamon/README.md)——经本网关对话的桥接与辅助守护进程
-- [dsh-host-webserver](../../host/webserver/README.md)——为浏览器保留的 HTTP 表面
-- [Development](../../../docs/development.md)——贡献者工作流与检查通道
+- [dsh-deamon](../../../protop/shellbox/deamon/README.zh.md)——经本网关对话的桥接与辅助守护进程
+- [dsh-host-webserver](../../host/webserver/README.zh.md)——为浏览器保留的 HTTP 表面
+- [Development](../../../docs/development.zh.md)——贡献者工作流与检查通道
 
 -----
 

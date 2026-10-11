@@ -49,6 +49,15 @@ export {
   type ProfileTemplate,
 } from './profile.ts'
 
+export {
+  portBusy,
+  RESTART_WAIT_POLL_MS,
+  RESTART_WAIT_PORT_ENV,
+  RESTART_WAIT_TIMEOUT_ENV,
+  RESTART_WAIT_TIMEOUT_MS,
+  waitForPortRelease,
+} from './restart-wait.ts'
+
 /**
  * Resolve the config to boot. Replay swaps a `cordis.yml` basename for
  * `cordis.snapshot.yml` in the same directory; every other mode keeps the path.

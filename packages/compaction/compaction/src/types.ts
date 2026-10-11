@@ -215,6 +215,13 @@ declare module '@deepseek-ai/dsh-session/types' {
        * single-call arm below.
        */
       intermediateCalls?: CompactionSummaryCall[]
+      /**
+       * Media accounting for the shadowed span: how many images entered the
+       * compacted context, how many the replay withheld behind placeholders,
+       * the payload characters recovered, and per-image preview identities.
+       * Absent when the backend predates the figures.
+       */
+      media?: CompactionMediaReport
     } & (
       | {
         /** Complete provider output before the backend's safe summary projection. */
@@ -322,10 +329,54 @@ declare module '@deepseek-ai/cordis' {
     /**
      * Live compaction summarize-call progress — process-local and transient,
      * published per stream chunk while a compaction runs.
+     * @mode emit
      * @param payload - one ordered live frame of the running compaction.
      */
     'compaction/stream'(payload: CompactionStreamFrame): void
   }
+}
+
+/** One image's preview identity as the media accounting reports it. */
+export interface CompactionMediaPreview {
+  /** Durable attachment identity; the client renders previews through its image loader. */
+  attachmentId: string
+  /** Original file name when the attachment carried one. */
+  name: string | null
+  /** MIME type of the payload. */
+  mediaType: string
+  /** Payload size in bytes as reported by the attachment. */
+  bytes: number
+  /** Whether the image rode the summarizer replay (`kept`) or became a placeholder (`pruned`). */
+  disposition: 'kept' | 'pruned'
+}
+
+/**
+ * Media accounting for one compacted span: what the summarizer replay withheld
+ * and what the replacement no longer carries into the model context. Counts are
+ * computed host-side from the replay-sanitization walk so every client shows
+ * one set of numbers.
+ */
+export interface CompactionMediaReport {
+  /** Image blocks found in the shadowed span (inline payloads included). */
+  images: number
+  /** Images replayed as real images (the newest one survives the replay policy). */
+  imagesKept: number
+  /** Images replaced by explicit placeholders in the summarizer replay. */
+  imagesPruned: number
+  /** Inline base64 runs scrubbed from free text, reasoning, and tool-call arguments. */
+  inlineRunsPruned: number
+  /**
+   * Payload characters withheld from the replay: scrubbed base64 characters
+   * plus the pruned images' reported payload bytes.
+   */
+  charactersPruned: number
+  /**
+   * Rough token equivalent of {@link CompactionMediaReport.charactersPruned}
+   * (four characters per token) — an ESTIMATE, labeled as such in the UI.
+   */
+  tokensPrunedEstimate: number
+  /** Per-image preview identities in replay order. */
+  previews: CompactionMediaPreview[]
 }
 
 /** Result of a successful compaction operation. */
@@ -355,4 +406,6 @@ export interface CompactionResult {
   shadowedSeqs: SessionSeq[]
   /** Estimated token count of the shadowed content. */
   shadowedTokenCount: number
+  /** Media accounting for the shadowed span, when the backend computed it. */
+  media?: CompactionMediaReport
 }

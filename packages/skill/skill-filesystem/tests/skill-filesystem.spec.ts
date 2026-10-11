@@ -918,4 +918,18 @@ describe('FileSystemSkillProvider', () => {
       }
     }
   })
+
+  it('discovers skills from configured skillCatalogDir when agentsHome is omitted', async () => {
+    const catalogDir = await tempDir('skill-catalog-test')
+    await writeSkill(catalogDir, 'catalog-skill', 'Catalog skill')
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, {
+      skillCatalogDir: catalogDir,
+      watch: false,
+    })
+    const skills = await ctx.skills.list()
+    expect(skills.find(skill => skill.name === 'catalog-skill')?.description).toBe('Catalog skill')
+    await ctx.fiber.dispose()
+  })
 })

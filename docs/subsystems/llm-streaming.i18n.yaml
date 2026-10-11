@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/llm-streaming.md
-llm-streaming.md: f050a9b07cf35a9cb9105048970d42937fee6480
-llm-streaming.zh.md: 7d5bdec5b1f29b29c75a3e52bc75c27acd942065
+llm-streaming.md: f5b1f03b6e00fbbeadca287910dca37307aad634
+llm-streaming.zh.md: aebe7d4e4f33a0d4afc556da0659a47196c558cf

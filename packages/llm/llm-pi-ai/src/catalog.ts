@@ -36,21 +36,40 @@ import type {
  */
 const NO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 
-/** One request modality a pi-ai model may accept. */
-export type PiAiModality = Model<Api>['input'][number]
+/** One request modality pi-ai's own `Model` type declares. */
+type PiAiUpstreamModality = Model<Api>['input'][number]
 
 /**
  * Every pi-ai request modality. The `Record` key type is a drift gate: a pi-ai
  * upgrade that adds or removes a modality fails compilation here naming the
  * drifted key, instead of silently narrowing what a profile may declare.
  */
-const MODALITY_GATE: Record<PiAiModality, true> = {
+const UPSTREAM_MODALITY_GATE: Record<PiAiUpstreamModality, true> = {
   text: true,
   image: true,
 }
 
+/**
+ * Media modalities a profile may declare beyond pi-ai's own request type.
+ * pi-ai never serializes audio or video request content — it tests a model's
+ * `input` only through `includes("image")` — so declaring one records the
+ * endpoint's claimed capability on the model metadata and gates nothing
+ * further. A future pi-ai release that adds these to its own union collapses
+ * the duplication through {@link UPSTREAM_MODALITY_GATE}.
+ */
+const MEDIA_MODALITIES = ['audio', 'video'] as const
+
 /** Every request modality a profile may declare. */
-export const MODALITIES = Object.keys(MODALITY_GATE) as readonly PiAiModality[]
+export type PiAiModality = PiAiUpstreamModality | (typeof MEDIA_MODALITIES)[number]
+
+/**
+ * Every request modality a profile may declare: pi-ai's own set first, then
+ * the declared-only media modalities.
+ */
+export const MODALITIES = [
+  ...(Object.keys(UPSTREAM_MODALITY_GATE) as PiAiUpstreamModality[]),
+  ...MEDIA_MODALITIES,
+] as readonly PiAiModality[]
 
 /**
  * One entry's modality list, or `undefined` when it states no answer. Absent
@@ -61,7 +80,7 @@ export const MODALITIES = Object.keys(MODALITY_GATE) as readonly PiAiModality[]
  * @param configured - the list a `models` or `modelOverrides` entry supplied.
  * @returns the declared modalities, or `undefined` to ask the next level.
  */
-function declaredInput(configured: readonly PiAiModality[] | undefined): Model<Api>['input'] | undefined {
+function declaredInput(configured: readonly PiAiModality[] | undefined): readonly PiAiModality[] | undefined {
   return configured === undefined || configured.length === 0 ? undefined : [...configured]
 }
 
@@ -252,9 +271,9 @@ const COMPLETIONS_COMPAT_GATE = {
   vercelGatewayRouting: 'withhold',
   zaiToolStream: 'withhold',
   supportsOpenAIGrammarTools: 'withhold',
-  sendSessionAffinityHeaders: 'withhold',
+  sendSessionAffinityHeaders: 'offer',
   deferredToolsMode: 'withhold',
-  sessionAffinityFormat: 'withhold',
+  sessionAffinityFormat: 'offer',
 } as const satisfies Record<keyof OpenAICompletionsCompat, CompatDisposition>
 
 /** Disposition of every `OpenAIResponsesCompat` field; a drift gate like the one above. */
@@ -428,6 +447,22 @@ export interface PiAiCompatProfile {
   allowEmptySignature?: boolean
   /** Whether the endpoint accepts Anthropic strict tool schemas; `anthropic-messages`. */
   supportsStrictTools?: boolean
+  /**
+   * Whether to send session-affinity headers derived from the request's session
+   * id, shaped by `sessionAffinityFormat`; `openai-completions`. Made for an
+   * anonymous gateway whose session routing nothing can infer: pi-ai's
+   * detection answers as though the endpoint were OpenAI itself, where the
+   * feature is off, so a deployment states it instead.
+   */
+  sendSessionAffinityHeaders?: boolean
+  /**
+   * Which session-affinity headers one request carries when
+   * `sendSessionAffinityHeaders` is on: `openai` sends `session_id`,
+   * `x-client-request-id`, and `x-session-affinity`; `openai-nosession` sends
+   * `x-client-request-id` and `x-session-affinity`; `openrouter` sends
+   * `x-session-id`. `openai-completions`.
+   */
+  sessionAffinityFormat?: NonNullable<OpenAICompletionsCompat['sessionAffinityFormat']>
 }
 
 /** Compile-time constraint that `T` is `never`. */
@@ -591,10 +626,12 @@ export interface PiAiModelProfile {
    * installed catalog entry's modalities, then the route's `defaultInput`.
    * Declaring images is what makes a hand-declared vision model usable, and
    * declaring text alone corrects a catalog model whose gateway does not serve
-   * what the catalog records. This is a claim about the endpoint, not a check
-   * of it: nothing interrogates a gateway for what it accepts, so a model
-   * claiming images its endpoint refuses is refused by the provider instead,
-   * mid-turn.
+   * what the catalog records. `audio` and `video` are declarable capability
+   * metadata that reach the model info unchanged; no adapter serializes
+   * request content in either, so they gate nothing. This is a claim about
+   * the endpoint, not a check of it: nothing interrogates a gateway for what
+   * it accepts, so a model claiming images its endpoint refuses is refused by
+   * the provider instead, mid-turn.
    */
   input?: PiAiModality[]
   /**
@@ -639,7 +676,7 @@ export interface RouteCatalogRequest {
   /** Output capability for a model neither the entry nor the catalog sizes. */
   defaultMaxTokens: number
   /** Modalities for a model neither the entry nor the catalog declares. */
-  defaultInput: Model<Api>['input']
+  defaultInput: readonly PiAiModality[]
 }
 
 /** An expected configuration failure that stored-catalog reads may retain for repair. */
@@ -706,7 +743,9 @@ function resolveModelReasoning(
     // sends, so a provider whose own default is to think would keep thinking
     // with `off` selected. Declaring the model non-reasoning leaves the seam
     // reporting the capability unavailable instead of selling that control.
-    if (base !== undefined) return { reasoning: base.reasoning, ...(base.thinkingLevelMap !== undefined ? { thinkingLevelMap: base.thinkingLevelMap } : {}) }
+    if (base !== undefined) {
+      return { reasoning: base.reasoning, ...(base.thinkingLevelMap !== undefined ? { thinkingLevelMap: base.thinkingLevelMap } : {}) }
+    }
     return { reasoning: false }
   }
   // A YAML `reasoningEfforts:` left valueless arrives as null through the
@@ -934,7 +973,10 @@ export function resolveRouteModels(
       api,
       provider,
       baseUrl,
-      input: declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput],
+      // pi-ai types `Model.input` as `("text" | "image")[]` and reads it only
+      // through `includes("image")`; declared `audio`/`video` entries pass
+      // that read untouched and reach the adapter's model metadata.
+      input: (declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput]) as Model<Api>['input'],
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,

@@ -327,11 +327,22 @@ Source: [`packages/interaction/commands/src/types.ts:105`](../packages/interacti
 /**
  * Marks the end of a compaction — log-only, releases the lock. Its owner
  * matches `compaction/start`; `error` records an unsuccessful attempt.
+ * `cancelled` closes the bracket NEUTRALLY when the operator (or an
+ * enclosing cancellation) stopped the run: a cancelled attempt is not a
+ * failure, never checkpoints a partial summary, and its close carries no
+ * `error`.
  */
-'compaction/end': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null; error?: string }
+'compaction/end': {
+  compactionId: CompactionId
+  sourceCommandId?: CommandId
+  turn: number | null
+  error?: string
+  /** Present (true) on a neutral operator/agent cancellation close. */
+  cancelled?: true
+}
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:192`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:240`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionmode--log-only"></a>
 
@@ -347,7 +358,7 @@ Source: [`packages/compaction/compaction/src/types.ts:192`](../packages/compacti
 'compaction/mode': CompactionSessionMode
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:216`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:271`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionprune--log-only"></a>
 
@@ -373,7 +384,7 @@ Source: [`packages/compaction/compaction/src/types.ts:216`](../packages/compacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:202`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:257`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionstart--log-only"></a>
 
@@ -385,10 +396,27 @@ Source: [`packages/compaction/compaction/src/types.ts:202`](../packages/compacti
  * `compaction/end`. A numbered owner is strictly enclosed by that open turn;
  * `null` identifies a standalone manual transaction between turns.
  */
-'compaction/start': { compactionId: CompactionId; sourceCommandId?: CommandId; turn: number | null }
+'compaction/start': {
+  compactionId: CompactionId
+  sourceCommandId?: CommandId
+  turn: number | null
+  /**
+   * Route that will write the summary, resolved before the first summarize
+   * call so a live row can name the model while it is still running. Absent
+   * when a backend cannot name its summarizer route up front.
+   */
+  provider?: string
+  model?: string
+  /**
+   * Session surface pressure at the moment the transaction opened, in
+   * tokens. This is the "context going in" figure a live row shows before
+   * the model answers.
+   */
+  contextTotalTokens?: number
+}
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:125`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:140`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionsummary--log-only"></a>
 
@@ -425,6 +453,18 @@ Source: [`packages/compaction/compaction/src/types.ts:125`](../packages/compacti
   /** Provider-reported token usage for the summarization request, when emitted. */
   usage?: TokenUsage
   /**
+   * Token price of the framed replacement checkpoint — the "context coming
+   * back" half of the ratio. Absent when the backend cannot price its own
+   * replacement.
+   */
+  replacementTokenCount?: number
+  /**
+   * Fraction of the shadowed context that the replacement removed, in
+   * [0, 1]. Derived host-side so every client shows one number rather than
+   * recomputing it from two independently rounded counts.
+   */
+  reductionRatio?: number
+  /**
    * Map and intermediate-merge calls whose outputs the final call
    * consolidated, in call order. Absent on a one-shot summary; the final
    * call's own envelope and output stay in the fields above and in the
@@ -449,7 +489,7 @@ Source: [`packages/compaction/compaction/src/types.ts:125`](../packages/compacti
 
 Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/compaction/compaction/src/types.ts:147`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:179`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionwindows--log-only"></a>
 
@@ -470,7 +510,7 @@ Source: [`packages/compaction/compaction/src/types.ts:147`](../packages/compacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:132`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:164`](../packages/compaction/compaction/src/types.ts)
 
 ### `deliverables/*`
 
@@ -846,7 +886,7 @@ Source: [`packages/session/session-log-deepseek/src/types.ts:81`](../packages/se
 }
 ```
 
-Source: [`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/src/types.ts)
+Source: [`packages/session/session-persistence/src/retained-log-vocabulary.ts:92`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 <a id="shellboxchange--log-only"></a>
 
@@ -876,7 +916,7 @@ Source: [`packages/bundle/deamon/src/types.ts:162`](../packages/bundle/deamon/sr
 }
 ```
 
-Source: [`packages/bundle/deamon/src/types.ts:146`](../packages/bundle/deamon/src/types.ts)
+Source: [`packages/session/session-persistence/src/retained-log-vocabulary.ts:76`](../packages/session/session-persistence/src/retained-log-vocabulary.ts)
 
 ### `step/*`
 

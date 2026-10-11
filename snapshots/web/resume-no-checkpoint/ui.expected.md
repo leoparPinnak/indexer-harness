@@ -1,0 +1,34 @@
+- banner:
+  - navigation "Session hierarchy":
+    - 'button "Run two shell commands: wait" [disabled]'
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: "Run two shell commands: wait for cancellation, then write skipped.txt. {{clock}}"
+- button "Copy":
+  - img
+- button "Context injection @deepseek-ai/dsh-system-prompt":
+  - img
+  - img
+  - text: Context injection @deepseek-ai/dsh-system-prompt
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Add files or run commands":
+  - img
+- 'button "Access mode, current: Full access"': Full access
+- button "Resume (n/a)" [disabled]
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "Send message" [disabled]
+- img
+- text: 1 turns 1 steps
+- button "Auto-push is off, press to turn on": AUTO-PUSH
+- button "0 · Nothing pushed yet"

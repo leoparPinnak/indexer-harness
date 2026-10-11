@@ -214,6 +214,21 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
 }
 
 /**
+ * The parent-session link header, offered only to routes that opted into
+ * session affinity: internal session lineage must not leave for providers
+ * that never asked for session identity.
+ * @param model - the resolved model whose compat carries the route's opt-in.
+ * @param options - the request whose subagent lineage may be stamped.
+ * @returns the header to merge, or none.
+ */
+function parentSessionHeader(model: Model<Api>, options: GenerateOptions): Record<string, string> {
+  if (options.parentSessionId === undefined) return {}
+  const compat = model.compat as { sendSessionAffinityHeaders?: boolean } | undefined
+  if (compat?.sendSessionAffinityHeaders !== true) return {}
+  return { 'x-parent-session-id': String(options.parentSessionId) }
+}
+
+/**
  * pi-ai-backed multi-provider adapter. Each operation reads the current
  * profiles, so a configuration change reaches the next request without a
  * restart; model descriptors come from the collection those profiles built.
@@ -423,8 +438,13 @@ export class PiAiAdapter extends LlmAdapter {
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
         // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        // Harness-owned and therefore win collisions. The parent-session
+        // link rides only routes with session affinity on (see
+        // parentSessionHeader).
+        headers: {
+          ...requestHeaders(profile.headers),
+          ...parentSessionHeader(model, options),
+        },
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false

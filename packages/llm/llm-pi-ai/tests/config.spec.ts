@@ -67,9 +67,11 @@ describe('reasoning schema boundary', () => {
 })
 
 describe('modality schema boundary', () => {
-  it('rejects a modality pi-ai does not know, at either level', () => {
-    expect(configWith({ input: ['audio'] })).toThrow(/expected/)
-    expect(routeWith({ defaultInput: ['text', 'audio'] })).toThrow(/expected/)
+  it('accepts the audio and video declarations and rejects a modality nothing knows', () => {
+    expect(configWith({ input: ['text', 'audio', 'video'] })).not.toThrow()
+    expect(routeWith({ defaultInput: ['text', 'video'] })).not.toThrow()
+    expect(configWith({ input: ['hologram'] })).toThrow(/expected/)
+    expect(routeWith({ defaultInput: ['text', 'hologram'] })).toThrow(/expected/)
   })
 
   it('refuses a route whose models could accept nothing', () => {

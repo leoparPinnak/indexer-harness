@@ -59,6 +59,12 @@ type PreparedStep =
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
+    /**
+     * Operator RESUME: the checkpoint answer's still-pending tool calls,
+     * settled FIRST through the ordinary tool path before the continued model
+     * call is built.
+     */
+    pendingToolCalls?: readonly ToolCallBlock[]
   }
 
 /** Remove adapter-derived values before plugins propose the next request config. */
@@ -146,6 +152,59 @@ export class ReactLoopAgent implements Agent {
 
   inject(input: UserMessage): void {
     this.send(input, 'next-step', false)
+  }
+
+  /** Pending operator-RESUME bookkeeping consumed by the next {@link turn}. */
+  private resumeRequest: { ofTurn: number; pendingToolCalls: readonly ToolCallBlock[] } | undefined
+
+  /** Continuation of the turn currently being opened, consumed by its first pre-step. */
+  private pendingContinuation: { pendingToolCalls: readonly ToolCallBlock[] } | undefined
+
+  /**
+   * Operator RESUME: reopen the flow after a CUT turn and re-drive the model
+   * from the RESUME CHECKPOINT — the last COMPLETED model request (its
+   * `assistant/message` without `interrupted`). The cut request's delivered
+   * prefix stays in the journal as history (`assistant/message
+   * {interrupted: true}`) and replays as past content, never presented as a
+   * completed answer; the continuation turn declares a fresh message series so
+   * the provider answers anew. The checkpoint answer's still-pending tool calls
+   * settle first through the SAME tool path, then the ordinary step machine
+   * continues — the operator-controlled fork of the model-request retry.
+   * @throws when the agent is not idle.
+   */
+  resume(): void {
+    if (this.phase.kind !== 'idle') {
+      throw new Error(`agent "${this.id}" already has active work`)
+    }
+    // Pending = the checkpoint answer's tool calls with no settled result: a cut
+    // can land between a completed request and its tool settlement, and those
+    // calls must finish before the continued request is built.
+    const settled = new Set<string>()
+    // Existing Session history read; migration deferred.
+    // oxlint-disable-next-line typescript/no-deprecated
+    for (const event of this.session.snapshotEvents()) {
+      if (event.type === 'tool/result') settled.add(String(event.data.message.source.callId))
+    }
+    const pendingToolCalls: ToolCallBlock[] = []
+    let foundCheckpoint = false
+    // oxlint-disable-next-line typescript/no-deprecated
+    for (const event of [...this.session.snapshotEvents()].reverse()) {
+      if (event.type !== 'assistant/message') continue
+      // The severed prefix is history, not a completed answer: SKIP it and keep
+      // scanning — only a NON-interrupted settlement is the checkpoint.
+      if (event.data.interrupted === true) continue
+      for (const block of event.data.message.content) {
+        if (block.type === 'tool-call' && !settled.has(String(block.id))) pendingToolCalls.unshift(block)
+      }
+      foundCheckpoint = true
+      break
+    }
+    // Nothing completed precedes the cut: the honest NO-OP. The Host refuses
+    // upstream with a reason (`evaluateResumeState`); a direct call simply
+    // opens no turn and spends no model call.
+    if (!foundCheckpoint) return
+    this.resumeRequest = { ofTurn: this.phase.lastTurn, pendingToolCalls }
+    this.wakeDriver()
   }
 
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
@@ -239,7 +298,11 @@ export class ReactLoopAgent implements Agent {
     }
   }
 
-  private async preStep(target: InboxTarget, position: { turn: number; step: number }): Promise<PreparedStep> {
+  private async preStep(
+    target: InboxTarget,
+    position: { turn: number; step: number },
+    continuation?: { pendingToolCalls: readonly ToolCallBlock[] },
+  ): Promise<PreparedStep> {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     const signal = this.phase.abort.signal
@@ -253,11 +316,19 @@ export class ReactLoopAgent implements Agent {
       (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
         kind: 'enter',
         messages: context === undefined ? claimed : [...claimed, context],
+        // Operator RESUME: the continuation turn opens a FRESH message series —
+        // the severed prefix is past content, not a half-answered assistant turn
+        // the provider should continue.
+        ...continuation === undefined ? {} : { startsRequestSeries: true },
       }),
     )
     signal.throwIfAborted()
     if (decision.kind === 'reject') return decision
-    return { ...decision, assembly }
+    return {
+      ...decision,
+      assembly,
+      ...continuation === undefined ? {} : { pendingToolCalls: continuation.pendingToolCalls },
+    }
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -276,8 +347,21 @@ export class ReactLoopAgent implements Agent {
     const { signal } = phase.abort
     signal.throwIfAborted()
     const turn = phase.turn + 1
+    // Operator RESUME bookkeeping: one continuation turn per resume(), its
+    // optional durable marker naming the cut turn whose checkpoint this flow
+    // continues. The severed prefix stays history (`assistant/message
+    // {interrupted: true}`); the fresh series marker keeps it from posing as a
+    // completed answer the provider should continue.
+    const continuation = this.resumeRequest
+    this.resumeRequest = undefined
+    this.pendingContinuation = continuation === undefined
+      ? undefined
+      : { pendingToolCalls: continuation.pendingToolCalls }
     try {
-      this.session.append('turn/start', { turn })
+      this.session.append('turn/start', {
+        turn,
+        ...continuation === undefined ? {} : { continuation: { ofTurn: continuation.ofTurn } },
+      })
     } catch (error: unknown) {
       this.throwError(error)
     }
@@ -288,7 +372,13 @@ export class ReactLoopAgent implements Agent {
       while (true) {
         signal.throwIfAborted()
         const step = phase.step + 1
-        const decision = await this.preStep(target, { turn, step })
+        // The continuation's tool settlement + fresh series declaration ride
+        // its FIRST step only, and lift the empty-input close below: an
+        // operator continuation spends its model call from the JOURNAL-derived
+        // request even though it claims no new inbox input.
+        const continuation = step === 1 ? this.pendingContinuation : undefined
+        if (step === 1) this.pendingContinuation = undefined
+        const decision = await this.preStep(target, { turn, step }, continuation)
         if (decision.kind === 'reject') {
           turnEnds = { kind: 'blocked' }
           return false
@@ -296,7 +386,7 @@ export class ReactLoopAgent implements Agent {
         if (turnEnds && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
-        if (phase.step === 0 && decision.messages.length === 0) {
+        if (phase.step === 0 && decision.messages.length === 0 && continuation === undefined) {
           turnEnds = { kind: 'completed' }
           return false
         }
@@ -359,6 +449,15 @@ export class ReactLoopAgent implements Agent {
 
     const { assembly } = decision
     const renderedPrompt = renderPrompt(assembly)
+    // Operator RESUME: the checkpoint answer's still-pending tool calls settle
+    // FIRST through the ordinary tool path, so the continued request is built
+    // with their results in place ("remaining tool turns first, then the loop").
+    if (decision.pendingToolCalls !== undefined && decision.pendingToolCalls.length > 0) {
+      await executeToolCalls(
+        this.loopCtx, turn, step, [...decision.pendingToolCalls], signal,
+        context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
+      )
+    }
     let firstAttempt = true
     while (true) {
       const { config, preparedCall } = await this.prepareRequest(turn, step, signal)
@@ -626,6 +725,11 @@ export class ReactLoopAgent implements Agent {
       messages: boundaryMessages,
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
+      // Subagent lineage: the gateway binds a child's requests to the session
+      // that spawned it (one conversation's API affinity, subagents included).
+      ...this.session.header.parentSession === undefined
+        ? {}
+        : { parentSessionId: this.session.header.parentSession },
       signal,
       ...keepLatestImagesOf(session, this.loopCtx.get('sessionProjections')) === undefined
         ? {}

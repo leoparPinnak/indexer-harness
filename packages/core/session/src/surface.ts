@@ -142,6 +142,19 @@ export function validateSessionEventData(
   subject: string,
 ): void {
   const data: unknown = event.data
+  if (event.type === 'turn/start') {
+    // Optional operator-RESUME marker: strictly structural at create time (the
+    // whole-log strictly-earlier relation belongs to the append-time trace
+    // invariant). Old logs carry no marker and read unchanged.
+    const continuation = isRecord(data) ? data['continuation'] : undefined
+    if (continuation !== undefined) {
+      const ofTurn = isRecord(continuation) ? continuation['ofTurn'] : undefined
+      if (typeof ofTurn !== 'number' || !Number.isSafeInteger(ofTurn) || ofTurn <= 0) {
+        throw new Error(`${subject} continuation.ofTurn must be a positive safe integer`)
+      }
+    }
+    return
+  }
   if (event.type === 'request/header') {
     if (!isRecord(data)) throw new Error(`${subject} data must be an object`)
     const header = data['header']

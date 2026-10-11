@@ -749,6 +749,14 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspectio
 @Remote('selectModel') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>
 
 /**
+ * Stop one running compaction transaction: aborts the in-flight summarizer
+ * request and closes the bracket with the neutral `cancelled` marker.
+ * @param request - compaction identity from `compaction/start`.
+ * @returns whether a live compaction was cancelled.
+ */
+@Remote('cancelCompaction') cancelCompaction( request: SessionCancelCompactionRequest, ): Promise<SessionCancelCompactionValue>
+
+/**
  * Install one Session-local compaction mode.
  * @param request - Session identity and complete next mode value.
  * @returns the validated mode installed for the Session.

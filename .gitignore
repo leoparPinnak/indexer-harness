@@ -48,3 +48,9 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+*.log
+baslat.bat.yedek*
+baslat-gizli.vbs
+.dsh/
+logs/

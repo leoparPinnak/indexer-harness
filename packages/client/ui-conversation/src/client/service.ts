@@ -18,11 +18,12 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-file-upload/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session/types'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  ComposerAttachment, ComposerFileAttachment, ComposerImageAttachment, DraftFileUpload,
+  ComposerAttachment, ComposerFileAttachment, ComposerImageAttachment, ComposerResumeState, DraftFileUpload,
 } from './contract/slots.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './contract/composer-blocks.ts'
@@ -39,6 +40,14 @@ import type { InputSubmitMode } from './contract/composer-submission.ts'
 export interface IConversation {
   /** The per-session input machine registry (SessionInputResolver face). */
   readonly input: SessionInputResolver
+  /**
+   * Operator RESUME: re-drive the model from the resume checkpoint (the last
+   * COMPLETED model request) after a cut turn. Resolves an honest refusal for
+   * the affordance to surface inline.
+   */
+  resume(): Promise<{ readonly ok: boolean; readonly error?: { readonly message: string } }>
+  /** Operator RESUME verdict: the shared journal fold over the durable window. */
+  resumeState(): ComposerResumeState
   /**
    * The per-session composer-block registry: how a plugin the composer
    * cannot import makes a session's input inert with its own reason.
@@ -135,6 +144,9 @@ function base64ImageOf(file: File): Promise<string> {
   })
 }
 
+/** Budgeted re-read window for the Host-folded RESUME verdict (see {@link ConversationController.resumeState}). */
+const RESUME_VERDICT_TTL_MS = 700
+
 /** Unsupported browser-declared image type, localized by the UI boundary. */
 export class UnsupportedImageMediaTypeError extends Error {
   /** Browser-declared MIME value, possibly empty. */
@@ -168,6 +180,11 @@ export class ConversationController extends Service implements IConversation {
   }> = []
   private activeFileUploads = 0
   private readonly maxConcurrentFileUploads: number
+  /** Last Host-folded RESUME verdict per Session (TTL-bounded, see {@link RESUME_VERDICT_TTL_MS}). */
+  private readonly resumeVerdictCache = new Map<SessionId, {
+    readonly at: number
+    readonly value: ComposerResumeState
+  }>()
 
   /**
    * @param ctx - owning root context (the plugin apply context; the service
@@ -508,6 +525,74 @@ export class ConversationController extends Service implements IConversation {
     const session = this.scopedSession('cancel')
     const result = await session.cancel()
     if (!result.ok) throw new Error(`conversation.cancel failed: ${result.error.code}: ${result.error.message}`)
+  }
+
+  /**
+   * Operator RESUME: re-drive the model from the resume checkpoint (the last
+   * COMPLETED model request) after a cut turn. The refusal resolves as an
+   * honest verdict for the affordance to surface inline.
+   * @returns the Host's dispatch verdict.
+   */
+  async resume(): Promise<{ readonly ok: boolean; readonly error?: { readonly message: string } }> {
+    // Invoke THROUGH the face: an extracted method loses its receiver and dies
+    // on `this.remote` — the honest-refusal path must never be a crash.
+    const face = this.scopedSession('resume')
+    if (face.resume === undefined) return { ok: false, error: { message: 'resume is unavailable' } }
+    return await face.resume()
+  }
+
+  /** Operator RESUME verdict: the Host's fold over the FULL durable journal.
+   *
+   * The client window CANNOT answer this honestly: it is a paginated,
+   * presentation-filtered slice that omits turn lifecycle events (a severed
+   * turn contributes no visible node), so a window fold sees "nothing
+   * happened" and the affordance hides itself after every cut — the silent
+   * pill bug. The Host already folds the whole journal for the dispatch
+   * guard; this read asks it the same question, side-effect free. The verdict
+   * is CACHED per session with a short TTL: the affordance is live state, and
+   * a budgeted re-read keeps it fresh without a render storm.
+   */
+  resumeState(): ComposerResumeState {
+    const face = this.scopedSession('resumeState') as unknown as {
+      resumeState?: () => Promise<{
+        ok: boolean
+        value?: ComposerResumeState
+        error?: { readonly message: string }
+      }>
+    }
+    const cached = this.resumeVerdictCache.get(this.scopeId('resumeState'))
+    const now = Date.now()
+    const fresh = cached !== undefined && now - cached.at < RESUME_VERDICT_TTL_MS
+    // Invoke THROUGH the face (an extracted method would lose its receiver).
+    if (!fresh && face.resumeState !== undefined) {
+      void face.resumeState().then(
+        (result) => {
+          // Only a CONFIRMED verdict enters the cache. A refusal (older Host
+          // without the read, offline, unknown session) is NOT evidence of
+          // "no resume" — inventing `not-cut` here is exactly the silent-pill
+          // bug wearing a different hat.
+          if (result.ok && result.value !== undefined) {
+            this.resumeVerdictCache.set(this.scopeId('resumeState'), { at: Date.now(), value: result.value })
+          } else {
+            // Live audit hook: record WHY the verdict stayed unknown so a
+            // misrouted read is named instead of guessed at.
+            ;(globalThis as { __dshResumeRead?: unknown }).__dshResumeRead = {
+              ok: result.ok,
+              hata: result.error?.message ?? null,
+            }
+          }
+        },
+        (failure: unknown) => {
+          ;(globalThis as { __dshResumeRead?: unknown }).__dshResumeRead = {
+            ok: false,
+            hata: failure instanceof Error ? failure.message : String(failure),
+          }
+        },
+      )
+    }
+    // Keep the last confirmed verdict while the next read is in flight; with no
+    // confirmed answer yet, report "unknown" rather than a confident lie.
+    return cached?.value ?? { kind: 'unknown' }
   }
 
   /** Pull one older history page for the scoped Session. */

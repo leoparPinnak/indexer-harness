@@ -104,7 +104,7 @@ dsh --profile web
 
 #### 模型看到什么
 
-当 profile 挂载 `systemPrompt` 时，该段以 `app:cdp-status` 注册在 `WEB_SURFACE` 顺序加 7 处，紧随 `app:shellbox-surface` 之后。它让模型了解该扩展、`cdp_status` 读取，以及只有启用远程调试启动的浏览器端点才可达这一要求。
+当 profile 挂载 `systemPrompt` 时，该段以 `app:cdp-status` 注册在 `WEB_SURFACE` 顺序加 7 处。它让模型了解该扩展、`cdp_status` 读取，以及只有启用远程调试启动的浏览器端点才可达这一要求。
 
 ##### `app:cdp-status` 原文
 

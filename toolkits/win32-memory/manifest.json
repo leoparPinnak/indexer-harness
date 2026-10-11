@@ -1,0 +1,49 @@
+{
+  "setId": "win32-memory",
+  "title": "Win32 Bellek Motoru",
+  "capabilitySet": "hardware-control",
+  "authority": "kernel",
+  "personaSummary": "Bellek oku/yaz, AOB tarama, pointer zinciri izleme, Direct HWND eşleme ve ham scan-code girdi: Win32 süreç belleği ve girdi motoru. Beş araç; gözlemci, yazıcı, HWND eşleyici ve girdi enjektörü aynı motora biner. Ne zaman ve hangisini kullanacağına sen karar verirsin.",
+  "tools": [
+    {
+      "id": "readvm",
+      "authority": "kernel",
+      "guide": "tools/readvm.md",
+      "code": "tools/readvm.rs",
+      "fireEmbed": "code",
+      "summary": "PID+sanal adres aralığı okur, tip kod çözme ve pointer zinciri çözümü içerir"
+    },
+    {
+      "id": "writevm",
+      "authority": "kernel",
+      "guide": "tools/writevm.md",
+      "code": "tools/writevm.rs",
+      "fireEmbed": "code+guide",
+      "summary": "yazım kapsamı + çağrı-başı onay kancasıyla sanal adres aralığına yazar"
+    },
+    {
+      "id": "aobscan",
+      "authority": "kernel",
+      "guide": "tools/aobscan.md",
+      "code": "tools/aobscan.rs",
+      "fireEmbed": "code",
+      "summary": "wildcard'lı byte desenini modül/aralık içinde parçalı taramayla arar"
+    },
+    {
+      "id": "hwndmap",
+      "authority": "observe",
+      "guide": "tools/hwndmap.md",
+      "code": "tools/hwndmap.rs",
+      "fireEmbed": "code",
+      "summary": "PID→HWND haritası çıkarır; sınıf, başlık, geometri, sahiplik ile kirli-damga/TTL önbelleği"
+    },
+    {
+      "id": "scancode",
+      "authority": "input",
+      "guide": "tools/scancode.md",
+      "code": "tools/scancode.rs",
+      "fireEmbed": "code+guide",
+      "summary": "planlı bas/bırak zamanlamasıyla ham scan-code klavye/fare girdisi enjekte eder"
+    }
+  ]
+}

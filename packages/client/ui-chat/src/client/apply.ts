@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 // The `file` entry of `SidebarRightResourceParamsMap`, which types `{ params: { line } }` below.
@@ -27,6 +28,7 @@ import { EMPTY_CHAT_SNAPSHOT } from './contract/snapshot.ts'
 import { ApprovalCommand } from './chat/ApprovalCommand.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
+import { ResumeButton } from './chat/ResumeButton.tsx'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { en, NS, tr, zh } from './locale.ts'
@@ -70,6 +72,21 @@ export function apply(ctx: Context): void {
   }
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
+  // Operator RESUME affordance: composer right cluster beside send/stop. The
+  // seat's OWNER props carry both the fold reader and the dispatch
+  // (ui-conversation's ComposerBarInjected over `IConversation` — the live
+  // session window). No child-side `inject` keys on purpose: a duplicate here
+  // used to WIN the props merge with an empty-feed reader (`ctx.sessions`
+  // hands a materialized bag, not the session face) and froze the pill in
+  // `not-cut` after every cut. Owner props are the single source of truth.
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register(
+    {
+      name: 'conversation.input.right',
+      locale: NS,
+      id: 'resume',
+    },
+    ResumeButton,
+  ))
   ctx.uiSession.provide({
     hooks: ['chat'],
     resolve: binding => ({ hooks: { chat: chatSource(binding) } }),
@@ -169,6 +186,20 @@ export function apply(ctx: Context): void {
           stopAction: () => {
             session.cancel().catch(() => {
               // Stop failure is published through Session promptError.
+            })
+          },
+          // Compaction-row DURDUR: cancels the running summarizer transaction by
+          // its minted identity. The request carries the Session identity so the
+          // host can reach the engine in this session's agent realm; the close is
+          // NEUTRAL — nothing of the attempt lands.
+          cancelCompaction: (compactionId: string) => {
+            void (ctx.remote.session as unknown as {
+              cancelCompaction(request: {
+                sessionId: SessionId
+                compactionId: string
+              }): Promise<unknown>
+            }).cancelCompaction({ sessionId, compactionId }).catch(() => {
+              // The durable bracket settles the row either way.
             })
           },
         }

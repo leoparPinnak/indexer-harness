@@ -68,6 +68,7 @@ function textOnlyPrice(ref: ImageAttachmentRef): LlmImageRequestPrice {
  * @param connection - validated connection facts of the pricing resolution.
  * @param model - exact model id named by the request header.
  * @param resolveAccess - current execution-world access resolution shared with request serialization.
+ * @param override - keep-newest-N image window override, winning over the connection's own window.
  * @returns synchronous per-occurrence pricing for the route.
  */
 export function deepSeekImageRequestPricing(

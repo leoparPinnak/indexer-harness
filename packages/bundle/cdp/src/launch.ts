@@ -119,6 +119,12 @@ export interface LaunchedBrowser {
   /** User-data directory the browser was started with; never removed by `close`. */
   readonly userDataDir: string
   /**
+   * plan18-flags: the complete argument list this launch actually spawned with,
+   * in order. Rendered into the model prompt by `cdp_open` (`flagBlock`), so the
+   * flags a browser runs under are never folklore — they are stated.
+   */
+  readonly launchArgs: readonly string[]
+  /**
    * Terminate the browser's whole process tree and await its exit. Idempotent:
    * repeated or concurrent calls share one termination and one result. The
    * caller's user-data directory is left exactly as the browser left it.
@@ -412,29 +418,160 @@ function resolveExecutable(options: BrowserLaunchOptions, internals: BrowserLaun
 }
 
 /**
- * Build the browser argument list.
+ * plan18-flags (operator directive, verbatim block): every launch runs this
+ * block — the launcher's own plumbing flags are added underneath and duplicates
+ * collapse to one occurrence. `--user-data-dir` and the remote-debugging port
+ * stay launcher-owned (they must: the port is read back from the port file).
+ *
+ * ```
+ * chrome.exe
+ *   --user-data-dir=<profile>
+ *   --no-first-run
+ *   --no-default-browser-check
+ *   --lang=tr
+ *   --disable-blink-features=AutomationControlled   ← navigator.webdriver izini siler
+ *   --start-maximized
+ * ```
+ */
+export const OPERATOR_LAUNCH_ARGS: readonly string[] = [
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--lang=tr',
+  '--disable-blink-features=AutomationControlled',
+  '--start-maximized',
+]
+
+/**
+ * plan18-stealth (operator request: "tamamen stealth, bot korumasına takılmasın"):
+ * the anti-detection layers that BELONG on the command line, grouped by the
+ * detector they disarm. They merge with {@link OPERATOR_LAUNCH_ARGS} on every
+ * launch — `--disable-blink-features` VALUES UNION across the blocks (one flag
+ * line accumulates every feature disabled, no block silently wins).
+ *
+ * Deliberately NOT here — each is a signature of its own:
+ * - `--incognito` (contradicts the Zero-Profile Law of a persistent isolated dir),
+ * - `--window-size` (fights the operator's `--start-maximized`; sizing belongs to
+ *   `cdp_viewport`, which reports what actually applied),
+ * - `--user-agent=…` (UA-CH never follows it — the story splits; `cdp_stealth`
+ *   sets UA/UA-CH/headers coherently per session),
+ * - `--enable-automation` / old `--headless` / `--use-gl=swiftshader` /
+ *   `--disable-web-security` (every one of them IS the detection signature).
+ */
+export const STEALTH_LAUNCH_ARGS: readonly string[] = [
+  // A — automation-surface killers: webdriver getter, topic/fledge cohorts,
+  // extension and default-app inventory, phoning-home channels.
+  '--disable-blink-features=AutomationControlled,InterestCohort,TopicsAPI,AttributionReporting',
+  '--disable-extensions',
+  '--disable-default-apps',
+  '--disable-component-update',
+  '--disable-background-networking',
+  '--no-pings',
+  '--metrics-recording-only',
+  '--disable-session-crashed-bubble',
+  // B — behaviour-timing signatures: an idle/covered window throttles timers and
+  // rAF, and that throttling is measurable. A human window runs flat out.
+  '--disable-background-timer-throttling',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-features=CalculateNativeWinOcclusion',
+  // C — fingerprint coherence: font metrics flattening and a real GL path
+  // (SwiftShader in WEBGL_debug_renderer_info is the "headless server" tattoo).
+  '--font-render-hinting=none',
+  '--use-gl=desktop',
+  // D — tunnel law backstops (no proxy configured today, but UDP/WebRTC must
+  // never slip past a SOCKS stitch when one IS configured).
+  '--disable-quic',
+  '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+]
+
+/**
+ * plan18-stealth: the "Çift Dikiş Kanunu" flag family for tunneled launches —
+ * merge through `extraArgs` when a SOCKS stitch is in front of the browser.
+ *
+ * `socks5://` (schemeless host) makes Chromium resolve DNS THROUGH the proxy —
+ * the stitch carries TCP *and* name resolution. `socks4://` is refused by
+ * doctrine: it resolves locally and leaks the very lookups the tunnel exists to
+ * hide. `hardDnsKill` additionally null-routes the local resolver (`MAP *
+ * ~NOTFOUND , EXCLUDE <loopback>`), the strongest kordon — use it when the
+ * tunnel entrance is also the DNS authority.
+ * @param socksPort - the local SOCKS5 entrance port.
+ * @param hardDnsKill - also disable the local resolver entirely.
+ * @returns the flag family to append via `extraArgs`.
+ */
+export function proxyTunnelArgs(socksPort: number, hardDnsKill = false): string[] {
+  const base = [
+    `--proxy-server=socks5://127.0.0.1:${String(socksPort)}`,
+    '--proxy-bypass-list=<-loopback>',
+  ]
+  return hardDnsKill ? [...base, '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1'] : base
+}
+
+/**
+ * Build the browser argument list (plan18-flags: exported so `cdp_open` can
+ * report exactly what runs).
  *
  * Each flag exists for one reason: `--remote-debugging-port=0` lets the browser
  * bind a free port and publish it in the port file, so nothing here reserves a
  * fixed port; `--remote-debugging-address=127.0.0.1` keeps the debugging
  * endpoint off every non-loopback interface; `--user-data-dir` isolates the
  * profile from the user's real one and is where the browser writes its port
- * file; `--no-first-run` and `--no-default-browser-check` keep first-run and
- * default-browser prompts from blocking an automated start. Caller-supplied
- * arguments are appended after these.
+ * file; {@link OPERATOR_LAUNCH_ARGS} carries the operator's launch block
+ * (first-run/default-browser suppression, locale, automation-surface mask,
+ * maximized start). Caller-supplied arguments are appended after these.
+ *
+ * Duplicate flags collapse by name (everything before `=`), first occurrence
+ * wins, so the operator block can never be doubled by built-ins or extras.
  *
  * @param options - the launch request supplying the user-data directory and extra arguments.
- * @returns the complete argument list.
+ * @returns the complete argument list, exactly as spawned.
  */
-function browserArguments(options: BrowserLaunchOptions): string[] {
-  return [
+export function buildBrowserLaunchArgs(options: BrowserLaunchOptions): string[] {
+  const merged = [
     '--remote-debugging-port=0',
     '--remote-debugging-address=127.0.0.1',
     `--user-data-dir=${options.userDataDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
+    ...OPERATOR_LAUNCH_ARGS,
+    ...STEALTH_LAUNCH_ARGS,
     ...(options.extraArgs ?? []),
   ]
+  // Duplicate flags collapse by name (everything before `=`), first occurrence
+  // wins — EXCEPT `--disable-blink-features`, whose VALUES UNION across blocks
+  // (operator + stealth each contribute feature names; neither may silence the
+  // other). Extras still never undo an earlier explicit flag.
+  const byName = new Map<string, string>()
+  const mergedFeatures = new Set<string>()
+  for (const flag of merged) {
+    const eq = flag.indexOf('=')
+    const name = eq === -1 ? flag : flag.slice(0, eq)
+    const value = eq === -1 ? '' : flag.slice(eq + 1)
+    if (name === '--disable-blink-features') {
+      for (const feature of value.split(',').map(part => part.trim()).filter(part => part !== '')) {
+        mergedFeatures.add(feature)
+      }
+      continue
+    }
+    if (!byName.has(name)) byName.set(name, flag)
+  }
+  const out = [...byName.values()]
+  if (mergedFeatures.size > 0) {
+    // Reinsert at the first contributor's slot position: appended after basics,
+    // before extras — same deterministic order every build.
+    out.splice(Math.min(out.findIndex(f => f.startsWith('--start-maximized')) + 1, out.length), 0,
+      `--disable-blink-features=${[...mergedFeatures].join(',')}`)
+  }
+  return out
+}
+
+/**
+ * plan18-flags: render the launch block the model is shown verbatim on every
+ * `cdp_open` — the flags a browser runs under, one per line, no prose.
+ * @param executablePath - the binary the launcher started.
+ * @param args - the argument list {@link buildBrowserLaunchArgs} produced.
+ * @returns the fenced flag block.
+ */
+export function renderLaunchFlagBlock(executablePath: string, args: readonly string[]): string {
+  const lines = [executablePath, ...args.map(flag => `  ${flag}`)]
+  return `LAUNCH FLAGS (prompt):\n${lines.join('\n')}`
 }
 
 /**
@@ -563,10 +700,11 @@ export async function launchBrowser(
   const executablePath = resolveExecutable(options, resolved)
   const portFile = join(options.userDataDir, DEVTOOLS_ACTIVE_PORT_FILE)
   const spawnState: { failure: Error | undefined } = { failure: undefined }
+  const launchArgs = buildBrowserLaunchArgs(options)
 
   let child: ChildProcess
   try {
-    child = resolved.spawn(executablePath, browserArguments(options), {
+    child = resolved.spawn(executablePath, launchArgs, {
       detached: resolved.platform !== 'win32',
       stdio: 'ignore',
       windowsHide: true,
@@ -589,6 +727,7 @@ export async function launchBrowser(
       : `ws://127.0.0.1:${active.port}${active.browserPath.startsWith('/') ? '' : '/'}${active.browserPath}`,
     executablePath,
     userDataDir: options.userDataDir,
+    launchArgs,
     close: (): Promise<void> => {
       closePromise ??= terminateBrowser(child, resolved)
       return closePromise

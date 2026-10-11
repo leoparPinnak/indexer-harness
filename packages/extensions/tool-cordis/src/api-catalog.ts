@@ -752,6 +752,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the appended event seqs, summary, replaced range, and token accounting.',
         throws: ['when compaction is active or the range is missing, reversed, or unbalanced.'],
       },
+      {
+        signature: 'cancelCompaction(_compactionId: CompactionId): boolean',
+        description: 'Stop the compaction currently running under `compactionId`: abort its in-flight summarizer request (the abort reaches the provider transport), prevent any further windowed/merge call from starting, and close the durable bracket with the NEUTRAL `compaction/end` `cancelled` marker — a cancelled run is not a failure and never checkpoints a partial summary. Implementations override this with their active-transaction registry.',
+        parameters: [{ name: '_compactionId', description: 'transaction identity from `compaction/start`.' }],
+        returns: 'whether a live compaction was cancelled; `false` when none is running.',
+      },
     ],
   },
   {
@@ -1279,9 +1285,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the provider-owned policy, with normal defaults already resolved.',
       },
       {
-        signature: 'imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined',
+        signature: 'imageRequestPricing( provider: string, model: string, override?: LlmImageRequestPricingOverride, ): LlmImageRequestPricing | undefined',
         description: 'Resolve provider-side request-image pricing for one exact route, or `undefined` when the provider is unregistered or declares none. Unknown providers degrade to `undefined` rather than throwing because callers price durable history whose route may no longer be mounted.',
-        parameters: [{ name: 'provider', description: 'provider route named by a request header.' }, { name: 'model', description: 'exact model id named by the same header.' }],
+        parameters: [{ name: 'provider', description: 'provider route named by a request header.' }, { name: 'model', description: 'exact model id named by the same header.' }, { name: 'override', description: 'session-level request-shape overrides, forwarded to the adapter.' }],
         returns: 'the owning adapter\'s image pricing for the route, when declared.',
       },
       {
@@ -1505,6 +1511,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select one Session-local model after explicitly resuming the Session.',
         parameters: [{ name: 'request', description: 'Session identity and requested model selection.' }],
         returns: 'the normalized selection installed for the Session.',
+      },
+      {
+        signature: '@Remote(\'cancelCompaction\') cancelCompaction( request: SessionCancelCompactionRequest, ): Promise<SessionCancelCompactionValue>',
+        description: 'Stop one running compaction transaction: aborts the in-flight summarizer request and closes the bracket with the neutral `cancelled` marker.',
+        parameters: [{ name: 'request', description: 'compaction identity from `compaction/start`.' }],
+        returns: 'whether a live compaction was cancelled.',
       },
       {
         signature: '@Remote(\'setCompactionMode\') setCompactionMode( request: SessionSetCompactionModeRequest, ): Promise<SessionSetCompactionModeValue>',
@@ -3240,6 +3252,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'compaction/stream',
+    mode: 'emit',
+    signature: '\'compaction/stream\'(payload: CompactionStreamFrame): void',
+    summary: 'Live compaction summarize-call progress — process-local and transient, published per stream chunk while a compaction runs.',
+    description: 'Live compaction summarize-call progress — process-local and transient, published per stream chunk while a compaction runs.',
+    parameters: [{ name: 'payload', description: 'one ordered live frame of the running compaction.' }],
+  },
+  {
     name: 'cordis/dynamic-package',
     mode: 'emit',
     signature: '\'cordis/dynamic-package\'(pkg: DynamicCordisPackage): void',
@@ -3940,6 +3960,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionSessionMode = CompactionSessionModePolicy & ({\n    summarizer: \'conversation\';\n} | {\n    summarizer: \'dedicated\';\n    provider: string;\n    model: string;\n});',
   },
   {
+    name: 'CompactionStreamCall',
+    declaration: 'export interface CompactionStreamCall {\n    readonly stage: \'window\' | \'merge\' | \'summary\';\n    readonly index: number;\n    readonly total: number | null;\n}',
+  },
+  {
+    name: 'CompactionStreamFrame',
+    declaration: 'export interface CompactionStreamFrame {\n    readonly compactionId: CompactionId;\n    readonly sourceCommandId?: CommandId;\n    readonly sessionId: SessionId;\n    readonly time: number;\n    readonly call: CompactionStreamCall;\n    readonly phase: CompactionStreamPhase;\n    readonly maxTokens: number;\n    readonly text?: string;\n    readonly reasoning?: string;\n}',
+  },
+  {
+    name: 'CompactionStreamPhase',
+    declaration: 'export type CompactionStreamPhase = \'requested\' | \'streaming\' | \'done\' | \'failed\' | \'cancelled\';',
+  },
+  {
     name: 'CompactionTrigger',
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
   },
@@ -4333,7 +4365,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n    maxImagesPerRequest?: number;\n}',
   },
   {
     name: 'GenericCallView',
@@ -4541,7 +4573,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmAdapter',
-    declaration: 'export abstract class LlmAdapter {\n    providerInfo(provider: string): LlmProviderInfo;\n    providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;\n    imageRequestPricing(_provider: string, _model: string): LlmImageRequestPricing | undefined;\n    listModels(_provider: string): Promise<readonly LlmModelInfo[]>;\n    resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall>;\n    abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+    declaration: 'export abstract class LlmAdapter {\n    providerInfo(provider: string): LlmProviderInfo;\n    providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;\n    imageRequestPricing(_provider: string, _model: string, _override?: LlmImageRequestPricingOverride): LlmImageRequestPricing | undefined;\n    listModels(_provider: string): Promise<readonly LlmModelInfo[]>;\n    resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall>;\n    abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
   {
     name: 'LlmAttemptId',
@@ -4576,6 +4608,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LlmImageRequestPricing {\n    priceImages(images: readonly ImageAttachmentRef[]): readonly LlmImageRequestPrice[];\n}',
   },
   {
+    name: 'LlmImageRequestPricingOverride',
+    declaration: 'export interface LlmImageRequestPricingOverride {\n    readonly maxImagesPerRequest?: number;\n}',
+  },
+  {
     name: 'LlmModelContext',
     declaration: 'export interface LlmModelContext {\n    contextWindow: number;\n}',
   },
@@ -4605,7 +4641,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions) /* …truncated — full shape in source */',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string, override?: LlmImageRequestPricingOverride): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlm /* …truncated — full shape in source */',
   },
   {
     name: 'LspHover',
@@ -5120,6 +5156,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionAvailability = \'live\' | \'persisted\';',
   },
   {
+    name: 'SessionCancelCompactionRequest',
+    declaration: 'export interface SessionCancelCompactionRequest {\n    readonly compactionId: string;\n}',
+  },
+  {
+    name: 'SessionCancelCompactionValue',
+    declaration: 'export interface SessionCancelCompactionValue {\n    readonly cancelled: boolean;\n}',
+  },
+  {
     name: 'SessionCancelRequest',
     declaration: 'export interface SessionCancelRequest {\n    readonly sessionId: SessionId;\n}',
   },
@@ -5229,11 +5273,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionFollowFrame',
-    declaration: 'export type SessionFollowFrame = {\n    readonly type: \'snapshot\';\n    readonly header: SessionWireHeader;\n    readonly cursor: number;\n    readonly records: readonly SessionHistoryRecord[];\n    readonly hasMore: boolean;\n    readonly projections: SessionProjectionBaseline;\n    readonly assistantStream?: SessionAssistantStreamBaseline;\n} | SessionEventEntry | {\n    readonly type: \'assistant-stream\';\n    readonly frame: SessionAssistantStreamFrame;\n};',
+    declaration: 'export type SessionFollowFrame = {\n    readonly type: \'snapshot\';\n    readonly header: SessionWireHeader;\n    readonly cursor: number;\n    readonly records: readonly SessionHistoryRecord[];\n    readonly hasMore: boolean;\n    readonly projections: SessionProjectionBaseline;\n    readonly assistantStream?: SessionAssistantStreamBaseline;\n} | SessionEventEntry | {\n    readonly type: \'assistant-stream\';\n    readonly frame: SessionAssistantStreamFrame;\n} | {\n    readonly type: \'compaction-stream\';\n    readonly frame: CompactionStreamFrame;\n};',
   },
   {
     name: 'SessionFollowRequest',
-    declaration: 'export interface SessionFollowRequest {\n    readonly address: SessionAddress;\n    readonly maxMessages?: number;\n    readonly assistantStream?: true;\n}',
+    declaration: 'export interface SessionFollowRequest {\n    readonly address: SessionAddress;\n    readonly maxMessages?: number;\n    readonly assistantStream?: true;\n    readonly compactionStream?: true;\n}',
   },
   {
     name: 'SessionForkRequest',

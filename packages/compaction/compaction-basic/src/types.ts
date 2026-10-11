@@ -6,6 +6,14 @@
 
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 
+/** One fallback summarizer route: a registered provider route and exact model id. */
+export interface FallbackTarget {
+  /** Registered provider route to try instead of the primary summarizer route. */
+  provider: string
+  /** Exact model id within `provider`. */
+  model: string
+}
+
 /** Policy fields shared by the default policy and exact model overrides. */
 export interface CompactionPolicyConfig {
   /** Compact at this fraction of the model's context window. Defaults to `0.8`. */
@@ -24,6 +32,12 @@ export interface CompactionPolicyConfig {
   compactionRetries?: number
   /** Maximum retries after canonical context overflow; `0` disables recovery. Defaults to `1`. */
   maxOverflowRetries?: number
+  /**
+   * Fallback summarizer target chain tried in order when the primary route
+   * fails with a quota, context-overflow, empty-response, or truncated-stream
+   * failure. Defaults to no fallback (empty chain).
+   */
+  fallbackTargets?: FallbackTarget[]
 }
 
 /** Exact provider/model override merged over the default compaction policy. */
@@ -55,6 +69,7 @@ interface ResolvedPolicyFields {
   readonly maxTokens: number
   readonly compactionRetries: number
   readonly maxOverflowRetries: number
+  readonly fallbackTargets: readonly Readonly<FallbackTarget>[]
 }
 
 /** Validated immutable config whose target-specific defaults remain unresolved. */

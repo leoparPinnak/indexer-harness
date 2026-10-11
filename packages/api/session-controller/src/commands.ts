@@ -16,7 +16,7 @@ import {
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { CompactionId, setCompactionMode } from '@deepseek-ai/dsh-compaction'
 import type { SessionCancelCompactionRequest, SessionCancelCompactionValue } from './types.ts'
-import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { evaluateResumeState, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
@@ -47,6 +47,10 @@ import type {
   SessionPromptValue,
   SessionSetCompactionModeRequest,
   SessionSetCompactionModeValue,
+  SessionResumeRequest,
+  SessionResumeStateRequest,
+  SessionResumeStateValue,
+  SessionResumeValue,
   SessionRenameRequest,
   SessionRenameValue,
   SessionSelectModelRequest,
@@ -206,15 +210,90 @@ export class SessionCommandController {
   async cancelCompaction(
     request: SessionCancelCompactionRequest,
   ): Promise<SessionCancelCompactionValue> {
-    const engine = this.ctx.get('compaction')
+    // The compaction engine lives in the SESSION'S AGENT realm — the same realm
+    // `compactNow` runs in — so the Host context cannot resolve `compaction`.
+    // Route through the agent's own context: the engine instance THERE holds
+    // the running transaction's stop controller.
+    const found = await this.agents.resolveAgent(request.sessionId)
+    if ('error' in found) throw found.error
+    const engine = found.agent.ctx.get('compaction')
     if (engine === undefined) {
       throw new RemoteError(
         'gateway/internal',
-        'cancellation is unavailable: this deployment mounts no compaction service',
-        {},
+        'cancellation is unavailable: this session mounts no compaction service',
+        { sessionId: request.sessionId },
       )
     }
     return { cancelled: engine.cancelCompaction(CompactionId(request.compactionId)) }
+  }
+
+  /**
+   * Pure RESUME verdict read over the FULL durable journal.
+   *
+   * The client cannot fold this honestly on its own: the conversation window is
+   * a paginated, presentation-filtered slice that omits turn-level lifecycle
+   * events (a severed turn contributes no visible node), so a window fold reads
+   * "nothing happened" and the affordance would hide itself after every cut.
+   * The Host already holds the whole journal; this read answers the same
+   * question the dispatch guard asks, without side effects.
+   * @param request - owning Session identity.
+   * @returns the folded verdict (`ready` names the checkpoint).
+   */
+  async resumeState(request: SessionResumeStateRequest): Promise<SessionResumeStateValue> {
+    // The verdict is a property of the DURABLE JOURNAL, not of a live Agent:
+    // read attached-or-persisted so a session that is merely stored (or a turn
+    // that was cut while nobody watched) still answers honestly. The dispatch
+    // path separately requires a live agent and refuses when there is none.
+    const state = await this.readSessionState(request.sessionId)
+    return evaluateResumeState(state.events) as SessionResumeStateValue
+  }
+
+  /**
+   * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+   * resume checkpoint (the last COMPLETED model request). The honesty guards
+   * run over the session journal through the SAME pure fold the client button
+   * uses, so the refusal an operator reads and the button's visibility can
+   * never disagree.
+   * @param request - owning Session identity.
+   * @returns whether a continuation turn was dispatched to the agent driver.
+   */
+  async resume(request: SessionResumeRequest): Promise<SessionResumeValue> {
+    const found = await this.agents.resolveAgent(request.sessionId)
+    if ('error' in found) throw found.error
+    const agent = found.agent
+    // Existing Session history read; migration deferred.
+    // oxlint-disable-next-line typescript/no-deprecated
+    const state = evaluateResumeState(agent.session.snapshotEvents())
+    if (state.kind === 'busy') {
+      throw new RemoteError(
+        'session/resume-busy',
+        'resume is unavailable: a turn is still open on this session',
+        { sessionId: request.sessionId },
+      )
+    }
+    if (state.kind === 'not-cut') {
+      throw new RemoteError(
+        'session/resume-not-cut',
+        'resume is unavailable: the last turn ended normally',
+        { sessionId: request.sessionId },
+      )
+    }
+    if (state.kind === 'no-checkpoint') {
+      throw new RemoteError(
+        'session/resume-no-checkpoint',
+        'resume is unavailable: no completed model request precedes the cut',
+        { sessionId: request.sessionId },
+      )
+    }
+    if (agent.status !== 'idle') {
+      throw new RemoteError(
+        'session/resume-busy',
+        'resume is unavailable: the agent is not idle',
+        { sessionId: request.sessionId },
+      )
+    }
+    agent.resume()
+    return { resumed: true }
   }
 
   /**

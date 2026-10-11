@@ -782,14 +782,17 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     baseUrl = `http://${browserHost}:${String(port)}`
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
-    const login = await fetch(authenticatedUrl, { redirect: 'manual' })
+    const authorization = `Basic ${Buffer.from(
+      `${process.env.DSH_WEB_USER ?? 'dsh'}:${process.env.DSH_WEB_PASSWORD ?? 'dsh'}`, 'utf8',
+    ).toString('base64')}`
+    const login = await fetch(authenticatedUrl, { redirect: 'manual', headers: { authorization } })
     const setCookie = login.headers.get('set-cookie')
     if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
-      throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
+      throw new Error('web e2e scaffold: username/password answer did not return its session cookie')
     }
     cookieHeader = setCookie.split(';', 1)[0] ?? ''
     if (cookieHeader.length === 0) {
-      throw new Error('web e2e scaffold: browser token exchange returned an empty session cookie')
+      throw new Error('web e2e scaffold: username/password answer returned an empty session cookie')
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)

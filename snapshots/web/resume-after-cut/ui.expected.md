@@ -1,0 +1,45 @@
+- banner:
+  - navigation "Session hierarchy":
+    - 'button "Run two shell commands: wait" [disabled]'
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: "Run two shell commands: wait for cancellation, then write skipped.txt. {{clock}}"
+- button "Copy":
+  - img
+- button "Context injection @deepseek-ai/dsh-system-prompt":
+  - img
+  - img
+  - text: Context injection @deepseek-ai/dsh-system-prompt
+- 'button "Failed Bash Error: tool call aborted"':
+  - img
+  - text: "Failed Bash Error: tool call aborted"
+- 'button "Failed Bash Error: tool call aborted before dispatch"':
+  - img
+  - text: "Failed Bash Error: tool call aborted before dispatch"
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Add files or run commands":
+  - img
+- 'button "Access mode, current: Full access"': Full access
+- button "Resume"
+- alert: "Could not resume: Cannot read properties of undefined (reading 'remote')"
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "Send message" [disabled]
+- button "1 turns 1 steps":
+  - img
+  - text: 1 turns 1 steps
+- button "20 tok · Cache hit 0%":
+  - img
+  - text: 20 tokCache hit 0%
+- button "Auto-push is off, press to turn on": AUTO-PUSH
+- button "0 · Nothing pushed yet"

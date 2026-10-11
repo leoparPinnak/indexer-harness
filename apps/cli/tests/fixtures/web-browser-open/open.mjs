@@ -22,7 +22,11 @@ export default async function open(url) {
   if (process.env.BROWSER_OPEN_TEST_FAILURE !== undefined) {
     throw new Error(process.env.BROWSER_OPEN_TEST_FAILURE)
   }
-  const exchange = await fetch(url, { redirect: 'manual' })
+  // The printed URL carries no credential; the browser answers the prompt.
+  const authorization = `Basic ${Buffer.from(
+    `${process.env.DSH_WEB_USER ?? 'dsh'}:${process.env.DSH_WEB_PASSWORD ?? 'dsh'}`, 'utf8',
+  ).toString('base64')}`
+  const exchange = await fetch(url, { redirect: 'manual', headers: { authorization } })
   const setCookie = exchange.headers.get('set-cookie')
   const location = exchange.headers.get('location')
   if (exchange.status !== 303 || setCookie === null || location === null) {

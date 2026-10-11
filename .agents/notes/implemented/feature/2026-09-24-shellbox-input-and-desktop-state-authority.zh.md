@@ -22,4 +22,4 @@ Status: implemented
 
 ## 后果
 
-辅助进程的输入文法、`.state` 文档与五条路由是 `packages/bundle/deamon/sandbox/PROTOCOL.md` 中冻结的表面；deamon 与客户端包的 README 承载消费方一侧。输入只能抵达窗口的消息队列：直接读取硬件状态的程序看不到任何东西，安全桌面提示也无法被应答。两条实测限制——跨桌面无法植入键盘状态、文本控件忽略注入的 `WM_CHAR`——都由辅助进程的验证夹具固定下来，而非假设。本决策延伸了 [shellbox bundle 抽取](../architecture/2026-09-24-shellbox-bundle-extraction.zh.md) 与 [deamon 改名与持久桌面](../simplification/2026-09-24-deamon-rename-and-persistent-desktop.zh.md)：加上窗口操作与变更环后，其表面数量现为六；帧流相关的两篇笔记（[存活检测](../bug-fix/2026-09-22-shellbox-stream-liveness.zh.md)、[WebSocket 帧流](../bug-fix/2026-09-23-ws-sandbox-frame-stream.zh.md)）保留各自的决策，未被取代。
+辅助进程的输入文法、`.state` 文档与五条路由是 `protop/shellbox/deamon/sandbox/PROTOCOL.md` 中冻结的表面；deamon 与客户端包的 README 承载消费方一侧。输入只能抵达窗口的消息队列：直接读取硬件状态的程序看不到任何东西，安全桌面提示也无法被应答。两条实测限制——跨桌面无法植入键盘状态、文本控件忽略注入的 `WM_CHAR`——都由辅助进程的验证夹具固定下来，而非假设。本决策延伸了 [shellbox bundle 抽取](../architecture/2026-09-24-shellbox-bundle-extraction.zh.md) 与 [deamon 改名与持久桌面](../simplification/2026-09-24-deamon-rename-and-persistent-desktop.zh.md)：加上窗口操作与变更环后，其表面数量现为六；帧流相关的两篇笔记（[存活检测](../bug-fix/2026-09-22-shellbox-stream-liveness.zh.md)、[WebSocket 帧流](../bug-fix/2026-09-23-ws-sandbox-frame-stream.zh.md)）保留各自的决策，未被取代。

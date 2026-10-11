@@ -668,6 +668,7 @@ export class LlmRuntime extends TypertRemoteService {
    * price durable history whose route may no longer be mounted.
    * @param provider - provider route named by a request header.
    * @param model - exact model id named by the same header.
+   * @param override - session-level request-shape overrides, forwarded to the adapter.
    * @returns the owning adapter's image pricing for the route, when declared.
    */
   imageRequestPricing(

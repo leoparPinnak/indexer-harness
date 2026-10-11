@@ -215,7 +215,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/api/session-controller/src/index.ts:73`](../packages/api/session-controller/src/index.ts)
+来源：[`packages/api/session-controller/src/index.ts:75`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -623,36 +623,6 @@ export interface Config {
 ```
 
 来源：[`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
-
-<a id="deepseek-aidsh-deamon"></a>
-
-## `@deepseek-ai/dsh-deamon`
-
-需要：`webServer`
-
-```ts config-catalog
-/** Plugin config: composed deployment settings for the Shellbox feature. */
-export interface Config {
-  /**
-   * Register the model-visible surface context (the `app:shellbox-surface`
-   * prompt section). A non-interactive layer can turn it off when its user is
-   * not in the GUI, so the orientation text would be false.
-   */
-  surfaceContext: boolean
-  /**
-   * How the bridge reaches the Deamon: `pipe` (the default) speaks the home's
-   * named-pipe gateway, `http` keeps the legacy loopback path that D9 removes.
-   * Both transports stay mounted while the shift lasts, and a gateway the
-   * bridge cannot reach downgrades that session to `http` with a logged reason.
-   */
-  transport: DeamonTransport
-}
-
-/** How the bridge reaches the daemon: the named-pipe gateway, or loopback HTTP. */
-export type DeamonTransport = 'pipe' | 'http'
-```
-
-来源：[`packages/bundle/deamon/src/index.ts:35`](../packages/bundle/deamon/src/index.ts)
 
 <a id="deepseek-aidsh-e2b"></a>
 
@@ -1329,6 +1299,13 @@ export interface PiAiProviderProfile {
    * requests instead of being rejected by a request-size cap.
    */
   maxRequestImageBytes?: number
+  /**
+   * Maximum images carried by one request. When a request holds more, the
+   * oldest images are replaced by text placeholders until the request fits, so
+   * an image-heavy session keeps clearing upstream image-count caps. Omission
+   * uses {@link DEFAULT_MAX_IMAGES_PER_REQUEST}.
+   */
+  maxImagesPerRequest?: number
   /** Total-pixel budget for each deterministic inline request version. */
   requestImagePixelBudget?: number
   /**
@@ -1504,7 +1481,7 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 
 依赖：`Api`（`@earendil-works/pi-ai`）· `CacheRetention`（`@earendil-works/pi-ai`）· `Model`（`@earendil-works/pi-ai`）· `ModelThinkingLevel`（`@earendil-works/pi-ai`）· `OpenAICompletionsCompat`（`@earendil-works/pi-ai`）· [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets`（`@earendil-works/pi-ai`）· `Transport`（`@earendil-works/pi-ai`)
 
-来源：[`packages/llm/llm-pi-ai/src/config.ts:221`](../packages/llm/llm-pi-ai/src/config.ts)
+来源：[`packages/llm/llm-pi-ai/src/config.ts:245`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -2333,6 +2310,8 @@ export interface Config {
   dshHome?: string
   /** Shared agent config root. Defaults to `$DSH_AGENTS_HOME` or `~/.agents`. */
   agentsHome?: string
+  /** Directory for the DSH skill catalog. Defaults to `<repoRoot>/skill-catalog`. */
+  skillCatalogDir?: string
   /** Additional skill roots scanned after project roots and before user roots. */
   customSkillDirs?: string[]
   /** Whether host-local skill roots are watched for catalog changes. */
@@ -2352,7 +2331,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+来源：[`packages/skill/skill-filesystem/src/index.ts:50`](../packages/skill/skill-filesystem/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -3624,7 +3603,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
-- `@deepseek-ai/dsh-client-ui-sandbox-view`（[`packages/client/ui-sandbox-view/src/index.ts`](../packages/client/ui-sandbox-view/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-server-logs`（[`packages/client/ui-server-logs/src/index.ts`](../packages/client/ui-server-logs/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-session`（[`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts)）

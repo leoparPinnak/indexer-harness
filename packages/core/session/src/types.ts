@@ -250,8 +250,7 @@ export interface RequestContext {
   systemPromptUpdate?: SystemPromptUpdate
 }
 
-/**
- * Why a `request/header` snapshot was appended: `'initial'` — the log's first
+/** Why a `request/header` snapshot was appended: `'initial'` — the log's first
  * header (a new conversation); `'resume'` — a loop instance's first request
  * over a log that already has header events (process restart, fork seed);
  * `'change'` — a later request used a different header, with `startsSeries`
@@ -259,6 +258,11 @@ export interface RequestContext {
  * began an explicitly distinct message series or followed a surface replacement.
  */
 export type RequestHeaderReason = 'initial' | 'resume' | 'change' | 'series'
+
+// Operator RESUME vocabulary rides the types outlet so every side (Host guards,
+// client button) folds ONE verdict without extra package edges.
+export { evaluateResumeState } from './resume-state.ts'
+export type { ResumeCheckpoint, ResumeState, ResumeStateEvent } from './resume-state.ts'
 
 /**
  * The merge-extensible, append-only source of truth for an agent interaction.
@@ -272,8 +276,13 @@ export interface SessionEventMap {
    * Rejection, empty input, cancellation, or failure may close it with no
    * step; otherwise the following identified `user/message` event or batch
    * records the messages entering the step.
+   *
+   * `continuation` is the optional operator-RESUME marker: present only on the
+   * turn an operator reopened after a cut turn, naming the cut turn
+   * (`ofTurn`) whose checkpoint request the flow continues. Absent on every
+   * ordinary turn — old logs without it read unchanged.
    */
-  'turn/start': { turn: number }
+  'turn/start': { turn: number; continuation?: { ofTurn: number } }
   /**
    * Closes turn `turn` with the {@link TurnEndReason} that ended it. A turn
    * with no entered step has no `step/start` or `step/end`. The loop does not await a

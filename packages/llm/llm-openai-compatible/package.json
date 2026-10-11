@@ -1,0 +1,25 @@
+{
+  "name": "@deepseek-ai/dsh-llm-openai-compatible",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Config-driven multi-route OpenAI-compatible chat-completions model binder registering provider routes on the dsh-llm seam.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapter": "./src/adapter.ts",
+    "./serialize": "./src/serialize.ts",
+    "./sse": "./src/sse.ts",
+    "./translate": "./src/translate.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-brand": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "eventsource-parser": "^3.1.0"
+  }
+}

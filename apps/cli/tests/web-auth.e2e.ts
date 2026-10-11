@@ -163,18 +163,32 @@ describe('dsh web authentication through the real CLI', () => {
       const firstUrl = new URL(first.launchUrl)
       expect(firstUrl.origin).toBe(`http://127.0.0.1:${String(port)}`)
       expect(firstUrl.pathname).toBe('/')
-      expect(firstUrl.searchParams.get('token')).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+      // The printed URL carries no credential: the browser prompts for it.
+      expect(firstUrl.search).toBe('')
+      expect(firstUrl.searchParams.get('token')).toBeNull()
 
       expect(await describeSettings(port, `localhost:${String(port)}`)).toEqual({
         status: 401,
         body: 'unauthorized',
       })
 
-      const exchange = await fetch(first.launchUrl, { redirect: 'manual' })
+      // A new browser is challenged once for username and password.
+      const challenge = await fetch(first.launchUrl, { redirect: 'manual' })
+      expect(challenge.status).toBe(401)
+      expect(challenge.headers.get('www-authenticate')).toBe('Basic realm="dsh web", charset="UTF-8"')
+      const refused = await fetch(first.launchUrl, {
+        redirect: 'manual',
+        headers: { authorization: `Basic ${Buffer.from('dsh:wrong', 'utf8').toString('base64')}` },
+      })
+      expect(refused.status).toBe(401)
+      expect(refused.headers.get('set-cookie')).toBeNull()
+
+      const authorization = `Basic ${Buffer.from('dsh:dsh', 'utf8').toString('base64')}`
+      const exchange = await fetch(first.launchUrl, { redirect: 'manual', headers: { authorization } })
       expect(exchange.status).toBe(303)
       expect(exchange.headers.get('location')).toBe('/')
       const setCookie = exchange.headers.get('set-cookie')
-      if (setCookie === null) throw new Error('real CLI token exchange omitted Set-Cookie')
+      if (setCookie === null) throw new Error('real CLI username/password answer omitted Set-Cookie')
       expect(setCookie).toContain('HttpOnly')
       expect(setCookie).toContain('SameSite=Strict')
       expect(setCookie).not.toContain('Secure')
@@ -193,7 +207,7 @@ describe('dsh web authentication through the real CLI', () => {
       first = undefined
       second = await startWeb(root, dshHome, port)
       const secondUrl = new URL(second.launchUrl)
-      expect(secondUrl.searchParams.get('token')).not.toBe(firstUrl.searchParams.get('token'))
+      expect(secondUrl.search).toBe('')
       expect((await describeSettings(port, secondUrl.host, cookie)).status).toBe(200)
 
       const credentialMode = (await stat(join(dshHome, '.credentials.yaml'))).mode & 0o777

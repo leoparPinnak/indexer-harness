@@ -391,9 +391,39 @@ describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
     }
   })
 
-  it('rejects on spawn failure (bad workdir)', async () => {
+  it('recreates a workdir that vanished, so a live session keeps its shell', async () => {
     const { bash } = await setup()
-    await expect(bash.run(bash.resolve({ command: 'Write-Output ok', workdir: '/nonexistent-dsh' }))).rejects.toThrow(/ENOENT/)
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pwsh-recreate-'))
+    const vanished = join(parent, 'session-workspace')
+    // The incident this guards: a session workspace deleted out from under a
+    // running session. Node reports that as `spawn <pwsh> ENOENT`, blaming the
+    // executable; resolve() heals the directory instead.
+    const spec = bash.resolve({ command: '(Get-Location).Path', workdir: vanished })
+    expect(spec.workdir).toBe(vanished)
+    const result = await bash.run(spec)
+    // Running at all proves the directory now exists; the command proves the
+    // child genuinely started inside it.
+    expect(realpathSync(lf(result.stdout.text).trim())).toBe(realpathSync(vanished))
+  })
+
+  it('recreates its own default working directory when that has gone missing', async () => {
+    const gone = join(mkdtempSync(join(tmpdir(), 'dsh-pwsh-default-cwd-')), 'gone')
+    const { bash } = await setup({ cwd: gone })
+    const spec = bash.resolve({ command: '(Get-Location).Path' })
+    expect(spec.workdir).toBe(gone)
+    const result = await bash.run(spec)
+    expect(realpathSync(lf(result.stdout.text).trim())).toBe(realpathSync(gone))
+  })
+
+  it('names an uncreatable workdir by path instead of surfacing an executable ENOENT', async () => {
+    const { bash } = await setup()
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pwsh-uncreatable-'))
+    const blocker = join(parent, 'a-file')
+    writeFileSync(blocker, '')
+    // A regular file as the parent makes creation impossible on every platform,
+    // so the refusal is deterministic rather than permission-dependent.
+    expect(() => bash.resolve({ command: 'Write-Output ok', workdir: join(blocker, 'child') }))
+      .toThrow(/working directory does not exist/)
   })
 
   it('resolve() carries stdin/env/dshEnv onto the spec, and run() threads them to the command', async () => {
@@ -556,7 +586,13 @@ describe.skipIf(!hasPwsh)('PwshLocalExecutor.start (background process handles)'
 
   it('an asynchronous creation failure settles as killed with a stage-neutral note', async () => {
     const { bash } = await setup()
-    const proc = bash.start(bash.resolve({ command: 'Write-Output ok', workdir: '/nonexistent-dsh' }))
+    const dir = join(mkdtempSync(join(tmpdir(), 'dsh-pwsh-vanish-')), 'gone')
+    const spec = bash.resolve({ command: 'Write-Output ok', workdir: dir })
+    // resolve() heals a missing workdir, so the only way left to reach a
+    // cwd-owned creation failure is the genuine race: the directory vanishes
+    // again between resolution and the spawn.
+    rmSync(dir, { recursive: true, force: true })
+    const proc = bash.start(spec)
     // done resolves (never rejects) even though the process never ran.
     await expect(proc.done).resolves.toBeUndefined()
     expect(proc.status).toBe('killed')

@@ -47,7 +47,14 @@ const REMOTE_HOST = { home: '/home/fixture' } as const
 type AgentWireId = TypertContextWire<TypertContextMap['agent']>
 const agentId = (value: string): AgentWireId => value as AgentWireId
 
-/** Exchange this test Host's process token for its WebSocket/HTTP Cookie header. */
+/** The answered browser prompt: base64(username:password) of the deployment credentials. */
+function basicAuthorization(): string {
+  const user = process.env.DSH_WEB_USER ?? 'dsh'
+  const password = process.env.DSH_WEB_PASSWORD ?? 'dsh'
+  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+/** Answer this test Host's username/password prompt for its WebSocket/HTTP Cookie header. */
 function browserCookie(ctx: Context): string {
   const existing = browserCookies.get(ctx)
   if (existing !== undefined) return existing
@@ -56,8 +63,8 @@ function browserCookie(ctx: Context): string {
   let setCookie: string | undefined
   ctx.connection.authorizeIndex({
     method: 'GET',
-    url: `${target.pathname}${target.search}`,
-    headers: { host: target.host },
+    url: '/',
+    headers: { host: target.host, authorization: basicAuthorization() },
   }, {
     writeHead(_status, headers) { setCookie = headers?.['set-cookie'] },
     end() {},

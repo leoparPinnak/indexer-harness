@@ -186,7 +186,7 @@ export abstract class CompactionEngine extends Service {
    * durable bracket with the NEUTRAL `compaction/end` `cancelled` marker — a
    * cancelled run is not a failure and never checkpoints a partial summary.
    * Implementations override this with their active-transaction registry.
-   * @param compactionId - transaction identity from `compaction/start`.
+   * @param _compactionId - transaction identity from `compaction/start`.
    * @returns whether a live compaction was cancelled; `false` when none is running.
    */
   cancelCompaction(_compactionId: CompactionId): boolean {

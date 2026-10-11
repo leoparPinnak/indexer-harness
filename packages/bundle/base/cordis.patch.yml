@@ -325,6 +325,10 @@
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
 
+    # Operator `/dsh_restart`: the backend relaunches itself and comes back.
+    - id: command-restart
+      name: '@deepseek-ai/dsh-command-restart'
+
     - id: subagent
       name: '@deepseek-ai/dsh-subagent'
 

@@ -11,7 +11,10 @@ import {
 } from '../src/spill.ts'
 
 /** Recording writer: captures what would hit the disk, returns a fixed path. */
-function recorder(): { calls: { name: string; content: string }[], write: (name: string, content: string) => { path: string; chars: number } } {
+function recorder(): {
+  calls: { name: string; content: string }[]
+  write: (name: string, content: string) => { path: string; chars: number }
+} {
   const calls: { name: string; content: string }[] = []
   return {
     calls,

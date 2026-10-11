@@ -101,7 +101,7 @@ describe('Hermes verify contract: post-write byte comparison', () => {
     const src = patch(x.displayPath, BEFORE, ...FIRST_HUNK)
     const error = await rejectsPlain(runHashlineEdit(x.io, src))
     expect(error.message).toBe(
-      `Edit verification failed for a.txt: the file on disk does not match the patched content `
+      'Edit verification failed for a.txt: the file on disk does not match the patched content '
       + `(${Buffer.byteLength(tampered)} bytes persisted, ${Buffer.byteLength(AFTER)} intended, `
       + `first difference at byte ${Buffer.byteLength(AFTER)}). Re-read the file and try again.`,
     )

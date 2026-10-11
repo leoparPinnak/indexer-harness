@@ -215,7 +215,7 @@ describe('patch shape', () => {
   it('recognises only header-plus-hunk input as hashline', () => {
     expect(isHashlinePatch('plain old string')).toBe(false)
     expect(isHashlinePatch('x:0123456789abcdef')).toBe(false)
-    expect(isHashlinePatch(`x:0123456789abcdef\n@@ 1\n-1| a\n+b`)).toBe(true)
+    expect(isHashlinePatch('x:0123456789abcdef\n@@ 1\n-1| a\n+b')).toBe(true)
   })
 })
 

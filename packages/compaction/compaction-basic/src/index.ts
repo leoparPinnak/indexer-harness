@@ -104,6 +104,22 @@ function conversationTarget(
   return { provider: agent.options.provider, model: agent.options.model }
 }
 
+/**
+ * Classify a summarizer failure as eligible for the fallback target chain:
+ * quota/payment exhaustion, context overflow, degenerate empty responses,
+ * and provider streams that closed before completion.
+ * @param error - the thrown summarizer failure.
+ * @returns true only for failures another provider/model route could plausibly survive.
+ */
+function isFallbackSummaryFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const pattern = new RegExp(
+    '429|402|quota|RESOURCE_EXHAUSTED|rate.?limit|CONTEXT_WINDOW_EXCEEDED|EMPTY_RESPONSE|stream closed|stream disconnected|payment',
+    'i',
+  )
+  return pattern.test(message)
+}
+
 /** Settings namespace for the deployment compaction defaults (General settings). */
 const COMPACTION_SETTINGS_NAMESPACE = 'compaction-basic'
 
@@ -115,6 +131,11 @@ const summarizationModelSchema = z.string()
 const maxTokensSchema = z.number().step(1).min(1)
 const compactionRetriesSchema = z.number().step(1).min(0)
 const maxOverflowRetriesSchema = z.number().step(1).min(0)
+const fallbackTarget: z<{ provider: string; model: string }> = z.object({
+  provider: z.string().required(),
+  model: z.string().required(),
+})
+const fallbackTargetsSchema = z.array(fallbackTarget)
 
 const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
   provider: z.string().required(),
@@ -127,6 +148,7 @@ const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
   maxTokens: maxTokensSchema,
   compactionRetries: compactionRetriesSchema,
   maxOverflowRetries: maxOverflowRetriesSchema,
+  fallbackTargets: fallbackTargetsSchema,
 })
 
 /**
@@ -149,6 +171,7 @@ export class BasicCompactionEngine extends CompactionEngine {
     maxTokens: maxTokensSchema,
     compactionRetries: compactionRetriesSchema,
     maxOverflowRetries: maxOverflowRetriesSchema,
+    fallbackTargets: fallbackTargetsSchema,
     modelPolicies: z.array(modelPolicy),
     auto: z.boolean(),
   })
@@ -329,7 +352,41 @@ export class BasicCompactionEngine extends CompactionEngine {
     onWindows?: (windows: number) => void,
     live?: SummarizerLiveSink,
   ): Promise<SummaryResult> {
-    return summarizeWithLlm(this.ctx, this.summarizerConfig(agent), input, agent, signal, onWindows, live)
+    const chain = [this.summarizerConfig(agent), ...this.fallbackSummaryConfigs(agent)]
+    let lastError: unknown
+    for (const [index, config] of chain.entries()) {
+      try {
+        return await summarizeWithLlm(this.ctx, config, input, agent, signal, onWindows, live)
+      } catch (error) {
+        lastError = error
+        const finalAttempt = index === chain.length - 1
+        // İptal zincir dışında kalır; zincirle ilgili olmayan arızalar da aynen
+        // yükselir. Yalnız kota/taşma/boş yanıt/kırpılmış akış sınıfı bir sonraki
+        // hedefi hak eder.
+        if (finalAttempt || (signal?.aborted ?? false) || !isFallbackSummaryFailure(error)) {
+          throw error
+        }
+      }
+    }
+    throw lastError
+  }
+
+  /**
+   * Build one `SummaryConfig` per configured fallback route, inheriting the
+   * merged policy's generation cap so fallbacks price identically.
+   * @param agent - agent whose merged policy carries the fallback chain.
+   * @returns detached configs, primary excluded.
+   */
+  private fallbackSummaryConfigs(agent: Agent): SummaryConfig[] {
+    const target = conversationTarget(agent)
+    const policy = target === undefined
+      ? this.config
+      : resolveTargetPolicy(this.config, target)
+    return policy.fallbackTargets.map(fallback => ({
+      summarizationProvider: fallback.provider,
+      summarizationModel: fallback.model,
+      maxTokens: policy.maxTokens,
+    }))
   }
 
   /**

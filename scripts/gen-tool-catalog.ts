@@ -69,6 +69,7 @@ import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
 import * as CdpBundle from '../packages/bundle/cdp/src/index.ts'
+import * as CommandRestart from '../packages/host/command-restart/src/index.ts'
 import { githubSlug } from './verify-md-links.ts'
 
 /** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
@@ -622,6 +623,23 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-command-restart',
+    dir: 'command-restart',
+    source: 'packages/host/command-restart/src/index.ts',
+    requires: ['ctx.tools', 'ctx.commands (the `/dsh_restart` twin, opportunistic)'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // The plugin registers its `/dsh_restart` twin on the commands registry
+      // at load time; this catalog context carries none, so a no-op provider
+      // satisfies the seam (the webServer mirror above). Schema harvest never
+      // invokes a command.
+      ctx.provide('commands', { register: () => () => {} } as never)
+      await ctx.plugin(CommandRestart)
+    },
+    note:
+      'The `dsh_server_restart` model tool is the agent-facing twin of the operator `/dsh_restart` command over the same relaunch mechanics: the process schedules its replacement (waiting for its port to free), answers the call, then exits. Both live in one host-plane package so a process-level restart can never register per session. The command defers to whichever composed command adapter exists; the tool registers eagerly and takes no arguments.',
   },
   {
     pkg: '@deepseek-ai/dsh-cdp',

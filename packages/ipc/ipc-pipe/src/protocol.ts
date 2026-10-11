@@ -40,21 +40,21 @@ export type GatewayMessage =
   | { readonly t: 'hello'; readonly v: number; readonly digest: string }
   | { readonly t: 'welcome'; readonly v: number }
   | {
-      readonly t: 'req'
-      readonly id: number
-      readonly method: string
-      readonly url: string
-      readonly headers?: Record<string, string>
-      readonly stream?: boolean
-      readonly timeoutMs?: number
-    }
+    readonly t: 'req'
+    readonly id: number
+    readonly method: string
+    readonly url: string
+    readonly headers?: Record<string, string>
+    readonly stream?: boolean
+    readonly timeoutMs?: number
+  }
   | {
-      readonly t: 'res'
-      readonly id: number
-      readonly status: number
-      readonly headers?: Record<string, string>
-      readonly stream?: boolean
-    }
+    readonly t: 'res'
+    readonly id: number
+    readonly status: number
+    readonly headers?: Record<string, string>
+    readonly stream?: boolean
+  }
   | { readonly t: 'chunk'; readonly id: number }
   | { readonly t: 'end'; readonly id: number }
   | { readonly t: 'abort'; readonly id: number }

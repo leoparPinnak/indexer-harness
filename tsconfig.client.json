@@ -89,7 +89,6 @@
     { "path": "./packages/client/ui-sidebar-right" },
     { "path": "./packages/client/ui-sidebar-documentpreview" },
     { "path": "./packages/client/ui-sidebar-files" },
-    { "path": "./packages/client/ui-sandbox-view" },
     { "path": "./packages/client/ui-cdp-view" },
     { "path": "./packages/client/ui-server-logs" },
     { "path": "./packages/client/ui-jobs" },

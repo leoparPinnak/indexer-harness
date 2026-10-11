@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { loadLayeredEnv } from '@deepseek-ai/dsh-app-boot'
+import { RESTART_WAIT_PORT_ENV, RESTART_WAIT_TIMEOUT_ENV, waitForPortRelease } from '@deepseek-ai/dsh-app-boot/src/restart-wait.ts'
 import { parseDshArgs } from './args.ts'
 
 // Both the source tree (apps/cli/src) and the bundled bin (apps/cli/lib) sit
@@ -26,6 +27,21 @@ function readVersion(): string {
  * @returns a promise that settles when the selected command mode finishes.
  */
 export async function runCli(): Promise<void> {
+  // The relaunched backend's hand-over wait: `dsh_server_restart` / `/dsh_restart`
+  // spawn this same command line while the old listener is still bound, so the
+  // replacement waits here — before anything binds — for that release. The env
+  // contract is consumed once (never inherited by a later restart of ours).
+  const restartWaitPort = Number.parseInt(process.env[RESTART_WAIT_PORT_ENV] ?? '', 10)
+  const restartWaitBudget = Number.parseInt(process.env[RESTART_WAIT_TIMEOUT_ENV] ?? '', 10)
+  Reflect.deleteProperty(process.env, RESTART_WAIT_PORT_ENV)
+  Reflect.deleteProperty(process.env, RESTART_WAIT_TIMEOUT_ENV)
+  if (Number.isInteger(restartWaitPort) && restartWaitPort > 0) {
+    await waitForPortRelease(
+      restartWaitPort,
+      Number.isInteger(restartWaitBudget) && restartWaitBudget > 0 ? { timeoutMs: restartWaitBudget } : {},
+    )
+  }
+
   const invocation = parseDshArgs(process.argv.slice(2), readVersion())
 
   switch (invocation.mode) {

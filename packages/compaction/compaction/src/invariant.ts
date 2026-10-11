@@ -261,6 +261,7 @@ function validateCompactionEvent(
     }
     validateTokenCount(event.data.replacementTokenCount, 'compaction/summary replacementTokenCount', fail)
     validateReductionRatio(event.data.reductionRatio, 'compaction/summary reductionRatio', fail)
+    if (event.data.media !== undefined) validateMediaReport(event.data.media, fail)
     return {
       kind: 'summary',
       compactionId: open.compactionId,
@@ -311,6 +312,71 @@ function applyCompactionTransition(
     }
   }
   return undefined
+}
+
+/**
+ * Validate the optional media accounting of one summary: non-negative safe
+ * integers whose partition is exact (kept + pruned = total), and preview rows
+ * shaped like the attachment identities the clients feed to their image loaders.
+ * @param media - media report attached to the summary record.
+ * @param fail - invariant failure sink.
+ */
+function validateMediaReport(
+  media: {
+    images: number
+    imagesKept: number
+    imagesPruned: number
+    inlineRunsPruned: number
+    charactersPruned: number
+    tokensPrunedEstimate: number
+    previews: readonly {
+      attachmentId: string
+      name: string | null
+      mediaType: string
+      bytes: number
+      disposition: 'kept' | 'pruned'
+    }[]
+  },
+  fail: InvariantFailure,
+): void {
+  const count = (value: number, field: string): void => {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      fail(`compaction/summary media.${field} must be a non-negative safe integer`)
+    }
+  }
+  count(media.images, 'images')
+  count(media.imagesKept, 'imagesKept')
+  count(media.imagesPruned, 'imagesPruned')
+  count(media.inlineRunsPruned, 'inlineRunsPruned')
+  count(media.charactersPruned, 'charactersPruned')
+  count(media.tokensPrunedEstimate, 'tokensPrunedEstimate')
+  if (media.imagesKept + media.imagesPruned !== media.images) {
+    fail('compaction/summary media partition must satisfy imagesKept + imagesPruned = images')
+  }
+  if (media.imagesKept > 1) {
+    fail('compaction/summary media.imagesKept cannot exceed the single replayed image')
+  }
+  if (!Array.isArray(media.previews) || media.previews.length !== media.images) {
+    fail('compaction/summary media.previews must carry one row per image')
+    return
+  }
+  for (const preview of media.previews) {
+    if (typeof preview.attachmentId !== 'string' || preview.attachmentId === '') {
+      fail('compaction/summary media.previews attachmentId must be a non-empty string')
+    }
+    if (preview.name !== null && typeof preview.name !== 'string') {
+      fail('compaction/summary media.previews name must be a string or null')
+    }
+    if (typeof preview.mediaType !== 'string' || preview.mediaType === '') {
+      fail('compaction/summary media.previews mediaType must be a non-empty string')
+    }
+    if (!Number.isSafeInteger(preview.bytes) || preview.bytes < 0) {
+      fail('compaction/summary media.previews bytes must be a non-negative safe integer')
+    }
+    if (preview.disposition !== 'kept' && preview.disposition !== 'pruned') {
+      fail('compaction/summary media.previews disposition must be kept or pruned')
+    }
+  }
 }
 
 /** Install compaction start/summary/end checks. */

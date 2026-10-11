@@ -65,7 +65,7 @@ llm-pi-ai:
           input: [text, image]
 ```
 
-`input` accepts `text` and `image`, and applies to that model alone, so one route can serve both kinds. Omitting it — or writing an empty list, which means the same thing — keeps whatever the installed catalog records for that model, and falls back to the route's `defaultInput` for a model the catalog does not describe.
+`input` accepts `text`, `image`, `audio`, and `video`, and applies to that model alone, so one route can serve both kinds. Omitting it — or writing an empty list, which means the same thing — keeps whatever the installed catalog records for that model, and falls back to the route's `defaultInput` for a model the catalog does not describe.
 
 If every model you entered by hand takes images, set the fallback once on the route instead of on each of them:
 
@@ -95,7 +95,7 @@ llm-pi-ai:
 
 Every list must name at least one modality except a model's own, where an empty list means the same as omitting it. An unknown modality is refused wherever it is written.
 
-Both fields state a claim about your endpoint rather than checking it. A model that declares images its endpoint does not serve is not caught here; the provider rejects the request instead.
+Both fields state a claim about your endpoint rather than checking it. A model that declares images its endpoint does not serve is not caught here; the provider rejects the request instead. `audio` and `video` are accepted declarations that record what the endpoint claims; the harness never sends audio or video content, so they change nothing about requests.
 
 ### Reasoning effort
 

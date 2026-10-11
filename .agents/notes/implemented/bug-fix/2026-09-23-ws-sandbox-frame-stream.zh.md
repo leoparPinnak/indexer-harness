@@ -10,7 +10,7 @@ shellbox 面板把 `GET /api/server/sandbox/stream` 的 MJPEG multipart 画进�
 
 ## 决策
 
-- `packages/bundle/deamon/src/sandbox.ts` 从 web 服务器的 upgrade 钩子提供 `STREAM_WS_PATH = '/api/server/sandbox/ws'`：`registerUpgrade(route)` 经 `handleUpgrade` 把每条连接交给 `WebSocketServer({ noServer: true })`，插件的 dispose 注销该路由并终止路由仍持有的每个客户端套接字。
+- `protop/shellbox/deamon/src/sandbox.ts` 从 web 服务器的 upgrade 钩子提供 `STREAM_WS_PATH = '/api/server/sandbox/ws'`：`registerUpgrade(route)` 经 `handleUpgrade` 把每条连接交给 `WebSocketServer({ noServer: true })`，插件的 dispose 注销该路由并终止路由仍持有的每个客户端套接字。
 - upgrade 首先通过连接服务的源检查：`connection.requestRejection(req)` 返回 `401` 或 `403` 时由 `rejectUpgrade` 在任何握手头之前写回答复，其余回答放行，因此跨站 WebSocket 劫持永远到不了握手。
 - 面板经共享的 `buildStreamQuery` 组合 `?session=…&instance=…&target=…&fps=…`，使套接字、状态轮询与尺寸上报指向同一目标。
 - 守护进程的 MJPEG multipart 由共享的 `createMultipartFrameParser` 切成完整 JPEG；每个 JPEG 作为一条二进制消息、经喂入 `SandboxController.stream` 的 `ControllerSink` 适配器离开，长度字段无法续上分帧的部件被丢弃，而不会让后续流失去同步。
@@ -32,6 +32,6 @@ shellbox 面板把 `GET /api/server/sandbox/stream` 的 MJPEG multipart 画进�
 
 ## 测试
 
-- `packages/bundle/deamon/tests/sandbox-routes.spec.ts` 经真实 bridge 服务器钉住 upgrade 分发（接受的握手、被拒的普通请求与源检查）、二进制帧投递、任意分块切分下的重组、不可续分帧部件的丢弃、无法启动的 helper、以可重试关闭收场的守护进程失败、以 `1011` 关闭的守护进程流死亡、dispose 注销路由并关闭查看者、守护进程应答前离开的查看者之后服务器继续服务，以及 HTTP 管道对等（状态、内容类型、multipart 分帧、JPEG 魔数）。
-- `packages/client/ui-sandbox-view/tests/sandbox-body.client.spec.tsx` 钉住套接字打开与帧绘制、失败提示前的连接阶梯、把图像失败与套接字失败折进同一个重试窗口、由会话/目标/实例形成的查询形状、看门狗把重连阶梯按在其延迟窗口内、手动重试清掉待处理的重连计时器、卸载时取消待处理的重连，以及停止与尺寸上报契约。
-- 线协议记载于 `packages/bundle/deamon/sandbox/PROTOCOL.md`；面板传输记载于双语 `packages/client/ui-sandbox-view/README.md`。
+- `protop/shellbox/deamon/tests/sandbox-routes.spec.ts` 经真实 bridge 服务器钉住 upgrade 分发（接受的握手、被拒的普通请求与源检查）、二进制帧投递、任意分块切分下的重组、不可续分帧部件的丢弃、无法启动的 helper、以可重试关闭收场的守护进程失败、以 `1011` 关闭的守护进程流死亡、dispose 注销路由并关闭查看者、守护进程应答前离开的查看者之后服务器继续服务，以及 HTTP 管道对等（状态、内容类型、multipart 分帧、JPEG 魔数）。
+- `protop/shellbox/ui-sandbox-view/tests/sandbox-body.client.spec.tsx` 钉住套接字打开与帧绘制、失败提示前的连接阶梯、把图像失败与套接字失败折进同一个重试窗口、由会话/目标/实例形成的查询形状、看门狗把重连阶梯按在其延迟窗口内、手动重试清掉待处理的重连计时器、卸载时取消待处理的重连，以及停止与尺寸上报契约。
+- 线协议记载于 `protop/shellbox/deamon/sandbox/PROTOCOL.md`；面板传输记载于双语 `protop/shellbox/ui-sandbox-view/README.md`。

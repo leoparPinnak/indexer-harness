@@ -44,7 +44,7 @@ describe('CAS race: one winner, explicit loser, verified bytes', () => {
     // so the race really lands on the compare-and-swap step.
     let reads = 0
     let releaseReads!: () => void
-    const readBarrier = new Promise<void>(resolve => {
+    const readBarrier = new Promise<void>((resolve) => {
       releaseReads = resolve
     })
     const baseIo = x.io

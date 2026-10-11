@@ -134,7 +134,6 @@ flowchart TD
     pkg_acp_app["acp-app"]
     pkg_base["base"]
     pkg_cdp["cdp"]
-    pkg_deamon["deamon"]
     pkg_headless["headless"]
     pkg_sdk_app["sdk-app"]
     pkg_sdk_minimal["sdk-minimal"]
@@ -174,7 +173,6 @@ flowchart TD
     pkg_client_ui_primitives["client-ui-primitives"]
     pkg_client_ui_reference["client-ui-reference"]
     pkg_client_ui_renderer["client-ui-renderer"]
-    pkg_client_ui_sandbox_view["client-ui-sandbox-view"]
     pkg_client_ui_schedule["client-ui-schedule"]
     pkg_client_ui_server_logs["client-ui-server-logs"]
     pkg_client_ui_session["client-ui-session"]
@@ -457,8 +455,6 @@ flowchart TD
   pkg_app_boot --> pkg_system_prompt
   pkg_cdp --> pkg_skill
   pkg_cdp --> pkg_system_prompt
-  pkg_deamon --> pkg_skill
-  pkg_deamon --> pkg_system_prompt
   pkg_code_runtime_worker_thread --> pkg_code_runtime
   pkg_code_runtime_worker_thread --> pkg_session
   pkg_code_runtime_worker_thread --> pkg_timeout
@@ -1271,7 +1267,6 @@ flowchart TD
 | [`client-ui-primitives`](../packages/client/ui-primitives) | `client` | — |
 | [`client-ui-reference`](../packages/client/ui-reference) | `client` | — |
 | [`client-ui-renderer`](../packages/client/ui-renderer) | `client` | — |
-| [`client-ui-sandbox-view`](../packages/client/ui-sandbox-view) | `client` | — |
 | [`client-ui-schedule`](../packages/client/ui-schedule) | `client` | — |
 | [`client-ui-server-logs`](../packages/client/ui-server-logs) | `client` | — |
 | [`client-ui-session`](../packages/client/ui-session) | `client` | — |
@@ -1353,7 +1348,6 @@ flowchart TD
 | [`spill`](../packages/spill/spill) | `spill` | [`brand`](../packages/util/brand), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
 | [`app-boot`](../packages/boot/app-boot) | `boot` | [`home-paths`](../packages/util/home-paths), [`launch-environment`](../packages/util/launch-environment), [`system-prompt`](../packages/core/system-prompt) |
 | [`cdp`](../packages/bundle/cdp) | `bundle` | [`skill`](../packages/skill/skill), [`system-prompt`](../packages/core/system-prompt) |
-| [`deamon`](../packages/bundle/deamon) | `bundle` | [`skill`](../packages/skill/skill), [`system-prompt`](../packages/core/system-prompt) |
 | [`code-runtime-worker-thread`](../packages/code-runtime/code-runtime-worker-thread) | `code-runtime` | [`code-runtime`](../packages/code-runtime/code-runtime), [`session`](../packages/core/session), [`timeout`](../packages/util/timeout) |
 | [`persona`](../packages/preset/persona) | `preset` | [`system-prompt`](../packages/core/system-prompt) |
 | [`sandbox`](../packages/sandbox/sandbox) | `sandbox` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |

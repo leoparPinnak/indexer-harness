@@ -231,7 +231,7 @@ describe('hand-declared providers', () => {
         'acme-gateway': {
           api: 'openai-completions',
           baseURL: 'https://acme.test/v1',
-          models: [{ id: 'bare' }, { id: 'seeing', input: ['text', 'image'] }],
+          models: [{ id: 'bare' }, { id: 'seeing', input: ['text', 'image'] }, { id: 'av', input: ['text', 'audio', 'video'] }],
         },
         'vision-gateway': {
           api: 'openai-completions',
@@ -246,9 +246,10 @@ describe('hand-declared providers', () => {
     const listed = async (provider: string): Promise<Record<string, readonly string[] | undefined>> =>
       Object.fromEntries((await ctx.llm.listModels(provider)).map(model => [model.id, model.inputModalities]))
 
-    expect(await listed('acme-gateway')).toEqual({ bare: ['text'], seeing: ['text', 'image'] })
+    expect(await listed('acme-gateway')).toEqual({ bare: ['text'], seeing: ['text', 'image'], av: ['text', 'audio', 'video'] })
     expect(await listed('vision-gateway')).toEqual({ bare: ['text', 'image'], deaf: ['text'] })
     expect((await ctx.llm.resolveModelInfo('acme-gateway', 'seeing')).inputModalities).toEqual(['text', 'image'])
+    expect((await ctx.llm.resolveModelInfo('acme-gateway', 'av')).inputModalities).toEqual(['text', 'audio', 'video'])
 
     // A catalog vision model keeps what the catalog records even under a
     // narrower route default: the route value is a fallback, not an override.

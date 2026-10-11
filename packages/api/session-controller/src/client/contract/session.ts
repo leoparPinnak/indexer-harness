@@ -111,6 +111,15 @@ export interface ISession {
    */
   cancel(): Promise<RemoteResult<{ accepted: true }>>
   /**
+   * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+   * resume checkpoint (the last COMPLETED model request). The Host refuses
+   * honestly — busy agent, no cut, or no completed request before the cut.
+   * Optional so fakes and reduced faces degrade to "unavailable" rather than
+   * break; the affordance hides when the verb is absent.
+   * @returns dispatch verdict, or the business error.
+   */
+  resume?(): Promise<RemoteResult<{ resumed: boolean }>>
+  /**
    * Rename this session (explicit user title; pins it against automatic
    * regeneration).
    * @param title - raw title text (the host normalizes acceptance).

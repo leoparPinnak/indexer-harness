@@ -1,0 +1,29 @@
+[package]
+name = "winmem-kernel-loader"
+version = "0.1.0"
+edition = "2021"
+description = "WinMemEng KMDF çekirdek köprüsü için UM yükleyici ve IOCTL istemci sınıfı"
+license = "MIT"
+repository = "https://github.com/deepseek-ai/deepseek-harness"
+publish = false
+
+[lib]
+name = "winmem_kernel_loader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "winmem-loader"
+path = "src/main.rs"
+
+[dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Services",
+    "Win32_Devices_DeviceAndDriverInstallation",
+] }
+
+[build-dependencies]
+bindgen = "0.69"

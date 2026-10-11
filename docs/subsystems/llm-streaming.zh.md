@@ -974,9 +974,10 @@ providerRetryPolicy(provider: string): ResolvedRetryPolicy
  * price durable history whose route may no longer be mounted.
  * @param provider - provider route named by a request header.
  * @param model - exact model id named by the same header.
+ * @param override - session-level request-shape overrides, forwarded to the adapter.
  * @returns the owning adapter's image pricing for the route, when declared.
  */
-imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined
+imageRequestPricing( provider: string, model: string, override?: LlmImageRequestPricingOverride, ): LlmImageRequestPricing | undefined
 
 /**
  * Resolve the exact text one durable file occurrence contributes to every

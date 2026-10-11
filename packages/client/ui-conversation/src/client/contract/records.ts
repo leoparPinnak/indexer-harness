@@ -172,6 +172,16 @@ export interface ToolResultNode {
   subCalls: readonly ToolCallBlock[]
 }
 
+/** One call/phase transition observed while the summarizer runs. */
+export interface CompactionLiveLogEntry {
+  /** Summarizer call this entry describes. */
+  call: { stage: 'window' | 'merge' | 'summary'; index: number; total: number | null }
+  /** Phase the call moved into. */
+  phase: 'requested' | 'streaming' | 'done' | 'failed' | 'cancelled'
+  /** Unix epoch ms of the transition. */
+  at: number
+}
+
 /**
  * Live presentation of the running summarizer calls, folded from transient
  * `compaction/live-chunk` frames. Deltas accumulate per `call`; a new call
@@ -191,6 +201,13 @@ export interface CompactionLiveView {
   reasoning: string
   /** Accumulated raw summary output of the tracked call. */
   output: string
+  /**
+   * Rolling call/phase log, oldest first, bounded by the fold: the operator's
+   * stage-by-stage account of the run (which window, which merge round) while
+   * the text panes only show the outgoing call. Optional so older persisted
+   * snapshots stay readable.
+   */
+  log?: readonly CompactionLiveLogEntry[]
 }
 
 /**
@@ -242,8 +259,47 @@ export interface CompactionSummaryNode {
   /** Window count of a windowed map-reduce run, or null when the run was one-shot
    *  or its `compaction/windows` notice is outside the window. */
   windows: number | null
+  /**
+   * Transaction identity of the bracket, taken from `compaction/start`; null
+   * (or absent on older folds) when unannounced. Binds operator STOP to the
+   * running row even before the first live frame arrives.
+   */
+  compactionId?: string | null
+  /**
+   * Media accounting of the compacted span (images in, placeholders left,
+   * payload characters recovered, per-image previews), mirrored from the
+   * durable `compaction/summary.media` report; absent on older summaries.
+   */
+  media?: CompactionMediaSummary
   /** Live streaming presentation while the run is in flight, from transient frames. */
   live?: CompactionLiveView
+}
+
+/**
+ * Media accounting summary attached to a compaction node; mirrors the durable
+ * `compaction/summary.media` report (see `@deepseek-ai/dsh-compaction/types`).
+ */
+export interface CompactionMediaSummary {
+  /** Image blocks found in the compacted span. */
+  images: number
+  /** Images that rode the summarizer replay as real images (the newest one). */
+  imagesKept: number
+  /** Images withheld behind explicit placeholders. */
+  imagesPruned: number
+  /** Inline base64 runs scrubbed from free text, reasoning, and tool arguments. */
+  inlineRunsPruned: number
+  /** Payload characters withheld (scrubbed base64 chars + pruned image bytes). */
+  charactersPruned: number
+  /** Rough token equivalent (characters ÷ 4) — an estimate. */
+  tokensPrunedEstimate: number
+  /** Per-image preview identities in replay order. */
+  previews: readonly {
+    attachmentId: string
+    name: string | null
+    mediaType: string
+    bytes: number
+    disposition: 'kept' | 'pruned'
+  }[]
 }
 
 /**

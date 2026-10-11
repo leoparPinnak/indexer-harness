@@ -171,7 +171,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Compact controls at the left of the composer tool row. */
     'conversation.input.left': { kind: 'list'; scope: 'session' }
     /** Compact controls before the composer submit action. */
-    'conversation.input.right': { kind: 'list'; scope: 'session' }
+    'conversation.input.right': { kind: 'list'; scope: 'session'; owner: InputResumeOwnerProps }
     /** Resident composer body, including the no-Session inert state. */
     'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
     /** Optional draft-attachment rail and drop target. */
@@ -314,6 +314,16 @@ export interface ComposerBarInjected {
   retryFileUpload: ((id: DraftAttachmentId) => void) | undefined
   toggleCommandMenu: ((selection: EditSelection) => void) | undefined
   stop: (() => void) | undefined
+  /**
+   * Operator RESUME dispatch: re-drives the model from the resume checkpoint
+   * (the last COMPLETED model request) after a cut turn — an operator-controlled
+   * fork of the model-request retry, continuing in the ordinary turn stream.
+   * Undefined without a session; failures resolve as an honest refusal the
+   * affordance surfaces inline.
+   */
+  resume?: (() => Promise<{ readonly ok: boolean; readonly error?: { readonly message: string } }>) | undefined
+  /** Shared journal fold's verdict behind the RESUME affordance. */
+  resumeState?: ComposerResumeState
   command: ((line: string) => Promise<boolean>) | undefined
   hooks: {
     /**
@@ -333,6 +343,28 @@ export interface ComposerBarInjected {
 export interface InputControlOwnerProps {
   /** Whether the composer currently refuses interaction. */
   locked: boolean
+}
+
+/**
+ * Structural copy of the shared journal fold's verdict
+ * (`@deepseek-ai/dsh-session`'s `ResumeState`): `ready` names the resume
+ * checkpoint — the last COMPLETED model request — and only then may an
+ * operator resume offer itself. The face ALSO accepts a READER closure: the
+ * verdict is per-render fresh state over a lazily filled event window, and a
+ * value captured at inject time goes stale the moment the first history page
+ * lands (`not-cut` forever). Consumers must resolve either form.
+ */
+export type ComposerResumeState =
+  | { readonly kind: 'ready'; readonly checkpoint: { readonly turn: number; readonly step: number } }
+  | { readonly kind: 'busy' | 'not-cut' | 'no-checkpoint' | 'unknown' }
+  | (() => ComposerResumeState)
+
+/** Owner share driving the composer RESUME affordance. */
+export interface InputResumeOwnerProps {
+  /** Shared journal fold verdict (last-turn-cut + checkpoint). */
+  resumeState?: ComposerResumeState
+  /** Session-scoped dispatch; absent without a session. */
+  resume?: (() => Promise<{ readonly ok: boolean; readonly error?: { readonly message: string } }>) | undefined
 }
 
 /** Owner share of the composer context meter and compaction controls. */

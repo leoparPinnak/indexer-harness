@@ -1,4 +1,4 @@
-/** Browser launch-token and persistent-cookie behavior. */
+/** Browser username/password challenge and persistent-cookie behavior. */
 
 import { createHmac } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -62,6 +62,7 @@ function createAuth(
 function request(url: string, authority = '127.0.0.1:3080', init?: {
   cookie?: string
   method?: string
+  authorization?: string
 }): ConnectionIndexRequest {
   return {
     method: init?.method ?? 'GET',
@@ -69,20 +70,31 @@ function request(url: string, authority = '127.0.0.1:3080', init?: {
     headers: {
       host: authority,
       ...init?.cookie === undefined ? {} : { cookie: init.cookie },
+      ...init?.authorization === undefined ? {} : { authorization: init.authorization },
     },
   }
 }
 
+/** The browser's answered Basic prompt: base64(username:password). */
+function basicHeader(user = 'dsh', password = 'dsh'): string {
+  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+const CHALLENGE = 'Basic realm="dsh web", charset="UTF-8"'
+
+/**
+ * Answer the username/password challenge the way a new browser does: the first
+ * request carries the credentials, the response mints the cookie.
+ */
 function exchange(
   auth: BrowserAuth,
   authority = '127.0.0.1:3080',
 ): { cookie: string; launchUrl: string; state: ResponseState } {
   const launchUrl = auth.authenticatedUrl(`http://${authority}`)
-  const target = new URL(launchUrl)
   const res = response()
-  expect(auth.authorizeIndex(request(`${target.pathname}${target.search}`, authority), res.value)).toBe(false)
+  expect(auth.authorizeIndex(request('/', authority, { authorization: basicHeader() }), res.value)).toBe(false)
   const setCookie = res.state.headers?.['set-cookie']
-  if (setCookie === undefined) throw new Error('token exchange did not set a cookie')
+  if (setCookie === undefined) throw new Error('username/password answer did not set a cookie')
   return { cookie: setCookie.split(';', 1)[0]!, launchUrl, state: res.state }
 }
 
@@ -91,12 +103,15 @@ afterEach(() => {
 })
 
 describe('BrowserAuth', () => {
-  it('mints one process token and a persistent authority-bound cookie', async () => {
+  it('mints a persistent authority-bound cookie from an answered username/password prompt', async () => {
     const store = new RecordCredentials()
     const processOwner = {}
     const first = await createAuth(store, 30, processOwner)
     const login = exchange(first)
 
+    // The printed URL carries no credential: the browser prompts instead.
+    expect(login.launchUrl).toBe('http://127.0.0.1:3080/')
+    expect(login.launchUrl).not.toContain('token=')
     expect(login.state).toMatchObject({
       status: 303,
       headers: {
@@ -114,30 +129,57 @@ describe('BrowserAuth', () => {
     expect(first.isAuthenticated({ headers: new Headers() })).toBe(false)
     expect(first.isAuthenticated(request('/', 'localhost:3080', { cookie: login.cookie }))).toBe(false)
     expect(first.isAuthenticated(request('/', '127.0.0.1:3081', { cookie: login.cookie }))).toBe(false)
+    // Credentials alone authenticate without a cookie (API and WebSocket paths).
+    expect(first.isAuthenticated(request('/', '127.0.0.1:3080', { authorization: basicHeader() }))).toBe(true)
+    expect(first.isAuthenticated(request('/', '127.0.0.1:3080', { authorization: basicHeader('dsh', 'wrong') }))).toBe(false)
+    expect(first.isAuthenticated(request('/', '127.0.0.1:3080', { authorization: basicHeader('nobody', 'dsh') }))).toBe(false)
 
     const reloaded = await createAuth(store, 30, processOwner)
     expect(reloaded.authenticatedUrl('http://127.0.0.1:3080')).toBe(login.launchUrl)
     expect(reloaded.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
 
     const restarted = await createAuth(store)
-    expect(new URL(restarted.authenticatedUrl('http://127.0.0.1:3080')).searchParams.get('token'))
-      .not.toBe(new URL(login.launchUrl).searchParams.get('token'))
+    expect(restarted.authenticatedUrl('http://127.0.0.1:3080')).toBe('http://127.0.0.1:3080/')
     expect(restarted.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
-    const staleUrl = new URL(login.launchUrl)
-    const redirected = response()
-    expect(restarted.authorizeIndex(request(
-      `${staleUrl.pathname}${staleUrl.search}`,
-      '127.0.0.1:3080',
-      { cookie: login.cookie },
-    ), redirected.value)).toBe(false)
-    expect(redirected.state).toEqual({
-      status: 303,
-      headers: {
+    // A leftover credential query on an established browser is served, not challenged.
+    const stale = response()
+    expect(restarted.authorizeIndex(request('/?token=whatever', '127.0.0.1:3080', { cookie: login.cookie }), stale.value)).toBe(true)
+    expect(stale.state).toEqual({})
+  })
+
+  it('challenges a new browser once and accepts the answered credentials', async () => {
+    const auth = await createAuth(new RecordCredentials())
+
+    for (const candidate of [
+      request('/'),
+      request('/?token=anything'),
+      request('/index.html?token=wrong&token=again'),
+      request('/', '127.0.0.1:3080', { authorization: basicHeader('dsh', 'wrong') }),
+      request('/', '127.0.0.1:3080', { authorization: basicHeader('wrong', 'dsh') }),
+      request('/', '127.0.0.1:3080', { authorization: 'Bearer dsh:dsh' }),
+      request('/', '127.0.0.1:3080', { method: 'HEAD' }),
+    ]) {
+      const denied = response()
+      expect(auth.authorizeIndex(candidate, denied.value)).toBe(false)
+      expect(denied.state.status).toBe(401)
+      expect(denied.state.headers).toEqual({
         'cache-control': 'no-store',
-        'location': '/',
-        'referrer-policy': 'no-referrer',
-      },
-    })
+        'content-type': 'text/plain; charset=utf-8',
+        'www-authenticate': CHALLENGE,
+      })
+      expect(denied.state.body).toBe(candidate.method === 'HEAD'
+        ? undefined
+        : 'dsh web username/password required; enter dsh / dsh in the browser prompt.\n')
+    }
+
+    // Wrong credentials never mint a cookie; the right ones do.
+    const wrong = response()
+    expect(auth.authorizeIndex(
+      request('/', '127.0.0.1:3080', { authorization: basicHeader('dsh', 'nope') }),
+      wrong.value,
+    )).toBe(false)
+    expect(wrong.state.headers?.['set-cookie']).toBeUndefined()
+    expect(exchange(auth).state.status).toBe(303)
   })
 
   it('accepts the cookie for index serving and gives every unauthenticated request one response', async () => {
@@ -160,10 +202,11 @@ describe('BrowserAuth', () => {
       expect(denied.state.headers).toEqual({
         'cache-control': 'no-store',
         'content-type': 'text/plain; charset=utf-8',
+        'www-authenticate': CHALLENGE,
       })
       expect(denied.state.body).toBe(candidate.method === 'HEAD'
         ? undefined
-        : 'dsh web authentication required; reopen the URL printed by dsh web.\n')
+        : 'dsh web username/password required; enter dsh / dsh in the browser prompt.\n')
     }
   })
 

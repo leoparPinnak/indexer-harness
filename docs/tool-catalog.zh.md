@@ -20,6 +20,7 @@
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
+| `@deepseek-ai/dsh-tool-editor-evolved` | - | - | - | - | 库包：hashline 引擎经 isHashlinePatch 路由接缝由 dsh-tool-fs 与 dsh-tool-str-replace-editor 消费；它不自行注册任何工具，因此 schema 收集不会挂载任何内容。 |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: ptc`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 PTC mode Agent Note）。在 `ptc` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
 | `@deepseek-ai/dsh-plan-mode` | `enter_plan_mode`、`exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
 | `@deepseek-ai/dsh-tool-bash` | `bash` | `ctx.tools`、`ctx.shell`、`ctx.systemPrompt`、`ctx.shellEnv`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | bash 工具是 bash 执行器 seam 面向模型的消费方。使用 `run_in_background` 的运行会注册到通用 `ctx.jobs` 运行时，并通过 `job_*` 工具（来自 `@deepseek-ai/dsh-tool-jobs`）收集／停止；禁用 `enableRunInBackground` 配置（默认为 true）后，该参数会被完全移除。 |
@@ -45,6 +46,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-command-restart` | `dsh_server_restart` | `ctx.tools`、`ctx.commands`（`/dsh_restart` 孪生兄弟，机会性） | `tool/call`、`tool/result` | - | 模型工具 `dsh_server_restart` 是操作员 `/dsh_restart` 命令的 agent 端孪生体，二者共用同一套重启机制：进程安排好接替者（等待端口释放）、应答本次调用后退出。两者同住一个 host-plane 包，进程级重启因而绝不会按会话重复注册。命令推迟给已组合的命令适配器（若有）；工具立即注册且不接受参数。 |
 | `@deepseek-ai/dsh-cdp` | `cdp_captcha`、`cdp_click`、`cdp_contexts`、`cdp_dialog`、`cdp_download`、`cdp_endpoints`、`cdp_eval`、`cdp_exec`、`cdp_expect`、`cdp_extract`、`cdp_files`、`cdp_fill`、`cdp_find`、`cdp_fingerprint`、`cdp_locate`、`cdp_lock`、`cdp_navigate`、`cdp_open`、`cdp_pdftotext`、`cdp_printpdf`、`cdp_profiles`、`cdp_readpdf`、`cdp_screenshot`、`cdp_scroll`、`cdp_snapshot`、`cdp_status`、`cdp_stealth`、`cdp_tab_close`、`cdp_tab_focus`、`cdp_tab_new`、`cdp_tabs`、`cdp_text`、`cdp_type`、`cdp_unlock`、`cdp_upload`、`cdp_viewport`、`cdp_wait`、`net_capture`、`net_export` | `ctx.tools`、`ctx.webServer (route registration seam)`、`ctx.systemPrompt (prompt section, opportunistic)`、`ctx.skills (skill provider, opportunistic)` | `tool/call`、`tool/result` | - | CDP bundle 在 `bundle/cdp` 叶子（位于 `tool-*` 完整性 glob 之外）下随包提供 36 个面向模型的工具（34 个 `cdp_*` 加 `net_capture`/`net_export`），并且只挂载在 webServer surface 上；skills 与 systemPrompt 注册是机会性注入，因此裸上下文启动仍能采集到全部 schema。`cdp_status` 反映已安装版本／target／代理与当前浏览器 profile；`cdp_open` 会先发现既有 endpoint，并在附加或启动前询问使用哪个 profile。`cdp_exec` 比 `cdp_eval` 更倾向于给出有保证的错误 envelope；`cdp_captcha` 检测、驱动并验证第一方挑战，绝不经手任何第三方提供方；stealth 工具加固客户端（检测姿态），并不绕过第三方 CAPTCHA 提供方。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
@@ -122,6 +124,10 @@
 ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。
 
 <a id="deepseek-aidsh-tools"></a>
+
+## `@deepseek-ai/dsh-tool-editor-evolved`
+
+库包：hashline 引擎经 `isHashlinePatch` 路由接缝由 dsh-tool-fs 与 dsh-tool-str-replace-editor 消费；它不自行注册任何工具，因此 schema 收集不会挂载任何内容。
 
 ## `@deepseek-ai/dsh-tools`
 
@@ -2296,6 +2302,26 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 <a id="deepseek-aidsh-cdp"></a>
 
+## `@deepseek-ai/dsh-command-restart`
+
+### `dsh_server_restart`
+
+重启正在运行的 dsh 后端进程：本进程安排好接替者（等待端口释放），应答本次调用后退出——你继续对接新的后端，会话日志原样延续。仅在操作员要求重启 harness、或需要重建后的后端接手时使用。无参数。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/host/command-restart/src/index.ts`](../packages/host/command-restart/src/index.ts)
+
+The `dsh_server_restart` model tool is the agent-facing twin of the operator `/dsh_restart` command over the same relaunch mechanics: the process schedules its replacement (waiting for its port to free), answers the call, then exits. Both live in one host-plane package so a process-level restart can never register per session. The command defers to whichever composed command adapter exists; the tool registers eagerly and takes no arguments.
+
+<a id="deepseek-aidsh-cdp"></a>
+
+
 ## `@deepseek-ai/dsh-cdp`
 
 ### `cdp_captcha`
@@ -2449,6 +2475,10 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "type": "number",
       "description": "Locator resolve budget in ms (default 5000, max 30000)."
     },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots while resolving (plan16; web-component pages are invisible to light-DOM ladders)."
+    },
     "targetId": {
       "type": "string",
       "description": "Target id (defaults to active tab)."
@@ -2484,6 +2514,106 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 ```
 
 来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+
+### `cdp_deep_click`
+
+原子化地穿透开放 shadow root 找到元素，并在其最新中心点投递可信点击：一次调用取代脆弱的“测量 → 往返 → click(x,y)”舞步——那种坐标会过期（plan16）。Google 控制台式的 web-component 页面在此有回应，而 light-DOM 阶梯只会说“0 个候选”。定位器 DSL 与 cdp_click 相同（css > ariaLabel > role+name > text 阶梯）；pierceShadow 默认为 TRUE（设为 false 则只探测 light-DOM）。歧义仍然拒绝并给出候选项——请带上 nth。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "css": {
+      "type": "string",
+      "description": "CSS selector; pierces shadow roots when searching."
+    },
+    "ariaLabel": {
+      "type": "string",
+      "description": "Match the aria-label attribute (normalized comparison)."
+    },
+    "role": {
+      "type": "string",
+      "description": "ARIA role to match (requires name)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Accessible name; only used together with role."
+    },
+    "text": {
+      "type": "string",
+      "description": "Visible text resolved through the ladder aria-label > role+name > tag+text > innerText."
+    },
+    "textMatch": {
+      "type": "string",
+      "description": "How text compares (default exact).",
+      "enum": [
+        "exact",
+        "contains"
+      ]
+    },
+    "nth": {
+      "type": "integer",
+      "description": "0-based candidate index; REQUIRED when more than one element matches."
+    },
+    "scope": {
+      "type": "string",
+      "description": "CSS selector bounding the whole search."
+    },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots (default true; pass false to probe light DOM only)."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "Locator resolve budget in ms (default 5000, max 30000)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  }
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+
+
+### `cdp_describe`
+
+用 DOM 语言描述某一点上及其周围有什么：该点的节点（tag/role/name/rect 加一段简短祖先链）、其合成命中链，以及至多 12 个邻近盒子与其可见文本。这是 DOM 语义描述——明确不是 OCR：没有标记的图片仍然需要一只眼睛（或具备视觉能力的模型）来判断。与 cdp_screenshot（视觉循环）和 cdp_locate（探测 vs 行动）搭配使用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "x": {
+      "type": "number",
+      "description": "Viewport CSS x of the point."
+    },
+    "y": {
+      "type": "number",
+      "description": "Viewport CSS y of the point."
+    },
+    "radius": {
+      "type": "number",
+      "description": "Neighbourhood radius in CSS px (default 80)."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Target id (defaults to active tab)."
+    }
+  },
+  "required": [
+    "x",
+    "y"
+  ]
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
 
 ### `cdp_dialog`
 
@@ -2824,6 +2954,14 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "type": "string",
       "description": "Value to write into the element."
     },
+    "force": {
+      "type": "boolean",
+      "description": "Write even when actionability fails (e.g. \"hit-target blocked\" by a loading overlay); failures stay measured in `actionability` and the outcome carries forced:true (plan16)."
+    },
+    "pierceShadow": {
+      "type": "boolean",
+      "description": "Descend into open shadow roots while resolving (plan16)."
+    },
     "clear": {
       "type": "boolean",
       "description": "Replace the current value (default true); false appends."
@@ -3149,6 +3287,37 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 ```
 
 来源：[`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
+
+### `cdp_raw`
+
+经桥接发送一条生 CDP 命令——专为没有专用工具覆盖的域准备的逃生舱（Network.getAllCookies、Storage.*、Target.getTargets……）。带 targetId 时调用搭载该页面的扁平化会话（page-scope 方法）；不带则为 browser-scope。一条家规（S7）：Browser.close 与 Target.disposeBrowserContext 一律拒绝——用户浏览器与配置存储绝不在用户明确发话前死亡；逐标签页的刻意操作仍归 cdp_tab_close。威力工具：用完后请用专用读取工具核验。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "method": {
+      "type": "string",
+      "description": "CDP method name, e.g. Network.getAllCookies."
+    },
+    "params": {
+      "type": "string",
+      "description": "Protocol params as a JSON object string, e.g. {\"url\":\"https://x\"} (empty = {})."
+    },
+    "targetId": {
+      "type": "string",
+      "description": "Page target to scope the call through (page-scope methods); omit for browser-scope."
+    }
+  },
+  "required": [
+    "method"
+  ]
+}
+```
+
+Source: [`packages/bundle/cdp/src/tools.ts`](../packages/bundle/cdp/src/tools.ts)
+
 
 ### `cdp_readpdf`
 

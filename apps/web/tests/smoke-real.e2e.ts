@@ -317,10 +317,16 @@ describe('dsh web keyless CLI smoke', () => {
     let browser: Browser | undefined
     try {
       const readyUrl = await waitForReadyLine(child)
-      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+$/u)
-      expect((await fetch(readyUrl, { redirect: 'manual' })).status).toBe(303)
+      expect(readyUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/u)
+      const authorization = `Basic ${Buffer.from(
+        `${process.env.DSH_WEB_USER ?? 'dsh'}:${process.env.DSH_WEB_PASSWORD ?? 'dsh'}`, 'utf8',
+      ).toString('base64')}`
+      expect((await fetch(readyUrl, { redirect: 'manual', headers: { authorization } })).status).toBe(303)
       browser = await chromium.launch({ headless: true })
       const page = await newEnglishPage(browser)
+      // The page arrives with no cookie: answer the browser's username/password
+      // prompt on every request until the session cookie is minted.
+      await page.setExtraHTTPHeaders({ authorization })
       const pluginScripts: string[] = []
       const cacheHeaders = new Map<string, string | undefined>()
       // Chromium reports `preload as=script` as Script and reuses that same

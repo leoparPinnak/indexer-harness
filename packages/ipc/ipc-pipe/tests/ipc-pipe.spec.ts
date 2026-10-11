@@ -49,9 +49,9 @@ async function mount(
  * @returns a promise resolving once the time passed.
  */
 function delay(ms: number): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>()
-  setTimeout(resolve, ms)
-  return promise
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 /** One raw socket speaking the frame grammar, for the cases the client hides. */
@@ -320,7 +320,7 @@ describe('gateway streams', () => {
       // The reader walks away; the producer must observe the release.
       stream.destroy()
       for (let attempt = 0; !released && attempt < 100; attempt += 1) {
-        await new Promise<void>(resolve => { setTimeout(resolve, 20) })
+        await new Promise<void>((resolve) => { setTimeout(resolve, 20) })
       }
       expect(released).toBe(true)
       expect(ticks).toBeGreaterThan(0)

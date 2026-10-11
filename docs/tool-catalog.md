@@ -42,6 +42,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-command-restart` | `dsh_server_restart` | `ctx.tools`, `ctx.commands (the `/dsh_restart` twin, opportunistic)` | `tool/call`, `tool/result` | - | The `dsh_server_restart` model tool is the agent-facing twin of the operator `/dsh_restart` command over the same relaunch mechanics: the process schedules its replacement (waiting for its port to free), answers the call, then exits. Both live in one host-plane package so a process-level restart can never register per session. The command defers to whichever composed command adapter exists; the tool registers eagerly and takes no arguments. |
 | `@deepseek-ai/dsh-cdp` | `cdp_captcha`, `cdp_click`, `cdp_contexts`, `cdp_deep_click`, `cdp_describe`, `cdp_dialog`, `cdp_download`, `cdp_endpoints`, `cdp_eval`, `cdp_exec`, `cdp_expect`, `cdp_extract`, `cdp_files`, `cdp_fill`, `cdp_find`, `cdp_fingerprint`, `cdp_locate`, `cdp_lock`, `cdp_navigate`, `cdp_open`, `cdp_pdftotext`, `cdp_printpdf`, `cdp_profiles`, `cdp_raw`, `cdp_readpdf`, `cdp_screenshot`, `cdp_scroll`, `cdp_snapshot`, `cdp_status`, `cdp_stealth`, `cdp_tab_close`, `cdp_tab_focus`, `cdp_tab_new`, `cdp_tabs`, `cdp_text`, `cdp_type`, `cdp_unlock`, `cdp_upload`, `cdp_viewport`, `cdp_wait`, `net_capture`, `net_export` | `ctx.tools`, `ctx.webServer (route registration seam)`, `ctx.systemPrompt (prompt section, opportunistic)`, `ctx.skills (skill provider, opportunistic)` | `tool/call`, `tool/result` | - | The CDP bundle ships 36 model-facing tools (34 `cdp_*` plus `net_capture`/`net_export`) under a `bundle/cdp` leaf (outside the `tool-*` completeness glob) and mounts on the webServer surface alone; skills and systemPrompt registration are opportunistic injects, so a bare-context boot still harvests every schema. `cdp_status` reflects installed version/targets/proxy and the active browser profile; `cdp_open` discovers existing endpoints and asks which profile to use before attaching or launching. `cdp_exec` prefers a guaranteed error envelope over `cdp_eval`; `cdp_captcha` detects, drives and verifies first-party challenges without ever crossing a third-party provider; stealth tools harden the client (detection posture) and do not bypass third-party CAPTCHA providers. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
@@ -2296,6 +2297,25 @@ Search the web for current information. Provide 1–4 queries in the required qu
 Source: [`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-command-restart"></a>
+
+## `@deepseek-ai/dsh-command-restart`
+
+### `dsh_server_restart`
+
+Restart the running dsh backend process: this process schedules its replacement (waiting for the port to free), answers this call, then exits — you continue against the fresh backend and the session log carries over. Use only when the operator asks to restart or reboot the harness, or when a rebuilt backend must take over. Argument-free.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/host/command-restart/src/index.ts`](../packages/host/command-restart/src/index.ts)
+
+The `dsh_server_restart` model tool is the agent-facing twin of the operator `/dsh_restart` command over the same relaunch mechanics: the process schedules its replacement (waiting for its port to free), answers the call, then exits. Both live in one host-plane package so a process-level restart can never register per session. The command defers to whichever composed command adapter exists; the tool registers eagerly and takes no arguments.
 
 <a id="deepseek-aidsh-cdp"></a>
 

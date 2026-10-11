@@ -451,8 +451,14 @@
 - id: command-compact
   disabled: true
 
+# `tool-result-pruner` shares the compaction realm and moves behind presets
+# together with `compaction-basic`.
 - id: tool-result-pruner
   disabled: true
+
+# The restart command is a HOST-plane operator affordance and stays on:
+# `/dsh_restart` restarts the whole process, so it mounts exactly once on the
+# host and must never repeat per session. No disable entry here on purpose.
 
 # The subagent registry and its backends STAY in the host plane. `subagents` is
 # a process singleton with a cross-session query surface (`listChildren`,

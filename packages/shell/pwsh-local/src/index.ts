@@ -23,6 +23,7 @@ import type { SubprocessCollect, SubprocessHandle, SubprocessOutputReader, Subpr
 import type {} from '@deepseek-ai/dsh-settings'
 import { clampTimeout, deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
 /* jscpd:ignore-end */
+import { existsSync, mkdirSync } from 'node:fs'
 import { resolvePwshPath } from './resolve.ts'
 
 /* jscpd:ignore-start -- deliberate call-for-call mirror of dsh-bash-local (Agent Note: pwsh-tool-and-executor). */
@@ -121,6 +122,36 @@ export function assertServiceablePwshConfig(config: Config): void {
 }
 
 /**
+ * A working directory the spawn can actually use.
+ *
+ * Node reports a missing `cwd` as `spawn <exe> ENOENT` — naming the EXECUTABLE.
+ * Every reader of that message goes hunting for a broken PowerShell install
+ * while the real fault is a directory that was deleted out from under a live
+ * session (the session workspace the `pwsh` tool passes as `workdir`), and the
+ * whole shell stays dark for the rest of that session. Validate here, before
+ * the spawn, and heal the case that actually happens: recreate the directory.
+ * Only an uncreatable directory is fatal, and it is then reported BY PATH
+ * instead of as a missing executable.
+ *
+ * @param workdir - the resolved working directory (request `workdir`, the
+ *   `cwd` config, or `process.cwd()`).
+ * @returns the same path, now guaranteed to exist.
+ * @throws Error naming the path when it is missing and could not be created.
+ */
+function ensureWorkdir(workdir: string): string {
+  if (existsSync(workdir)) return workdir
+  try {
+    mkdirSync(workdir, { recursive: true })
+    return workdir
+  } catch (error) {
+    throw new Error(
+      `pwsh-local: working directory does not exist: ${workdir} `
+      + `(and could not be created: ${error instanceof Error ? error.message : String(error)})`,
+    )
+  }
+}
+
+/**
  * Local PowerShell executor over `ctx.subprocess`. Bounded output, spill
  * files, and managed-range termination are the subprocess service's mechanics;
  * this executor supplies their configured budgets per spawn.
@@ -185,8 +216,9 @@ export class PwshLocalExecutor extends ShellExecutor {
 
   /**
    * Resolve a request into a fully-specified spec: fill `workdir` from
-   * `config.cwd` (else `process.cwd()`), and `timeoutMs` from
-   * `config.timeoutMs`, capped at `config.maxTimeoutMs`.
+   * `config.cwd` (else `process.cwd()`) — healing it first, see
+   * {@link ensureWorkdir} — and `timeoutMs` from `config.timeoutMs`, capped at
+   * `config.maxTimeoutMs`.
    */
   resolve(request: ShellExecRequest): ShellExecSpec {
     const timeoutMs = clampTimeout(
@@ -197,9 +229,10 @@ export class PwshLocalExecutor extends ShellExecutor {
     )
     const stdoutMaxBytes = request.stdoutMaxBytes ?? this.config.maxOutputBytes
     assertPositiveFinite('request.stdoutMaxBytes', stdoutMaxBytes)
+    const declaredWorkdir = request.workdir ?? this.config.cwd
     return {
       command: request.command,
-      workdir: request.workdir ?? this.config.cwd ?? process.cwd(),
+      workdir: ensureWorkdir(declaredWorkdir ?? process.cwd()),
       timeoutMs,
       stdoutMaxBytes,
       ...request.signal ? { signal: request.signal } : {},

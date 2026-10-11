@@ -104,7 +104,7 @@ Read these pages when you want to go deeper into the shared core or the browser 
 
 #### What the model sees
 
-The section registers as `app:cdp-status` at the `WEB_SURFACE` order plus 7, directly after `app:shellbox-surface`, whenever the profile mounts `systemPrompt`. It orients the model to the extension, the `cdp_status` read, and the requirement that a browser endpoint is only reachable while remote debugging is enabled.
+The section registers as `app:cdp-status` at the `WEB_SURFACE` order plus 7 whenever the profile mounts `systemPrompt`. It orients the model to the extension, the `cdp_status` read, and the requirement that a browser endpoint is only reachable while remote debugging is enabled.
 
 ##### Verbatim `app:cdp-status` text
 

@@ -76,6 +76,15 @@ function validateEvent(
       if (event.data.turn !== trace.nextTurn) {
         fail(`turn/start expected turn ${trace.nextTurn}, got ${event.data.turn}`)
       }
+      // The optional operator-RESUME marker names a strictly earlier, closed
+      // turn: it is a pointer to the cut turn the checkpoint belongs to, never
+      // a claim about the opening turn itself.
+      if (event.data.continuation !== undefined) {
+        const { ofTurn } = event.data.continuation
+        if (!Number.isSafeInteger(ofTurn) || ofTurn <= 0 || ofTurn >= event.data.turn) {
+          fail(`turn/start continuation.ofTurn must be a strictly earlier turn, got ${String(ofTurn)}`)
+        }
+      }
       openTurn = event.data.turn
       nextStep = 1
       break

@@ -183,6 +183,22 @@ declare module './types.ts' {
     cancel(cause: AgentCancelCause, options?: CancelOptions): void
 
     /**
+     * Operator RESUME: reopen the flow after a CUT turn and re-drive the model
+     * from the RESUME CHECKPOINT — the last COMPLETED model request (its
+     * `assistant/message` without `interrupted`). The cut request's delivered
+     * prefix stays in the journal as history (`assistant/message
+     * {interrupted: true}`) and replays as past content, never presented as a
+     * completed answer; the continuation turn declares a fresh message series
+     * (`startsRequestSeries`) so the provider answers anew. The checkpoint
+     * answer's still-pending tool calls settle first through the SAME tool
+     * path, then the ordinary step machine continues — an operator-controlled
+     * fork of the model-request retry, not a parallel flow. Callers surface the
+     * polite verdicts from `evaluateResumeState`.
+     * @throws synchronously when the agent is busy (turn-driving or maintenance).
+     */
+    resume(): void
+
+    /**
    * Resolve after the current whole-agent activity reaches quiescence. This
    * follows replacement work started before the observed driver retires,
    * but does not identify the settlement of any particular message.

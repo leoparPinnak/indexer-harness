@@ -7,7 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type DefineToolOptions, type ParameterSchemaSpec, type ToolDefinition, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { errorEnvelope, normalizeScreenshotRequest, renderViewportOutcomeText } from './capture.ts' /* plan06, plan15-viewport */
 import { renderEvalFailure, renderExecText } from './exec.ts'
 import { listFiles, mkdirUnder, readFileUnder, statFile, deleteFile, writeFileUnder } from './files.ts' /* plan10 */
@@ -50,6 +50,73 @@ import type { TypeFocusCheck } from './locator.ts'
    wording cdp_find's render and cdp_locate's render both use for the
    inViewport/coveredBy axes, so the two tools cannot drift apart. */
 import { hitTestFailures, renderLocate } from './locate.ts'
+/* plan18-session-scope: the per-session target fence. Every tool whose schema
+   addresses a `targetId` runs through defineFencedTool, which resolves that id
+   INSIDE the calling session's holdings before the body sees it — deny-by-
+   default, one choke point. Creation tools mint grants through the vault's
+   sanctioned paths instead. */
+import { CdpTargetScopeError, type SessionTargetScope } from './session-scope.ts'
+
+/** plan18-session-scope: the DSH session id behind one tool execution, when any. */
+function ownerSessionIdOf(exec: unknown): string | undefined {
+  const agent = (exec as { agent?: { session?: { id?: unknown } } } | undefined)?.agent
+  const id = agent?.session?.id
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * plan18-session-scope: `defineTool` behind the ownership fence. A tool whose
+ * parameters name a `targetId` gets that argument RESOLVED through the calling
+ * session's vault before the body runs (frozen args are replaced by a shallow
+ * copy — never mutated); a tool without one runs unwrapped. Unknown/foreign ids
+ * die at the gate with a CdpTargetScopeError before any protocol byte moves.
+ *
+ * The generics are instantiated through `typeof defineTool<S, O>` so the exact
+ * spec types flow through untouched — collapsing them (Parameters<> over the
+ * uninstantiated function) would erase every tool's arg/value inference.
+ * @param service - the CdpService carrying the vault.
+ * @param options - the plain tool definition.
+ * @returns the same definition, now fenced.
+ */
+function defineFencedTool<const S extends ParameterSchemaSpec, const O extends ValueSchemaSpec>(
+  service: CdpService,
+  options: DefineToolOptions<S, O>,
+): ToolDefinition {
+  const addressesTarget = Object.prototype.hasOwnProperty.call(options.parameters ?? {}, 'targetId')
+  const inner = options.execute
+  // cdp_raw is exempt on purpose: its `targetId` may be ABSENT for a genuine
+  // browser-scope read, and it enforces the vault itself (assertRaw + params
+  // smuggle scan), so blanket default-resolution would corrupt its semantics.
+  const fenceExempt = options.name === 'cdp_raw'
+  if (!addressesTarget || fenceExempt || service === undefined) return defineTool<S, O>(options)
+  return defineTool<S, O>({
+    ...options,
+    execute: async (args, exec) => {
+      const owner = ownerSessionIdOf(exec)
+      if (owner === undefined) return await inner(args, exec)
+      const requested = (args as { targetId?: unknown }).targetId
+      const fencedTargetId = service.scope.resolveTargetId(
+        owner,
+        typeof requested === 'string' ? requested : undefined,
+        `cdp:${options.name}`,
+      )
+      const fencedArgs = { ...(args as Record<string, unknown>), targetId: fencedTargetId }
+      return await inner(fencedArgs as unknown as typeof args, exec)
+    },
+  })
+}
+
+/** plan18-session-scope: grant one freshly minted target to the calling session. */
+function grantNewTarget(scope: SessionTargetScope, exec: unknown, targetId: string, origin: 'tab-new' | 'context-open'): void {
+  const owner = ownerSessionIdOf(exec)
+  if (owner !== undefined) scope.grant(owner, targetId, origin)
+}
+
+/** plan18-session-scope: rebox a vault refusal as an honest tool error envelope. */
+function scopeErrorEnvelope(error: unknown): { ok: false; error: { code: string; message: string } } | undefined {
+  if (!(error instanceof CdpTargetScopeError)) return undefined
+  return { ok: false, error: { code: error.code, message: error.message } }
+}
 
 /** plan05: one dialog row shared by cdp_dialog's `pending`/`recent` arrays. */
 const PLAN05_DIALOG_BRIEF_SCHEMA = {
@@ -110,7 +177,7 @@ function focusLostReason(check: TypeFocusCheck): string {
 export function registerCdpTools(ctx: Context, service: CdpService): void {
   ctx.inject(['tools'], (toolCtx) => {
     // 1. cdp_status
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_status',
       description: CDP_STATUS_DESCRIPTION,
       parameters: {},
@@ -129,7 +196,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_status tool')
 
     // 2. cdp_open
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_open',
       description: 'Open or attach to a Chromium browser instance via Chrome DevTools Protocol. '
         + 'Called with no endpoint/port it FIRST scans the default loopback debug ports: if a live '
@@ -157,6 +224,19 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             ok: { type: 'boolean', required: true },
             endpoint: { type: 'string', required: true },
             targets: { type: 'integer', required: true },
+            // plan18-session-scope: which session now owns which target ids.
+            targetScope: {
+              type: 'object',
+              description: 'plan18: the calling session id and the target ids cdp_open bound to it (its whole universe).',
+              additionalProperties: false,
+              properties: {
+                sessionId: { type: 'string', required: true },
+                ownedTargets: { type: 'array', items: { type: 'string' }, required: true },
+              },
+            },
+            // plan18-flags: the live launch flag list and its verbatim prompt block.
+            launchFlags: { type: 'array', items: { type: 'string' }, description: 'plan18: the exact flags this launch spawned with.' },
+            flagBlock: { type: 'string', description: 'plan18: the LAUNCH FLAGS (prompt) block, verbatim.' },
             // plan04: stable pool id of the attached endpoint (e.g. ep-9222).
             connectionId: { type: 'string', required: true, description: 'Pool connection id of the attached endpoint.' },
             // plan04: true when the endpoint was already pooled — no socket was re-dialed.
@@ -257,11 +337,18 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
                 ? `\n${val.portAllocation.userNotice}`
                   + `\nscanned=${val.portAllocation.scannedRange} occupied=[${val.portAllocation.detectedOccupiedPorts.join(', ')}]`
                   + ` assigned=${String(val.portAllocation.assignedPort)}`
-                : ''),
+                : '')
+            // plan18-flags: the model prompt injection — the launch flag block,
+            // rendered verbatim into cdp_open's result text.
+            + (() => {
+              const block = service.launchFlagBlock()
+              return block === undefined ? '' : `\n\n${block}`
+            })(),
           }]
         },
       },
-      execute: async (args) => {
+      execute: async (args, exec) => {
+        const owner = ownerSessionIdOf(exec) // plan18-session-scope
         const res = await service.open({
           port: typeof args.port === 'number' ? args.port : undefined,
           headless: typeof args.headless === 'boolean' ? args.headless : undefined,
@@ -272,7 +359,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           profile: typeof args.profile === 'string' && args.profile !== '' ? args.profile : undefined,
           managed: args.managed === true,
         })
-        return {
+        const opened = {
           // plan13-profile: `ok` is FALSE exactly when a `reason` explains why
           // nothing happened. A needsChoice envelope is not a failure — it is a
           // successful report that the decision belongs to the user.
@@ -309,11 +396,31 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             }
             : {}),
         }
+        // plan18-session-scope: cdp_open BINDS the live targets to the calling
+        // session — the grant every later call is fenced against.
+        // plan18-flags: the flag block rides on this same call, verbatim.
+        const flagBlock = service.launchFlagBlock()
+        const boundTargets = owner !== undefined && res.endpoint !== '' && res.reason === undefined
+          ? service.targets.map(target => target.targetId)
+          : []
+        if (owner !== undefined && boundTargets.length > 0) service.adoptTargets(owner, boundTargets)
+        return {
+          ...opened,
+          ...(owner !== undefined
+            ? { targetScope: { sessionId: owner, ownedTargets: [...boundTargets] } }
+            : {}),
+          ...(flagBlock !== undefined
+            ? {
+              launchFlags: flagBlock.split('\n').slice(1).map(line => line.trim()).filter(line => line !== ''),
+              flagBlock,
+            }
+            : {}),
+        }
       },
     })), 'cdp: cdp_open tool')
 
     // 3. cdp_tabs
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_tabs',
       // plan03: name the live refresh, the active marker, and the filters —
       // the model must know which tab a mutation would resolve to.
@@ -370,9 +477,10 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
           ].join('\n') || 'No tabs open.',
         }],
       },
-      execute: async (args) => {
+      execute: async (args, exec) => {
         // plan03: refresh by default so the list mirrors the browser's own
         // state; a failed round trip is reported as `stale`, never hidden.
+        const owner = ownerSessionIdOf(exec) // plan18-session-scope
         const refresh = args.refresh !== false
         let stale = false
         if (refresh) {
@@ -387,7 +495,13 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         const query = typeof args.query === 'string' && args.query !== ''
           ? args.query.toLowerCase()
           : undefined
-        const tabs = [...service.targets]
+        const tracked = [...service.targets]
+        // plan18-session-scope: foreign rows are dropped BEFORE rendering — an
+        // agent cannot even enumerate sibling target ids from cdp_tabs.
+        const visible = owner !== undefined
+          ? service.scope.filterRows(owner, tracked, target => target.targetId)
+          : tracked
+        const tabs = visible
           .map((target, index) => ({
             ...target,
             index: index + 1,
@@ -407,7 +521,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_tabs tool')
 
     // 4. cdp_navigate
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_navigate',
       description: 'Navigate the active or specified browser tab to a URL.',
       parameters: {
@@ -453,7 +567,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     const tabLocks = new TabLockRegistry()
 
     // 5. cdp_snapshot
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_snapshot',
       description: 'Capture a woven DOM snapshot of the current page with stable element references and bounding boxes. '
         + 'plan08: pass `ref` to additionally verify that reference against the fresh document '
@@ -710,7 +824,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     // plan16-lock: cursor browser_lock muadili TTL lease — iki paralel yazarın
     // aynı sekmeye girdiğini sıraya sokar; TTL'siz kilit kalamaz.
     // 37. cdp_lock
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_lock',
       description: 'Take a TTL lease on one tab so parallel automations queue instead of interleaving input on the same page. '
         + 'The lease dies at `lockedUntil` without any timer — a forgotten lock never sticks past its TTL. '
@@ -754,7 +868,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_lock tool')
 
     // 38. cdp_unlock
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_unlock',
       description: 'Give back a cdp_lock lease. The holder must match when `holder` is passed; an unknown or already-released id answers in-band (double unlock is data, not an error).',
       parameters: {
@@ -788,7 +902,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_unlock tool')
 
     // 39. cdp_profiles
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_profiles',
       description: 'Named-profile inventory and lifecycle for the persistent signed-in browser profiles under '
         + '$DSH_HOME/profiles. action:"list" (default) reports every profile with its honest lock report '
@@ -876,7 +990,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_profiles tool')
 
     // 6. cdp_eval
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_eval',
       description: 'Evaluate a bounded JavaScript expression in the page execution context.',
       parameters: {
@@ -942,7 +1056,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_eval tool')
 
     // 7. cdp_click
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_click',
       description: 'Click on viewport coordinates using realistic human-like pointer motion and timing. '
         + 'plan08: pass a snapshot `ref` instead of x/y to click that element\u2019s FRESH centre '
@@ -1183,7 +1297,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_click tool')
 
     // 8. cdp_type
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_type',
       description: 'Type text into the focused page element with human-like cadence and character delays. '
         + 'plan08: pass a snapshot `ref` to focus that element first (clicked at its fresh centre, then typed).',
@@ -1332,7 +1446,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_type tool')
 
     // 9. cdp_wait (plan02 Faz 3: seven strategies, in-band timeout)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_wait',
       description: 'Wait for a page condition: a CSS selector, an aria-label/text/visible element state, '
         + 'network-idle (default 500ms quiet), the next navigation, or a URL regex pattern. Timeouts return '
@@ -1403,7 +1517,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_wait tool')
 
     // 10. net_capture
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'net_capture',
       description: 'Query captured HTTP/HTTPS network exchanges intercepted by the local proxy.',
       parameters: {
@@ -1486,7 +1600,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: net_capture tool')
 
     // 11. net_export
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'net_export',
       description: 'Export traffic metrics, host groups, and request timelines from the proxy capture store.',
       parameters: {},
@@ -1555,7 +1669,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: net_export tool')
 
     // 12. cdp_screenshot (plan06)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_screenshot',
       description: 'Capture a screenshot to a file: returns the path plus parsed dimensions, never raw binary. Optional fullPage/clip/selector capture, jpeg quality, inline base64 within a small budget, and DOM-free rect legend/annotate.',
       parameters: {
@@ -1656,7 +1770,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_screenshot tool')
 
     // 13. cdp_viewport (plan06)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_viewport',
       description: 'Read or explicitly change the viewport (Emulation.setDeviceMetricsOverride). Without parameters it only reports the live viewport; width+height set it; reset clears it. No other tool ever changes the viewport. '
         + 'A change is only reported applied when the page own resize handler provably ran — otherwise ok:false with the reason. '
@@ -1754,7 +1868,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_viewport tool')
 
     // 14. cdp_printpdf (plan10)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_printpdf',
       description: 'Print the current page to a PDF inside the downloads root (Page.printToPDF round-trip). Returns the saved path, size, and page count; the bytes stay on disk.',
       parameters: {
@@ -1797,7 +1911,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_printpdf tool') /* plan10 */
 
     // 15. cdp_download (plan10)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_download',
       description: 'Wait for the next browser download to finish and report where it landed inside the downloads root. Renames auto-named files to their suggested filename; an occupied renameTo is a hard error.',
       parameters: {
@@ -1839,7 +1953,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_download tool') /* plan10 */
 
     // 16. cdp_readpdf (plan10)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_readpdf',
       description: 'Read a PDF from the downloads root with page-marked, budget-bounded text. Supports page/pageFrom cursors, a pages spec ("1-5", "3,7"), meta/forms/barcode honesty fields, and honest reports for encrypted or image-only documents.',
       parameters: {
@@ -1961,7 +2075,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_readpdf tool') /* plan10 */
 
     // 17. cdp_pdftotext (plan10)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_pdftotext',
       description: 'Extract text from the PDF the page is showing: auto strategies network → print → axtree (or pin one with strategy). Reports the strategy detail and honesty notes; all strategies failing aggregates their reasons.',
       parameters: {
@@ -2036,7 +2150,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_pdftotext tool') /* plan10 */
 
     // 18. cdp_files (plan10)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_files',
       description: 'File operations confined to the downloads root: list, read, write, stat, delete, mkdir. Paths escaping the root are rejected; reads are bounded; writes never create directories outside the root.',
       parameters: {
@@ -2149,7 +2263,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_files tool') /* plan10 */
 
     // 19. cdp_exec (plan01)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_exec',
       description: 'Run a JavaScript expression in the page with a mandatory error envelope, an optional '
         + 'post-condition asserted AFTER the script, optional promise awaiting, and an explicit '
@@ -2248,7 +2362,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_exec tool')
 
     // 20. cdp_tab_new (plan03)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_tab_new',
       description: 'Open a new browser tab (Target.createTarget) and report its id, url, and focus. '
         + 'This is the only sanctioned way to create a tab — resolution never spawns one silently.',
@@ -2278,14 +2392,19 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `active: ${val.activeTargetId ?? 'none'}).`,
         }],
       },
-      execute: args => service.createTab({
-        ...(typeof args.url === 'string' && args.url !== '' ? { url: args.url } : {}),
-        ...(typeof args.focus === 'boolean' ? { focus: args.focus } : {}),
-      }),
+      execute: async (args, exec) => {
+        // plan18-session-scope: a NEW target is born owned — the minting path.
+        const created = await service.createTab({
+          ...(typeof args.url === 'string' && args.url !== '' ? { url: args.url } : {}),
+          ...(typeof args.focus === 'boolean' ? { focus: args.focus } : {}),
+        })
+        grantNewTarget(service.scope, exec, created.targetId, 'tab-new')
+        return created
+      },
     })), 'cdp: cdp_tab_new tool')
 
     // 21. cdp_tab_close (plan03)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_tab_close',
       description: 'Close a browser tab with guards: closing the ACTIVE tab needs an explicit targetId '
         + '(or confirmActive:true), and the LAST remaining page tab needs force:true. Reports the successor active tab.',
@@ -2314,15 +2433,22 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `${val.browserClosed ? '.' : ' (browser refused the close; tab still open).'}`,
         }],
       },
-      execute: args => service.closeTab({
-        ...(typeof args.targetId === 'string' && args.targetId !== '' ? { targetId: args.targetId } : {}),
-        ...(args.force === true ? { force: true } : {}),
-        ...(args.confirmActive === true ? { confirmActive: true } : {}),
-      }),
+      execute: async (args, exec) => {
+        // plan18-session-scope: the fence already resolved targetId to one of
+        // the caller's own; the grant is released the moment the tab dies.
+        const owner = ownerSessionIdOf(exec)
+        const closed = await service.closeTab({
+          ...(typeof args.targetId === 'string' && args.targetId !== '' ? { targetId: args.targetId } : {}),
+          ...(args.force === true ? { force: true } : {}),
+          ...(args.confirmActive === true ? { confirmActive: true } : {}),
+        })
+        if (owner !== undefined) service.scope.releaseTarget(closed.closedTargetId)
+        return closed
+      },
     })), 'cdp: cdp_tab_close tool')
 
     // 22. cdp_tab_focus (plan03)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_tab_focus',
       description: 'Focus (activate) a browser tab — the explicit way to switch the tab that omitted-targetId '
         + 'calls resolve to. Also asks the browser to bring the tab to the front (activateBrowser:false skips that).',
@@ -2351,11 +2477,18 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + `${val.activated ? '' : ' (browser focus not requested)'} (${String(val.pageCount)} pages).`,
         }],
       },
-      execute: args => service.focusTab(args.targetId, args.activateBrowser !== false),
+      execute: async (args, exec) => {
+        // plan18-session-scope: focus moves the session's own default pointer —
+        // the fence already refused any foreign targetId.
+        const focused = await service.focusTab(args.targetId, args.activateBrowser !== false)
+        const owner = ownerSessionIdOf(exec)
+        if (owner !== undefined) service.scope.setActive(owner, focused.targetId)
+        return focused
+      },
     })), 'cdp: cdp_tab_focus tool')
 
     // 23. cdp_scroll (plan03)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_scroll',
       description: 'Scroll the page with human-like wheel events, keyboard paging (PageUp/PageDown), or '
         + 'anchor/selector/edge jumps, and report the VERIFIED post-scroll position (scrollY, extents, edges).',
@@ -2444,7 +2577,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     }), 'cdp: plan05 dialog guard')
 
     // 24. cdp_dialog (plan05)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_dialog',
       description: 'Inspect and answer JavaScript dialogs (alert/confirm/prompt/beforeunload). '
         + 'While a dialog is pending, page-scoped tools are refused with dialog-open until you accept or dismiss it here. '
@@ -2510,7 +2643,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_dialog tool')
 
     // 25. cdp_upload (plan05)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_upload',
       description: 'Bind absolute host files onto the page file input (selector mode) or into an open file chooser '
         + '(chooser:true), verifying input.files afterwards. Paths must be absolute and inside the allowed roots '
@@ -2594,7 +2727,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_upload tool')
 
     // 26. cdp_text (plan02)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_text',
       description: 'Read the visible text of the element a locator resolves to, asserting the locator resolved '
         + 'unambiguously. Locator priority: css > aria-label > role+name > text (text ladder: aria-label, '
@@ -2678,7 +2811,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_text tool')
 
     // 27. cdp_expect (plan02)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_expect',
       description: 'Assert a page condition with a locator: exists, visible, enabled, textEquals, textContains, '
         + 'or urlMatches (page URL regex, locator ignored). Polls until it passes or timeoutMs elapses '
@@ -2795,7 +2928,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_expect tool')
 
     // 28. cdp_endpoints (plan04)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_endpoints',
       description: 'Discover and report browser debug endpoints: probes each configured loopback port\'s '
         + '/json/version, merges the answer with the live connection pool, and shows which endpoint is '
@@ -2861,7 +2994,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_endpoints tool')
 
     // 29. cdp_contexts (plan04)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_contexts',
       description: 'Manage isolated browser contexts in the active browser: list contexts with their live '
         + 'target counts, create a fresh context (separate cookies/storage, no second browser), open a tab '
@@ -2905,7 +3038,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             + (val.closed !== undefined ? `\nDisposed (closed ${String(val.closed)} tabs)` : ''),
         }],
       },
-      execute: async (args) => {
+      execute: async (args, exec) => {
         const action = typeof args.action === 'string' && args.action !== '' ? args.action : 'list'
         const contextId = typeof args.contextId === 'string' ? args.contextId : ''
         const url = typeof args.url === 'string' ? args.url : ''
@@ -2920,6 +3053,8 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
         if (action === 'open') {
           if (url === '') throw new Error("cdp: cdp_contexts action 'open' requires url")
           const opened = await service.openContextTab(contextId, url)
+          // plan18-session-scope: a context-born target is born owned too.
+          grantNewTarget(service.scope, exec, opened.targetId, 'context-open')
           return { ok: true, action, contexts: await service.listContexts(), targetId: opened.targetId }
         }
         if (action === 'dispose') {
@@ -2931,7 +3066,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_contexts tool')
 
     // 30. cdp_fill (plan02 Faz 2)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_fill',
       description: 'Fill a form field through the locator DSL: resolve the element (css > aria-label > role+name > '
         + 'text ladder), write through the native value setter + input/change events (React/Vue-safe), select the '
@@ -3004,7 +3139,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_fill tool')
 
     // 31. cdp_find (plan08 §4.2)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_find',
       description: 'Locate elements by ref/selector/aria-label/role/text and return the chosen one\'s ref with a FRESH rect '
         + 'plus actionability (visible/inViewport/enabled/hitTarget). Honest discovery: 0 matches answers ok:false with a '
@@ -3164,7 +3299,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_find tool')
 
     // 32. cdp_extract (plan08 §4.3)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_extract',
       description: 'Project structured data out of the current page with a JSON spec — {"kind":"page"} for page fields '
         + '(title/url/h1/lang/description/openDialog), {"kind":"list"} for a filtered collection (from: role/selector/ariaLabel/withinRole, '
@@ -3255,7 +3390,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_extract tool')
 
     // 33. cdp_stealth (plan07)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_stealth',
       description: 'Inspect or switch the stealth profile that drives every layer of the browser story at once — the '
         + 'JS patches, the User-Agent/Sec-CH-UA*/Accept-Language headers, and the launch flags (G9/G3/G4/G26 '
@@ -3344,7 +3479,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_stealth tool')
 
     // 34. cdp_fingerprint (plan07)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_fingerprint',
       description: 'Probe the page once and report how coherent the browser story is: compares the navigator '
         + 'surface (webdriver, UA, platform, languages, UA-CH, plugins, screen vs window, chrome extras, fonts, '
@@ -3426,7 +3561,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
       },
     })), 'cdp: cdp_fingerprint tool')
     // 35. cdp_captcha (plan11 §3.1 — tool count 34 → 35, deliberate)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_captcha',
       description: 'Detect, drive, and read first-party verification challenges. '
         + 'action "scan" (Katman A) classifies every first-party candidate (checkbox, slider, image-select, form-field, '
@@ -3679,7 +3814,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_captcha tool')
 
     // 36. cdp_locate (plan14 — the visual loop's missing query)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_locate',
       description: 'Ask "what is AT this point?" — document.elementFromPoint(x,y) identified and described: '
         + 'tag/id/classes/role/ariaLabel/short text, a FRESH viewport rect, interactive yes/no, inViewport, '
@@ -3789,7 +3924,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_locate tool')
 
     // 40. cdp_deep_click (plan16: atomic find → measure → trusted click, shadow-piercing by default)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_deep_click',
       description: 'Atomically find an element THROUGH open shadow roots and deliver a trusted click at its fresh '
         + 'centre: one call replaces the fragile measure → round-trip → click(x,y) dance whose coordinates go stale '
@@ -3893,7 +4028,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_deep_click tool')
 
     // 41. cdp_raw (plan16: the raw CDP escape hatch with the S7 house law)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_raw',
       description: 'Send ONE raw CDP command through the bridge — the escape hatch for domains no purpose-built tool '
         + 'covers (Network.getAllCookies, Storage.*, Target.getTargets, …). With targetId the call rides that page\u2019s '
@@ -3925,7 +4060,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             : `Raw CDP ${String(val.method)} answered.`,
         }],
       },
-      execute: async (args) => {
+      execute: async (args, exec) => {
         const method = String(args.method)
         const targetId = typeof args.targetId === 'string' && args.targetId !== '' ? args.targetId : undefined
         let params: Record<string, unknown> = {}
@@ -3938,6 +4073,19 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
             params = parsed as Record<string, unknown>
           } catch (error) {
             return { ok: false, method, reason: `params is not valid JSON: ${(error as Error)?.message ?? 'parse failed'}` }
+          }
+        }
+        // plan18-session-scope: the raw wall — method family + allow-list +
+        // recursive smuggle scan against the CALLING SESSION's holdings. A raw
+        // command can never reach or even name a foreign target id.
+        const owner = ownerSessionIdOf(exec)
+        if (owner !== undefined) {
+          try {
+            service.scope.assertRaw(owner, method, params, targetId)
+          } catch (error) {
+            const boxed = scopeErrorEnvelope(error)
+            if (boxed !== undefined) return { ok: false, method, reason: boxed.error.message }
+            throw error
           }
         }
         try {
@@ -3956,7 +4104,7 @@ export function registerCdpTools(ctx: Context, service: CdpService): void {
     })), 'cdp: cdp_raw tool')
 
     // 42. cdp_describe (plan16: the neighbourhood probe — see, but in DOM words)
-    toolCtx.effect(() => toolCtx.tools.register(defineTool({
+    toolCtx.effect(() => toolCtx.tools.register(defineFencedTool(service, {
       name: 'cdp_describe',
       description: 'Describe what is AT a point and around it, in DOM words: the node at the point (tag/role/name/rect '
         + 'plus a short ancestry chain), its composed hit chain, and up to 12 neighbouring boxes with their visible '

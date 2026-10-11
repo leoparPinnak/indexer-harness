@@ -638,6 +638,7 @@ function commitCompactionBody(
     ...intermediateCalls === undefined ? {} : { intermediateCalls },
     replacementTokenCount,
     reductionRatio,
+    ...summarized.input.media === undefined ? {} : { media: summarized.input.media },
   })
   session.append('user/message', checkpointMessage, {
     surfaceOp: { op: 'replace', startSeq: start, endSeq: end },
@@ -704,6 +705,9 @@ function buildSummarizationInput(
     ...header?.tools === undefined ? {} : { tools: header.tools },
     ...sanitized.head === undefined ? {} : { head: sanitized.head },
     messages: sanitized.messages,
+    // Carry the accounting forward: this bag rides the whole summarization, so
+    // the committed checkpoint can report what the replay withheld.
+    media: sanitized.media,
   }
 }
 

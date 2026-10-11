@@ -130,6 +130,7 @@ function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
   let reductionRatio: number | null = null
   let summaryProvider: string | null = null
   let summaryModel: string | null = null
+  let media: CompactionSummaryNode['media'] | null = null
   if (state.summary?.event.type === 'compaction/summary') {
     const data = state.summary.event.data
     if (Array.isArray(data.summary)) {
@@ -147,22 +148,45 @@ function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
     reductionRatio = ratio(data.reductionRatio)
     summaryProvider = typeof data.provider === 'string' && data.provider !== '' ? data.provider : null
     summaryModel = typeof data.model === 'string' && data.model !== '' ? data.model : null
+    const rawMedia = data.media
+    media = rawMedia === undefined ? null : {
+      images: rawMedia.images,
+      imagesKept: rawMedia.imagesKept,
+      imagesPruned: rawMedia.imagesPruned,
+      inlineRunsPruned: rawMedia.inlineRunsPruned,
+      charactersPruned: rawMedia.charactersPruned,
+      tokensPrunedEstimate: rawMedia.tokensPrunedEstimate,
+      previews: rawMedia.previews.map(preview => ({
+        attachmentId: String(preview.attachmentId),
+        name: preview.name === null ? null : String(preview.name),
+        mediaType: String(preview.mediaType),
+        bytes: preview.bytes,
+        disposition: preview.disposition,
+      })),
+    }
   }
   // The start marker announces the route and the incoming context size before
-  // the model answers, so a still-running row is already informative.
+  // the model answers, so a still-running row is already informative. It also
+  // carries the transaction identity, binding operator STOP from the first
+  // durable moment even before any live frame arrives.
   let startProvider: string | null = null
   let startModel: string | null = null
   let contextTotalTokens: number | null = null
+  let compactionId: string | null = null
   if (state.start?.event.type === 'compaction/start') {
     const data = state.start.event.data
     startProvider = typeof data.provider === 'string' && data.provider !== '' ? data.provider : null
     startModel = typeof data.model === 'string' && data.model !== '' ? data.model : null
     contextTotalTokens = tokenCount(data.contextTotalTokens)
+    compactionId = data.compactionId === undefined ? null : String(data.compactionId)
   }
   const failed = state.end?.event.type === 'compaction/end' && state.end.event.data.error !== undefined
   // An operator stop closes the bracket with `cancelled` and no error: the row
   // is NEUTRAL and never presents as a failure.
   const cancelled = state.end?.event.type === 'compaction/end' && state.end.event.data.cancelled === true
+  if (compactionId === null && state.end?.event.type === 'compaction/end') {
+    compactionId = String(state.end.event.data.compactionId)
+  }
   const windows = state.windows?.event.type === 'compaction/windows'
     && Number.isSafeInteger(state.windows.event.data.windows)
     && state.windows.event.data.windows >= 1
@@ -185,6 +209,8 @@ function compactSummary(state: CompactionEvidence): CompactionSummaryNode {
     replacementTokenCount,
     reductionRatio,
     windows,
+    compactionId,
+    ...media === null ? {} : { media },
     ...state.live === undefined ? {} : { live: state.live },
   }
 }
@@ -233,7 +259,7 @@ export function updateCompactionState<State extends CompactionEvidence>(
   if (match.event.type === 'compaction/windows') return { ...state, windows: match }
   if (match.event.type === 'compaction/end') return { ...state, end: match }
   if (match.event.type === 'compaction/live-chunk') {
-    return { ...state, live: foldCompactionLive(state.live, match.event.data) }
+    return { ...state, live: foldCompactionLive(state.live, match.event.data, match.event.time) }
   }
   if (compactSource(match.event) !== undefined) return { ...state, checkpoint: match }
   return state
@@ -282,9 +308,13 @@ export const commandDefinition: ConversationNodeDefinition<CommandState> = {
     if (state.command.name !== 'compact') {
       return chatNode(context, 'command', state.command.seq, state.command)
     }
+    // `start` counts as evidence too: a RUNNING bracket must surface its live
+    // panel (stage log, announced route, STOP) the moment the durable marker
+    // lands — long before any `windows`/`end` notice exists.
     const compaction = state.checkpoint === undefined
       && state.windows === undefined
       && state.end === undefined
+      && state.start === undefined
       ? null
       : compactSummary(state)
     const data: ManualCompactionChatData = { command: state.command, compaction }

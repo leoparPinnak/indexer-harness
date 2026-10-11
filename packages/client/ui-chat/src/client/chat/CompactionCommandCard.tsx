@@ -1,16 +1,18 @@
 // Only a structured checkpoint uses the compaction marker; all other outcomes
 // retain the command's complete settlement text.
 
-import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
+import type { ChatNodeViewProps, ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { GenericCommandCard } from './GenericCommandCard.tsx'
 
 interface CompactionCommandCardProps extends CommandRowOwnerProps {
   t: ChatViewSlotProps['t']
+  /** Session-authorized image loader for the media preview strip. */
+  loadImage?: ChatNodeViewProps['loadImage']
 }
 
 /** Render one manual compaction lifecycle without duplicating its checkpoint marker. */
-export function CompactionCommandCard({ node, compaction, t }: CompactionCommandCardProps) {
+export function CompactionCommandCard({ node, compaction, t, loadImage }: CompactionCommandCardProps) {
   if (compaction !== undefined) {
     return (
       <CompactionItem
@@ -18,6 +20,7 @@ export function CompactionCommandCard({ node, compaction, t }: CompactionCommand
         title={t('message.compaction.commandTitle')}
         fallbackSummary={node.outcome?.text ?? null}
         t={t}
+        {...loadImage === undefined ? {} : { loadImage }}
       />
     )
   }

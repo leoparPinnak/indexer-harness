@@ -189,6 +189,7 @@ export interface LlmImageRequestPricingOverride {
   readonly maxImagesPerRequest?: number
 }
 
+/** Request-image pricing for one provider route over a request projection's durable image references. */
 export interface LlmImageRequestPricing {
   /**
    * Price every image occurrence of one request projection.
@@ -206,10 +207,17 @@ export interface LlmProviderInfo {
   name: string
 }
 
-/** Merge-extensible provider model modality vocabulary. */
+/**
+ * Merge-extensible provider model modality vocabulary. `audio` and `video` are
+ * declarable capability metadata: no adapter serializes audio or video
+ * request content, so they gate nothing and only record what an endpoint
+ * claims to accept.
+ */
 export interface ModelModalityMap {
   text: 'text'
   image: 'image'
+  audio: 'audio'
+  video: 'video'
 }
 
 /** Any declared provider model modality. */
@@ -456,6 +464,13 @@ export interface GenerateOptions {
    * to separate cursors; adapters may map it to model-hidden transport metadata.
    */
   sessionId?: Branded<'SessionId'>
+  /**
+   * Parent session id stamped by the loop for a subagent's request, so a
+   * downstream gateway can group a child's requests under the session that
+   * spawned it. Absent for root sessions; adapters may map it to
+   * model-hidden transport metadata.
+   */
+  parentSessionId?: Branded<'SessionId'>
   /**
    * Provider-neutral classification for an auxiliary model call. Adapters may
    * map the purpose to model-hidden transport metadata or purpose-specific

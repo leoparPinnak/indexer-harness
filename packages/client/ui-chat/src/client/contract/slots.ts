@@ -91,6 +91,19 @@ export interface ChatNodeOwnerProps {
    */
   stopAction?: () => void
   /**
+   * Operator STOP for a running compaction row: cancels that transaction by its
+   * identity through the Session's agent realm. Neutral close — no summary or
+   * checkpoint lands, the conversation stays exactly as before the attempt.
+   */
+  cancelCompaction?: (compactionId: string) => void
+  /**
+   * Operator RESUME threaded down to chat rows: re-drives the model from the
+   * resume checkpoint in this view's own Session. `canResume` mirrors the
+   * shared journal fold so a row never offers what the Host would refuse.
+   */
+  resumeAction?: () => void
+  canResume?: boolean
+  /**
    * Session-authorized image loader, down-threaded from the Chat view so a
    * chat-node renderer can render the attachment presentation slot directly
    * with only the durable references plus this loader, instead of receiving a
@@ -164,6 +177,20 @@ export interface ChatViewInjected {
    * retry timer clears and the turn closes NEUTRALLY, never as a failure row.
    */
   stopAction?: () => void
+  /**
+   * Compaction-row DURDUR threaded down from the Chat view: cancels one running
+   * compaction transaction by identity in this view's own Session. The close is
+   * NEUTRAL — no summary or checkpoint lands, the conversation stays exactly as
+   * before the attempt.
+   */
+  cancelCompaction?: (compactionId: string) => void
+  /**
+   * Operator RESUME threaded down from the Chat view: re-drives the model from
+   * the resume checkpoint in this view's own Session.
+   */
+  resumeAction?: () => void
+  /** Shared journal fold's verdict — rows never offer what the Host would refuse. */
+  canResume?: boolean
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }
 

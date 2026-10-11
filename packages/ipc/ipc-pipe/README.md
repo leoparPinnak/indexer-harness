@@ -23,11 +23,11 @@ Move a message between two processes on one machine over a named pipe instead of
 <a id="use-this-package"></a>
 ## Use this package
 
-The common path: `@deepseek-ai/dsh-deamon` mounts the server in its helper daemon and the client in its host bridge, so commands and events cross as pipe frames while the browser keeps its HTTP and WebSocket faces.
+The common path: a host bridge mounts the client and its helper daemon mounts the server, so commands and events cross as pipe frames while the browser keeps its HTTP and WebSocket faces.
 
 ### When to choose it
 
-Choose this gateway for a same-machine hop between two dsh processes when the messages deserve a budget, a size cap, and an authenticated peer; `@deepseek-ai/dsh-deamon`'s `deamon.transport` selects it (`pipe`, the default) over the legacy loopback path (`http`, retired in D9). Reach for HTTP instead when a browser or an external tool is the caller — the pipe endpoint is private to one home and never binds a TCP port.
+Choose this gateway for a same-machine hop between two dsh processes when the messages deserve a budget, a size cap, and an authenticated peer; a caller's transport option selects it (`pipe`, the default) over the legacy loopback path (`http`, retired in D9). Reach for HTTP instead when a browser or an external tool is the caller — the pipe endpoint is private to one home and never binds a TCP port.
 
 ### Minimal configuration
 
@@ -74,7 +74,7 @@ A single-instance lock beside the endpoint (`<home>/ipc/dsh-gateway-<hash>.lock`
 <a id="further-exploration"></a>
 ## Further Exploration
 
-- [dsh-deamon](../bundle/deamon/README.md) — the bridge and helper daemon that speak over this gateway
+- [dsh-deamon](../../../protop/shellbox/deamon/README.md) — the bridge and helper daemon that speak over this gateway
 - [dsh-host-webserver](../../host/webserver/README.md) — the HTTP face that stays for the browser
 - [Development](../../../docs/development.md) — contributor workflow and the check lanes
 

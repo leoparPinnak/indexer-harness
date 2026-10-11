@@ -47,8 +47,8 @@ diagnostic turns).
 - Mutating intent: `cdp_navigate`, `cdp_click`, `cdp_type`, `cdp_eval` (writing),
   `cdp_fill`, `cdp_stealth`, `cdp_open`, `cdp_profiles` with `action: 'stop'`, and `cdp_captcha` with `action: 'drag'`.
   **Every mutation requires §2 target confirmation + §4 verification.**
-- Not CDP: desktop (Shellbox) mouse/keyboard → the `shellbox` skill; file editing →
-  shell/tools. CDP coordinates are **viewport CSS pixels**, not desktop pixels.
+- Not CDP: desktop mouse/keyboard automation and file editing → shell/tools. CDP
+  coordinates are **viewport CSS pixels**, not desktop pixels.
 - Aiming, clicking, sliders, and what the tools already guarantee for you →
   `guides/07-human-interaction.md` (load it before your first click of a session).
 
@@ -227,8 +227,8 @@ these rules the tools already guarantee for you, and what to do about sliders.
   carry them. Never try to re-send `document.cookie`.
 - **Binary / >16 KiB data** → never through `cdp_eval`; the channel truncates
   (`middle pruned`). Use download/file tools or paginate text.
-- **Need desktop input or a GUI app** → wrong layer; use the `shellbox` skill.
-  CDP click coordinates ≠ shellbox coordinates.
+- **Need desktop input or a GUI app** → wrong layer; desktop automation is out of
+  CDP's scope.
 
 ## 5. Known sharp edges (read before you touch config)
 

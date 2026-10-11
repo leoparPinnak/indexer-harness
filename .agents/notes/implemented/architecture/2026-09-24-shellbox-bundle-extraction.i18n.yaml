@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-shellbox-bundle-extraction.md
-2026-09-24-shellbox-bundle-extraction.md: 35e3a6b9184ba71038ed25e9c62c53989fb1e214
-2026-09-24-shellbox-bundle-extraction.zh.md: 34196b951976bf33d5412a5759b5b71e97f4f182
+2026-09-24-shellbox-bundle-extraction.md: 94369a72b40232fece612fc53e5e2da81c05653d
+2026-09-24-shellbox-bundle-extraction.zh.md: 2d9d4323d1b613d76d316883697680e1004b5420
