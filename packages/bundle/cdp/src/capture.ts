@@ -573,7 +573,7 @@ function selectorExpression(selector: string): string {
 }
 
 function scrollExpression(): string {
-  return `({ sx: window.scrollX, sy: window.scrollY })`
+  return '({ sx: window.scrollX, sy: window.scrollY })'
 }
 
 interface PageScroll {
@@ -852,7 +852,7 @@ export interface ViewportApplyFailure {
   /** plan15-viewport: the page-side counter that produced this failure. */
   readonly resizeEvent?: ViewportResizeProbe
   /** The thrown envelope of a rejected call, when the tool layer folded one. */
-  readonly error?: { readonly name: string, readonly message: string }
+  readonly error?: { readonly name: string; readonly message: string }
 }
 
 /** Result of `Emulation.setDeviceMetricsOverride` / clear, verified against the live page. */
@@ -996,13 +996,13 @@ export function resizeNotDeliveredReason(probe: ViewportResizeProbe | undefined)
 }
 
 /** plan15-viewport: `492x780 css @dpr2`, the size phrase one answer carries. */
-function sizePhrase(metrics: { readonly width?: number, readonly height?: number, readonly deviceScaleFactor?: number } | undefined): string {
+function sizePhrase(metrics: { readonly width?: number; readonly height?: number; readonly deviceScaleFactor?: number } | undefined): string {
   if (metrics === undefined) return 'no measurement'
   return `${String(metrics.width ?? 0)}x${String(metrics.height ?? 0)} css @dpr${String(metrics.deviceScaleFactor ?? 1)}`
 }
 
 /** plan15-viewport: the page-side evidence, in one short clause. */
-function resizePhrase(probe: { readonly delivered?: string, readonly events?: number } | undefined): string {
+function resizePhrase(probe: { readonly delivered?: string; readonly events?: number } | undefined): string {
   if (probe === undefined) return 'page resize event unverified (no page-side counter)'
   if (probe.delivered === 'delivered') return `page resize delivered (${String(probe.events ?? 0)} event(s))`
   if (probe.delivered === 'not-delivered') return 'page resize NOT delivered (0 events seen by the page)'
@@ -1019,13 +1019,13 @@ function resizePhrase(probe: { readonly delivered?: string, readonly events?: nu
  */
 export interface RenderableViewportOutcome {
   readonly ok?: boolean
-  readonly viewport?: { readonly width?: number, readonly height?: number, readonly deviceScaleFactor?: number, readonly mobile?: boolean }
+  readonly viewport?: { readonly width?: number; readonly height?: number; readonly deviceScaleFactor?: number; readonly mobile?: boolean }
   readonly source?: string
   readonly applied?: boolean
-  readonly appliedViewport?: { readonly width?: number, readonly height?: number, readonly deviceScaleFactor?: number, readonly mobile?: boolean }
-  readonly resizeEvent?: { readonly delivered?: string, readonly events?: number, readonly visibilityState?: string, readonly documentHidden?: boolean }
+  readonly appliedViewport?: { readonly width?: number; readonly height?: number; readonly deviceScaleFactor?: number; readonly mobile?: boolean }
+  readonly resizeEvent?: { readonly delivered?: string; readonly events?: number; readonly visibilityState?: string; readonly documentHidden?: boolean }
   readonly reason?: string
-  readonly error?: { readonly name?: string, readonly message?: string }
+  readonly error?: { readonly name?: string; readonly message?: string }
 }
 
 /**

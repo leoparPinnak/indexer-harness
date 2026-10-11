@@ -148,7 +148,7 @@ export function resolveDshHomeDir(
  */
 export function resolveProfileDir(
   name: string,
-  options: { env?: Record<string, string | undefined> | undefined, home?: string | undefined, profilesRoot?: string | undefined } = {},
+  options: { env?: Record<string, string | undefined> | undefined; home?: string | undefined; profilesRoot?: string | undefined } = {},
 ): string {
   const refusal = profileNameRefusal(name)
   if (refusal !== undefined) {
@@ -212,7 +212,7 @@ export interface ProfileDirRow {
  * @returns the absolute profiles root directory.
  */
 export function resolveProfilesRoot(
-  options: { env?: Record<string, string | undefined> | undefined, home?: string | undefined, profilesRoot?: string | undefined } = {},
+  options: { env?: Record<string, string | undefined> | undefined; home?: string | undefined; profilesRoot?: string | undefined } = {},
 ): string {
   return options.profilesRoot !== undefined && options.profilesRoot !== ''
     ? resolve(options.profilesRoot)
@@ -236,7 +236,7 @@ export function listProfileDirs(
   return readdir(root)
     .filter(name => profileNameRefusal(name) === undefined)
     .sort()
-    .map(name => {
+    .map((name) => {
       const dir = join(root, name)
       return { name, dir, lock: readProfileLock(dir) }
     })
@@ -294,7 +294,7 @@ export function profileLockedMessage(name: string, dir: string, report: ProfileL
     ? 'the owning process id is not recorded on this platform'
     : `held by process ${report.pid}`
   return `cdp: profile "${name}" is already open in another browser (${holder}; lock artifacts: ${artifacts}). `
-    + `A Chromium user-data directory cannot be shared by two browsers, so nothing was launched. `
+    + 'A Chromium user-data directory cannot be shared by two browsers, so nothing was launched. '
     + `Close the window using ${dir} (or point cdp_open at a different profile) and try again — `
     + 'this bundle never falls back to a throwaway profile, because a fresh one would look logged-out.'
 }

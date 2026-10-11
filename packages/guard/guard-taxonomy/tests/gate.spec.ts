@@ -181,7 +181,7 @@ describe('guard-taxonomy gate: SOFT blocks ask through the approval path', () =>
     expect(executed).toEqual([])
   })
 
-  it("fails closed when the answerer rejects", async () => {
+  it('fails closed when the answerer rejects', async () => {
     const { ctx, executed } = await setup([{ category: 'git_destructive', tools: ['bash'] }], { approval: 'ask' })
     ctx.on('approval/request', (): Promise<ApprovalOutcome> => Promise.resolve('rejected'))
 

@@ -660,7 +660,7 @@ export function matchHoneypotRules(signals: HoneypotSignals): string[] {
  */
 export function classifyHoneypot(
   signals: HoneypotSignals,
-): { readonly kind: CaptchaHoneypotClass, rules: string[] } | null {
+): { readonly kind: CaptchaHoneypotClass; rules: string[] } | null {
   const rules = matchHoneypotRules(signals)
   if (rules.length < HONEYPOT_MIN_RULES) return null
   const focusable = signals.laidOut && signals.tabIndex >= 0 && signals.pointerEvents !== 'none'
@@ -700,7 +700,7 @@ function signalsOf(record: CaptchaScanRecord): HoneypotSignals {
  */
 export function classifyRecord(
   record: CaptchaScanRecord,
-): { readonly kind: CaptchaCandidateKind, evidence: string[] } {
+): { readonly kind: CaptchaCandidateKind; evidence: string[] } {
   const evidence: string[] = []
   const inFrame = record.frame !== 'top'
   const trap = record.trapHits >= HONEYPOT_MIN_RULES
@@ -969,7 +969,7 @@ export interface SliderGeometry {
   /** Percent the thumb is at right now (`0` when it cannot be derived). */
   readonly currentPct: number
   /** Viewport size, used to keep the approach path on-screen. */
-  readonly viewport: { readonly width: number, readonly height: number }
+  readonly viewport: { readonly width: number; readonly height: number }
   /**
    * Symmetric track inset in CSS pixels, MEASURED ONCE before the press and
    * carried through the read-back. Without it the post-release percent would be
@@ -1413,13 +1413,13 @@ function anySliderSolved(rows: readonly string[]): boolean {
  * @returns the signals plus whatever counters the page actually published.
  */
 export function collectSolutionSignals(record: CaptchaVerifyRecord): {
-  readonly solved: boolean,
-  readonly signals: CaptchaSignals,
-  readonly wrongClicks?: number,
-  readonly decoyClicks?: number,
-  readonly honeypotHit?: boolean,
-  readonly solvedAt?: number,
-  warnings: string[],
+  readonly solved: boolean
+  readonly signals: CaptchaSignals
+  readonly wrongClicks?: number
+  readonly decoyClicks?: number
+  readonly honeypotHit?: boolean
+  readonly solvedAt?: number
+  warnings: string[]
 } {
   const signals: CaptchaSignals = {
     ariaChecked: [...record.ariaChecked],
@@ -1672,7 +1672,7 @@ export function parseScanReply(raw: string): ParsedScanReply {
  * @param raw - the JSON string the page returned.
  * @returns the snapshot, or an empty honest one when the page refused.
  */
-export function parseVerifyReply(raw: string): { ok: boolean, reason: string, record: CaptchaVerifyRecord } {
+export function parseVerifyReply(raw: string): { ok: boolean; reason: string; record: CaptchaVerifyRecord } {
   const empty: CaptchaVerifyRecord = {
     ariaChecked: [], dataSolved: [], dataConfirmed: [], sliders: [], badges: [], counters: null,
   }

@@ -199,7 +199,7 @@ export function normalizeEndpoint(endpoint: string): string {
  * @param endpoint - `ws://host:port[/devtools/browser/<id>]`.
  * @returns both parts; empty string / undefined when absent.
  */
-export function parseEndpoint(endpoint: string): { browserId: string, port: number | undefined } {
+export function parseEndpoint(endpoint: string): { browserId: string; port: number | undefined } {
   try {
     const url = new URL(endpoint)
     const segments = url.pathname.split('/').filter(segment => segment !== '')
@@ -256,7 +256,7 @@ export async function probeEndpoint(
   try {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!res.ok) return { port, reachable: false, error: `HTTP ${String(res.status)}` }
-    const data = await res.json() as { webSocketDebuggerUrl?: unknown, Browser?: unknown }
+    const data = await res.json() as { webSocketDebuggerUrl?: unknown; Browser?: unknown }
     const webSocketDebuggerUrl = typeof data.webSocketDebuggerUrl === 'string' ? data.webSocketDebuggerUrl : undefined
     if (webSocketDebuggerUrl === undefined) {
       return { port, reachable: true, error: 'answer carried no webSocketDebuggerUrl' }
@@ -345,7 +345,7 @@ export class ConnectionPool {
    * @param targetId - target id the caller still holds.
    * @returns its URL and pool id, or undefined when no entry tracks it.
    */
-  parkedTarget(targetId: string): { url: string, connectionId: string } | undefined {
+  parkedTarget(targetId: string): { url: string; connectionId: string } | undefined {
     for (const entry of this.entries.values()) {
       const info = entry.registry?.targets().find(target => target.targetId === targetId)
       if (info !== undefined) return { url: info.url, connectionId: entry.connectionId }

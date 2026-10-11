@@ -649,14 +649,14 @@ export async function resolveRefOn(
       throw new RefStaleError(
         ref,
         `unresolved-ref: ${JSON.stringify(ref)} is not a snapshot reference `
-        + `(expected '<role>|<name>|<ordinal>' steps joined by '>'); `
-        + `copy the ref exactly from cdp_snapshot or cdp_find`,
+        + '(expected \'<role>|<name>|<ordinal>\' steps joined by \'>\'); '
+        + 'copy the ref exactly from cdp_snapshot or cdp_find',
       )
     }
     throw new RefStaleError(
       ref,
       `${REF_STALE_PREFIX}: no element carries this reference in the current document `
-      + `(the page re-rendered or navigated; call cdp_snapshot again)`,
+      + '(the page re-rendered or navigated; call cdp_snapshot again)',
     )
   }
 
@@ -756,7 +756,7 @@ export async function resolveRefOn(
       ref,
       `${REF_STALE_PREFIX}: the page navigated since this ref was issued `
       + `(${options.origin.url} → ${evidence.url}), so node identity proves nothing here; `
-      + `call cdp_snapshot again`,
+      + 'call cdp_snapshot again',
     )
   }
   // Same node, new name: DELIVER the action and say what actually changed.
@@ -775,7 +775,7 @@ export async function resolveRefOn(
  * @returns the rounded `{ x, y }` center, clamped to `[0, width-1]` and
  *   `[0, height-1]`.
  */
-export function centerOf(rect: RefRect, viewportWidth?: number, viewportHeight?: number): { x: number, y: number } {
+export function centerOf(rect: RefRect, viewportWidth?: number, viewportHeight?: number): { x: number; y: number } {
   const maxX = (viewportWidth ?? 1_000_000) - 1
   const maxY = (viewportHeight ?? 1_000_000) - 1
   const clamp = (value: number, max: number): number => Math.min(Math.max(value, 0), Math.max(max, 0))

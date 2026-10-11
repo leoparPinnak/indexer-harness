@@ -37,8 +37,8 @@ export const FIELD_SOURCES = ['name', 'role', 'value', 'text', 'href', 'checked'
 
 /** Result of {@link parseExtractSpec}: either a parsed spec or an error line. */
 export type ParsedExtractSpec =
-  | { readonly ok: true, readonly spec: ExtractSpec }
-  | { readonly ok: false, readonly error: string }
+  | { readonly ok: true; readonly spec: ExtractSpec }
+  | { readonly ok: false; readonly error: string }
 
 /** `spec.from` — the candidate set (plan §4.3). */
 export interface ExtractFrom {
@@ -206,7 +206,7 @@ export function parseExtractSpec(raw: string): ParsedExtractSpec {
 }
 
 /** @param raw - `spec.from`. @returns ok with `from`, or an error line. */
-function parseFrom(raw: unknown): { ok: true, from?: ExtractFrom } | { ok: false, error: string } {
+function parseFrom(raw: unknown): { ok: true; from?: ExtractFrom } | { ok: false; error: string } {
   if (raw === undefined) return { ok: true }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: 'cdp_extract: from must be an object like {"role":"link"}' }
@@ -233,7 +233,7 @@ function parseFrom(raw: unknown): { ok: true, from?: ExtractFrom } | { ok: false
 }
 
 /** @param raw - `spec.where`. @returns ok with `where`, or an error line. */
-function parseWhere(raw: unknown): { ok: true, where?: ExtractWhere } | { ok: false, error: string } {
+function parseWhere(raw: unknown): { ok: true; where?: ExtractWhere } | { ok: false; error: string } {
   if (raw === undefined) return { ok: true }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: 'cdp_extract: where must be an object like {"visibleOnly":true}' }
@@ -321,7 +321,7 @@ export interface ExtractHonesty {
   /** Extra caution lines (`limit applied`, `visibleOnly removed N`, …). */
   readonly warnings: string[]
   /** Where the data came from. */
-  readonly source: { readonly nodes: number, readonly totalNodes: number }
+  readonly source: { readonly nodes: number; readonly totalNodes: number }
 }
 
 /** Default row-key → source map when a list spec omits `fields`. */
@@ -383,7 +383,7 @@ export function matchExtractCandidates(
   index: ReadonlyMap<string, RefIndexEntry>,
   spec: ExtractSpec,
   selectorIds?: readonly number[],
-): { matches: FindMatch[], visibleOnly: boolean } {
+): { matches: FindMatch[]; visibleOnly: boolean } {
   const visibleOnly = spec.where?.visibleOnly === true
   if (spec.kind === 'page') return { matches: [], visibleOnly }
   const matches = matchFindCandidates(index, {

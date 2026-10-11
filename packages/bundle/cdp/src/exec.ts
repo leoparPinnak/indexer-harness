@@ -462,13 +462,13 @@ export function buildExecOutcome(input: ExecBuildInput): ExecOutcome {
     ...(parsed.passed
       ? {}
       : {
-          error: {
-            kind: 'postCondition' as const,
-            message: `expected truthy, got "${parsed.value}"`,
-            expression: input.postCondition,
-            phase: 'postCondition' as const,
-          },
-        }),
+        error: {
+          kind: 'postCondition' as const,
+          message: `expected truthy, got "${parsed.value}"`,
+          expression: input.postCondition,
+          phase: 'postCondition' as const,
+        },
+      }),
     postCondition: { requested: true, passed: parsed.passed, value: parsed.value },
   }
 }

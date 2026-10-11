@@ -243,7 +243,7 @@ export async function waitForUrlPattern(
   pattern: string,
   timeoutMs: number,
   pollMs: number = WAIT_URL_POLL_MS,
-): Promise<{ ok: boolean, waitedMs: number, timedOut: boolean, actual: string, reason?: string }> {
+): Promise<{ ok: boolean; waitedMs: number; timedOut: boolean; actual: string; reason?: string }> {
   let regex: RegExp
   try {
     regex = new RegExp(pattern)
@@ -414,9 +414,9 @@ export async function runWait(seam: WaitSeam, plan: WaitPlan): Promise<WaitOutco
       ? { ariaLabel: selector }
       : plan.strategy === 'text'
         ? {
-            text: plan.text ?? selector,
-            ...(plan.textMatch !== undefined ? { textMatch: plan.textMatch } : {}),
-          }
+          text: plan.text ?? selector,
+          ...(plan.textMatch !== undefined ? { textMatch: plan.textMatch } : {}),
+        }
         : { css: selector }
     const reply = await seam.expectCheck(plan.strategy === 'aria-label' ? 'exists' : 'visible', spec, plan.timeoutMs)
     const url = reply.url ?? await urlOf()

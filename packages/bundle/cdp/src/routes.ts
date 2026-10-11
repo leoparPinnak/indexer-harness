@@ -805,7 +805,7 @@ export function registerCdpRoutes(ctx: Context, service: CdpService): void {
         const portsRaw = query.get('ports')
         const ports = portsRaw !== null && portsRaw.trim() !== ''
           ? portsRaw.split(',').map(part => Number(part.trim()))
-              .filter(port => Number.isInteger(port) && port >= 1 && port <= 65_535)
+            .filter(port => Number.isInteger(port) && port >= 1 && port <= 65_535)
           : undefined
         const timeoutRaw = query.get('timeoutMs')
         const timeoutMs = timeoutRaw === null || timeoutRaw.trim() === '' ? Number.NaN : Number(timeoutRaw)
@@ -854,7 +854,7 @@ export function registerCdpRoutes(ctx: Context, service: CdpService): void {
         return
       }
       try {
-        const body = await readJsonBody<{ action?: unknown, contextId?: unknown, url?: unknown }>(req)
+        const body = await readJsonBody<{ action?: unknown; contextId?: unknown; url?: unknown }>(req)
         const action = typeof body.action === 'string' && body.action !== '' ? body.action : 'list'
         if (action !== 'list' && action !== 'create' && action !== 'open' && action !== 'dispose') {
           respondJson(res, 400, {

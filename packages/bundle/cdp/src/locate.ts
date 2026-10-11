@@ -108,7 +108,7 @@ export interface LocateRecord {
   /** Page URL at probe time. */
   url: string
   /** Viewport size in CSS pixels. */
-  viewport: { width: number, height: number }
+  viewport: { width: number; height: number }
   /** The node at the point, or null when nothing was there. */
   node: LocateNode | null
   /** Closest element when `node` is null. */
@@ -119,8 +119,8 @@ export interface LocateRecord {
 
 /** A parsed reply, or the reason it could not be trusted. */
 export type ParsedLocateReply =
-  | { ok: true, record: LocateRecord }
-  | { ok: false, reason: string }
+  | { ok: true; record: LocateRecord }
+  | { ok: false; reason: string }
 
 /**
  * plan14: the readable name of one node — `tag#id.class1.class2`. The same
@@ -468,8 +468,8 @@ export function parseLocateReply(value: string): ParsedLocateReply {
       interactive: nodeRaw.interactive === true,
       inViewport: nodeRaw.inViewport === true,
       ...(typeof nodeRaw.coveredBy === 'string' && nodeRaw.coveredBy !== ''
-      ? { coveredBy: nodeRaw.coveredBy }
-      : {}),
+        ? { coveredBy: nodeRaw.coveredBy }
+        : {}),
       zIndex: asString(nodeRaw.zIndex),
       position: asString(nodeRaw.position),
       ancestry: asStringList(nodeRaw.ancestry, LOCATE_MAX_ANCESTRY),
