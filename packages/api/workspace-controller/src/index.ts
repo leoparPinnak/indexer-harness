@@ -1,9 +1,11 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
 import { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
+import { SessionFavorites } from './favorites.ts'
 import { WorkspaceFeed } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
@@ -12,16 +14,19 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFavoritesValue,
   WorkspaceFollowFrame,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspaceRenameRequest,
+  WorkspaceSetFavoriteRequest,
   WorkspaceValue,
 } from './types.ts'
 
 export type * from './types.ts'
 export { DirectoryPickerController } from './directory-picker.ts'
+export { SessionFavorites } from './favorites.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -30,18 +35,37 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** Workspace Controller deployment policy. */
+export interface Config {
+  /**
+   * Absolute path of the Session favorites document. Required (no default): a
+   * deployment that keeps its Sessions elsewhere must name the file itself
+   * rather than inherit a document in an unrelated directory.
+   */
+  favoritesFile: string
+}
+
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
   static inject = ['typert', 'workspaceRegistry']
 
+  static Config: z<Config> = z.object({
+    favoritesFile: z.string().required(),
+  })
+
   private readonly commands: WorkspaceCommands
   private readonly feed: WorkspaceFeed
+  private readonly favorites: SessionFavorites
 
-  /** @param ctx - Host context containing the Workspace registry. */
-  constructor(ctx: Context) {
+  /**
+   * @param ctx - Host context containing the Workspace registry.
+   * @param config - favorites document location.
+   */
+  constructor(ctx: Context, config: Config) {
     super(ctx, 'workspaceController', { namespace: 'workspace' })
     this.commands = new WorkspaceCommands(ctx)
     this.feed = new WorkspaceFeed(ctx)
+    this.favorites = new SessionFavorites({ file: config.favoritesFile })
     // This package is the Loader entry for both Remote owners it hosts: the
     // directory-picking seam is abstract and never an entry itself. The child
     // stays pending until a picking backend is composed, so a host without one
@@ -117,6 +141,25 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote({ mode: 'stream' })
   follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
     return this.feed.follow(signal)
+  }
+
+  /**
+   * Read the complete Session favorites order.
+   * @returns the Host-confirmed favorites document.
+   */
+  @Remote('listFavorites')
+  async listFavorites(): Promise<WorkspaceFavoritesValue> {
+    return { sessionIds: await this.favorites.read() }
+  }
+
+  /**
+   * Star or unstar one Session and persist the resulting order.
+   * @param request - Session identity and the mark to set.
+   * @returns the complete favorites order after the write.
+   */
+  @Remote('setFavorite')
+  async setFavorite(request: WorkspaceSetFavoriteRequest): Promise<WorkspaceFavoritesValue> {
+    return { sessionIds: await this.favorites.set(request.sessionId, request.favorite) }
   }
 }
 

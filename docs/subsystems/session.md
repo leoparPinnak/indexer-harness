@@ -757,6 +757,23 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspectio
 @Remote('cancelCompaction') cancelCompaction( request: SessionCancelCompactionRequest, ): Promise<SessionCancelCompactionValue>
 
 /**
+ * Operator RESUME: reopen a CUT turn's flow and re-drive the model from the
+ * resume checkpoint (the last COMPLETED model request).
+ * @param request - owning Session identity.
+ * @returns whether a continuation turn was dispatched.
+ */
+@Remote('resume') resume( request: SessionResumeRequest, ): Promise<SessionResumeValue>
+
+/**
+ * Read the operator RESUME verdict over the full durable journal (no side
+ * effects): the client window cannot answer this honestly because it omits
+ * turn lifecycle events.
+ * @param request - owning Session identity.
+ * @returns the folded verdict behind the RESUME affordance.
+ */
+@Remote('resumeState') resumeState( request: SessionResumeStateRequest, ): Promise<SessionResumeStateValue>
+
+/**
  * Install one Session-local compaction mode.
  * @param request - Session identity and complete next mode value.
  * @returns the validated mode installed for the Session.

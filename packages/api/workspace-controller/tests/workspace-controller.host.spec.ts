@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -59,7 +59,9 @@ async function harness() {
     lookups: { configure: () => dispose },
     contexts: { configureHost: () => dispose },
   } as never)
-  const controller = new WorkspaceController(ctx)
+  const controller = new WorkspaceController(ctx, {
+    favoritesFile: join(root, 'sessions', 'favorites.json'),
+  })
   return { controller, ctx, root, storageDomain }
 }
 
@@ -370,5 +372,42 @@ describe('WorkspaceController follow', () => {
     await ctx.fiber.dispose()
     roots.splice(roots.indexOf(ctx), 1)
     await expect(closing).resolves.toEqual({ done: true, value: undefined })
+  })
+})
+
+describe('WorkspaceController favorites', () => {
+  it('reads an absent document as empty and persists the starred order', async () => {
+    const { controller, root } = await harness()
+    const file = join(root, 'sessions', 'favorites.json')
+    expect(existsSync(file)).toBe(false)
+    await expect(controller.listFavorites()).resolves.toEqual({ sessionIds: [] })
+
+    const first = SessionId('first')
+    const second = SessionId('second')
+    await expect(controller.setFavorite({ sessionId: first, favorite: true }))
+      .resolves.toEqual({ sessionIds: [first] })
+    await expect(controller.setFavorite({ sessionId: second, favorite: true }))
+      .resolves.toEqual({ sessionIds: [first, second] })
+    // Starring twice keeps one entry and the original position.
+    await expect(controller.setFavorite({ sessionId: first, favorite: true }))
+      .resolves.toEqual({ sessionIds: [first, second] })
+    await expect(controller.setFavorite({ sessionId: first, favorite: false }))
+      .resolves.toEqual({ sessionIds: [second] })
+
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ sessionIds: [second] })
+    await expect(controller.listFavorites()).resolves.toEqual({ sessionIds: [second] })
+  })
+
+  it('fails loud on a malformed document instead of discarding the list', async () => {
+    const { controller, root } = await harness()
+    const file = join(root, 'sessions', 'favorites.json')
+    mkdirSync(join(root, 'sessions'), { recursive: true })
+    writeFileSync(file, '{"sessionIds": [42]}')
+    await expect(controller.listFavorites())
+      .rejects.toThrow('must carry a "sessionIds" array of strings')
+
+    writeFileSync(file, 'not json')
+    await expect(controller.setFavorite({ sessionId: SessionId('x'), favorite: true }))
+      .rejects.toThrow('is not valid JSON')
   })
 })

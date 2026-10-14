@@ -19,6 +19,7 @@ async function bench() {
   }))
   const rename = vi.fn(async () => ({}))
   const insertSessionBefore = vi.fn(async () => ({}))
+  const setFavorite = vi.fn(async () => undefined)
   const open = vi.fn()
   const clear = vi.fn()
   const selectPanel = vi.fn()
@@ -43,6 +44,7 @@ async function bench() {
     delete: vi.fn(async () => undefined),
     insertBefore: vi.fn(async () => undefined),
     archiveSession: vi.fn(async () => undefined),
+    setFavorite,
     insertSessionBefore,
   } as never)
   ctx.provide('sessions', {
@@ -74,6 +76,7 @@ async function bench() {
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
     insertSessionBefore, open, clear, selectPanel, search, renameSession, binding, fork, pickDirectory,
+    setFavorite,
   }
 }
 
@@ -147,12 +150,31 @@ describe('ui-workspace apply', () => {
     expect(b.rename).toHaveBeenCalledWith('ws', 'renamed')
     await browser.insertSessionBefore('ws' as never, 's1' as never, 's2' as never)
     expect(b.insertSessionBefore).toHaveBeenCalledWith('ws', 's1', 's2')
+    browser.setFavorite('s1' as never, true)
+    expect(b.setFavorite).toHaveBeenCalledWith('s1', true)
     await browser.createWorkspace({ path: '/tmp/browser-project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/browser-project' })
 
     const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     await picker.createWorkspace({ path: '/tmp/project' })
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/project' })
+  })
+
+  it('reports a rejected favorite write as a console diagnostic', async () => {
+    const b = await bench()
+    b.setFavorite.mockRejectedValueOnce(new Error('favorites document unwritable'))
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
+      browser.setFavorite('s1' as never, true)
+      await vi.waitFor(() => {
+        expect(warn).toHaveBeenCalledWith('session favorite rejected:', expect.any(Error))
+      })
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('declares the two directory-flow holes and reports their occupancy per surface', async () => {

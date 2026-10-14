@@ -71,6 +71,7 @@ function workspaceState(
   return {
     items,
     archivedSessionIds,
+    favoriteSessionIds: [],
     phase,
     state: phase === 'ready' ? 'idle' : 'loading',
     error: null,
@@ -140,6 +141,7 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
+  declare readonly setFavorite: IWorkspaces['setFavorite']
 
   constructor(initial: WorkspaceSnapshot) {
     this.list = new MutableSource(initial)
@@ -410,13 +412,57 @@ describe('UiWorkspaceService', () => {
 
     const empty = bench()
     empty.uiWorkspace.startSession()
-    expect(empty.sessions.clear).toHaveBeenCalledOnce()
+    // Both feeds are still pending, so the click waits instead of clearing.
+    expect(empty.sessions.clear).not.toHaveBeenCalled()
+    empty.workspaces.list.set(workspaceState())
+    empty.sessions.list.set(sessionState())
+    await vi.waitFor(() => {
+      expect(empty.sessions.clear).toHaveBeenCalledOnce()
+    })
 
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     b.sessions.create.mockRejectedValueOnce(new Error('create failed'))
     b.uiWorkspace.startSession(wid('recent-home'))
     await vi.waitFor(() => {
       expect(warning).toHaveBeenCalledWith('new session failed:', expect.any(Error))
+    })
+  })
+
+  it('starts a new Session when the reusable blank is the one on screen', async () => {
+    const b = bench()
+    const openBlank = sid('open-blank')
+    b.workspaces.list.set(workspaceState([workspace('alpha', [openBlank])]))
+    b.sessions.list.set(sessionState([
+      summary('open-blank', { blank: true, cwd: '/w/alpha' }),
+    ], openBlank))
+
+    b.uiWorkspace.startSession()
+
+    // The explicit action must not re-open the view already on screen.
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('created-alpha'))
+    })
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('alpha') })
+  })
+
+  it('waits for both list feeds before resolving the New Session target', async () => {
+    const b = bench({
+      sessions: sessionState([], undefined, 'pending'),
+      workspaces: workspaceState([workspace('alpha', [])], [], 'pending'),
+    })
+
+    b.uiWorkspace.startSession()
+    expect(b.sessions.clear).not.toHaveBeenCalled()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    // One feed arriving alone still leaves the target unresolved.
+    b.workspaces.list.set(workspaceState([workspace('alpha', [])], [], 'ready'))
+    await Promise.resolve()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    b.sessions.list.set(sessionState([], undefined, 'ready'))
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('created-alpha'))
     })
   })
 

@@ -127,9 +127,12 @@
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
-    # Workspace commands and reconnect-safe projection over Typert Remote.
+    # Workspace commands and reconnect-safe projection over Typert Remote. The
+    # favorites document sits with the stored Sessions it names.
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
+      config:
+        favoritesFile: !!js dshHomePath('sessions', 'favorites.json')
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'

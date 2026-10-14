@@ -23,7 +23,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
+  deriveFavorites, deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
@@ -232,14 +232,58 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
 }
 
+/**
+ * Pinned favorites: the starred Sessions in starring order, above the groups,
+ * rendered as ordinary Session rows so opening one takes the normal path. The
+ * section is absent with no favorite; the derivation drops stars whose Session
+ * is no longer listed.
+ */
+function FavoritesSection({
+  rows, currentId, now, onOpen, onRename, onFork, onArchive, setFavorite, t,
+}: {
+  rows: readonly SessionNode[]
+  currentId: SessionId | undefined
+  now: number
+  onOpen: (id: SessionNode['id']) => void
+  onRename: (id: SessionNode['id'], currentTitle: string) => void
+  onFork: (id: SessionNode['id']) => void
+  onArchive: (id: SessionNode['id']) => void
+  setFavorite: (id: SessionId, favorite: boolean) => void
+  t: WorkspaceBrowserProps['t']
+}) {
+  if (rows.length === 0) return null
+  return (
+    <div className={css.groupSection}>
+      <div className={css.favoritesHeader}>{t('section.favorites')}</div>
+      {rows.map(node => (
+        <SessionNodeItem
+          key={node.id}
+          node={node}
+          currentId={currentId}
+          now={now}
+          onOpen={onOpen}
+          onRename={onRename}
+          onFork={onFork}
+          onArchive={onArchive}
+          isFavorite
+          setFavorite={setFavorite}
+          t={t}
+        />
+      ))}
+    </div>
+  )
+}
+
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'useSessionPendingInteraction' | 'startSession' | 'open' | 'forkSession'
-  | 'insertWorkspaceBefore' | 'insertSessionBefore' | 't' | 'usePanelInfo'
+  | 'insertWorkspaceBefore' | 'insertSessionBefore' | 'setFavorite' | 't' | 'usePanelInfo'
 > & {
   /** Host account home for POSIX hover-path abbreviation. */
   home?: string | undefined
   workspaces: readonly WorkspaceView[]
+  /** Starred Session ids in the order the favorites document records them. */
+  favoriteSessionIds: readonly SessionId[]
   /** Whether the current Workspace stream has a complete Host baseline. */
   workspaceReady: boolean
   /** Explicit persisted zero-or-five-session state by Workspace group. */
@@ -275,7 +319,7 @@ type SessionTreeProps = Pick<
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
 function SessionTree({
   useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds,
-  workspaceReady, usePanelInfo,
+  favoriteSessionIds, setFavorite, workspaceReady, usePanelInfo,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
@@ -359,6 +403,10 @@ function SessionTree({
         : { ungroupedOrder: sessionOrderByAccount[UNGROUPED_KEY] }),
     }),
     [list, orderedWorkspaces, archivedSessionIds, pendingInteractions, expandedGroups, sessionOrderByAccount],
+  )
+  const favorites = useMemo(
+    () => deriveFavorites(list, favoriteSessionIds, archivedSessionIds, pendingInteractions),
+    [list, favoriteSessionIds, archivedSessionIds, pendingInteractions],
   )
   useEffect(() => {
     if (revealGroup === undefined || groupExpansion[revealGroup] === true) return
@@ -457,6 +505,17 @@ function SessionTree({
         role="tree"
         aria-label={t('section.sessions')}
       >
+        <FavoritesSection
+          rows={favorites}
+          currentId={current}
+          now={now}
+          onOpen={open}
+          onRename={onSessionRename}
+          onFork={forkSession}
+          onArchive={onSessionArchive}
+          setFavorite={setFavorite}
+          t={t}
+        />
         {groups.length === 0 && (
           <div className={css.empty}>{t('empty.none')}</div>
         )}
@@ -588,6 +647,8 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    isFavorite={favoriteSessionIds.includes(node.id)}
+                    setFavorite={setFavorite}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
@@ -620,7 +681,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
-  archivedSessionIds, usePanelInfo,
+  archivedSessionIds, favoriteSessionIds, setFavorite, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
   revealSessionId, onSessionRevealed, t,
 }: Pick<
@@ -632,6 +693,8 @@ function FlatList({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'archivedSessionIds'
+  | 'favoriteSessionIds'
+  | 'setFavorite'
   | 'usePanelInfo'
   | 'orderBy'
   | 'sessionOrderByAccount'
@@ -648,6 +711,10 @@ function FlatList({
   const baseRows = useMemo(
     () => deriveFlat(list, archivedSessionIds, pendingInteractions),
     [list, archivedSessionIds, pendingInteractions],
+  )
+  const favorites = useMemo(
+    () => deriveFavorites(list, favoriteSessionIds, archivedSessionIds, pendingInteractions),
+    [list, favoriteSessionIds, archivedSessionIds, pendingInteractions],
   )
   const sessionIds = useMemo(() => baseRows.map(row => row.id), [baseRows])
   const previousOrderBy = useRef(orderBy)
@@ -700,6 +767,17 @@ function FlatList({
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       <div className={clsx(css.list, css.flatList)} role="tree" aria-label={t('section.sessions')}>
+        <FavoritesSection
+          rows={favorites}
+          currentId={panelActive ? undefined : list.current}
+          now={now}
+          onOpen={open}
+          onRename={onSessionRename}
+          onFork={forkSession}
+          onArchive={onSessionArchive}
+          setFavorite={setFavorite}
+          t={t}
+        />
         {rows.length === 0 && (
           <div className={css.empty}>{t('empty.none')}</div>
         )}
@@ -715,6 +793,8 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              isFavorite={favoriteSessionIds.includes(node.id)}
+              setFavorite={setFavorite}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -853,6 +933,7 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  setFavorite,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -867,6 +948,7 @@ export function WorkspaceBrowser({
   const workspacePhase = useWorkspaces(state => state.phase)
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+  const favoriteSessionIds = useWorkspaces(state => state.favoriteSessionIds)
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
@@ -1277,6 +1359,8 @@ export function WorkspaceBrowser({
                 open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                 archivedSessionIds={archivedSessionIds}
+                favoriteSessionIds={favoriteSessionIds}
+                setFavorite={setFavorite}
                 orderBy={orderBy}
                 sessionOrderByAccount={sessionOrderByAccount}
                 sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
@@ -1304,6 +1388,8 @@ export function WorkspaceBrowser({
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
+                favoriteSessionIds={favoriteSessionIds}
+                setFavorite={setFavorite}
                 startSession={startSession}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}

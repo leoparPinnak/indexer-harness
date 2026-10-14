@@ -113,6 +113,18 @@ export interface WorkspaceArchiveValue {
   readonly archivedSessionIds: readonly SessionId[]
 }
 
+/** Session whose favorite mark is being set from a Session row. */
+export interface WorkspaceSetFavoriteRequest {
+  readonly sessionId: SessionId
+  /** true stars the Session, false unstars it. */
+  readonly favorite: boolean
+}
+
+/** Complete favorites set in the order the operator starred the Sessions. */
+export interface WorkspaceFavoritesValue {
+  readonly sessionIds: readonly SessionId[]
+}
+
 /** Complete reconnect baseline for Workspace browser state. */
 export interface WorkspaceBaseline {
   readonly items: readonly WorkspaceView[]

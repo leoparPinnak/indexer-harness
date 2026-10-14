@@ -36,6 +36,8 @@ const sid = (id: string): SessionId => SessionId(id)
 /** Boot the plugin with `follow` answering its state stream. */
 async function pluginClient(mock: RemoteMock, start: () => Promise<TestClient>, follow: StreamScript): Promise<TestClient> {
   mock.stream(FOLLOW, follow)
+  // The plugin's boot reads the favorites document beside the stream.
+  mock.load(workspaceWorld)
   return start()
 }
 
@@ -329,6 +331,27 @@ describe('WorkspaceController', () => {
     expect(mock.log.requests('workspace/insertSessionBefore')).toEqual([{ workspaceId: 'one', sessionId: 'session' }])
     expect(mock.log.requests('workspace/archiveSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/delete')).toEqual([{ workspaceId: 'one' }])
+  })
+
+  it('installs the favorites document and the toggle echo', async ({ mock, start }) => {
+    const { remote, client } = await gatewayClient(mock, start)
+    const model = new ClientWorkspaceModel(remote.workspace)
+    const controller = new WorkspaceController(client.ctx, model)
+
+    await expect(model.loadFavorites()).resolves.toEqual({ ok: true, value: { sessionIds: [] } })
+    expect(model.getSnapshot().favoriteSessionIds).toEqual([])
+
+    await expect(controller.setFavorite(sid('session'), true)).resolves.toBeUndefined()
+    expect(model.getSnapshot().favoriteSessionIds).toEqual([sid('session')])
+    await expect(controller.setFavorite(sid('session'), false)).resolves.toBeUndefined()
+    expect(model.getSnapshot().favoriteSessionIds).toEqual([])
+
+    // A no-argument call crosses the wire as one empty request.
+    expect(mock.log.requests('workspace/listFavorites')).toHaveLength(1)
+    expect(mock.log.requests('workspace/setFavorite')).toEqual([
+      { sessionId: 'session', favorite: true },
+      { sessionId: 'session', favorite: false },
+    ])
   })
 
   it('maps generated business failures to the command facade errors', async ({ mock, start }) => {

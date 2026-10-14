@@ -991,4 +991,28 @@ export const IconShieldOutline16 = ({ size = 16, className }: IconProps) => (
   </svg>
 )
 
+/**
+ * The five-point star on the 16 grid, stroked at {@link STAR_OUTLINE_STROKE}.
+ * The Session favorites toggle shows this one geometry empty and filled, so the
+ * mark does not shift between the two states.
+ */
+export const STAR_PATH = 'M8 1.33333L9.87333 5.75333L14.6667 6.16L11.0267 9.31333L12.12 14L8 11.5133L3.88 14L4.97333 9.31333L1.33333 6.16L6.12667 5.75333L8 1.33333Z'
+
+/** Stroke width of {@link STAR_PATH}. */
+export const STAR_OUTLINE_STROKE = '1.2'
+
+/** Session favorite toggle, unstarred state. */
+export const IconStarOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d={STAR_PATH} stroke="currentColor" strokeWidth={STAR_OUTLINE_STROKE} strokeLinejoin="round" />
+  </svg>
+)
+
+/** Session favorite toggle, starred state. */
+export const IconStarFill16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d={STAR_PATH} fill="currentColor" />
+  </svg>
+)
+
 

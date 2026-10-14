@@ -11,8 +11,10 @@ import type {
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteValue,
+  WorkspaceFavoritesValue,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
+  WorkspaceSetFavoriteRequest,
   WorkspaceValue,
   WorkspaceId,
   WorkspaceView,
@@ -29,6 +31,8 @@ export interface WorkspaceSnapshot {
   readonly items: readonly WorkspaceView[]
   /** Complete registry-global archive set in Host order. */
   readonly archivedSessionIds: WorkspaceArchiveValue['archivedSessionIds']
+  /** Starred Sessions in the order the favorites document records them. */
+  readonly favoriteSessionIds: WorkspaceFavoritesValue['sessionIds']
   readonly state: 'idle' | 'loading' | 'error'
   readonly phase: WorkspaceListPhase
   readonly error: RemoteFailure | null
@@ -54,6 +58,7 @@ export interface WorkspaceFollowSink {
 export class ClientWorkspaceModel implements WorkspaceFollowSink {
   private items: readonly WorkspaceView[] = []
   private archivedSessionIds: WorkspaceArchiveValue['archivedSessionIds'] = []
+  private favoriteSessionIds: WorkspaceFavoritesValue['sessionIds'] = []
   private state: WorkspaceSnapshot['state'] = 'loading'
   private phase: WorkspaceListPhase = 'pending'
   private error: RemoteFailure | null = null
@@ -171,6 +176,31 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   }
 
   /**
+   * Read the Host favorites document into the projection.
+   * @returns generated Remote result.
+   */
+  async loadFavorites(): Promise<RemoteResult<WorkspaceFavoritesValue>> {
+    const result = await this.remote.listFavorites()
+    if (result.ok) this.installFavorites(result.value.sessionIds)
+    return result
+  }
+
+  /**
+   * Star or unstar one Session and install the returned complete order.
+   * @param sessionId - Session to toggle.
+   * @param favorite - true stars the Session, false unstars it.
+   * @returns generated Remote result.
+   */
+  async setFavorite(
+    sessionId: WorkspaceSetFavoriteRequest['sessionId'],
+    favorite: boolean,
+  ): Promise<RemoteResult<WorkspaceFavoritesValue>> {
+    const result = await this.remote.setFavorite({ sessionId, favorite })
+    if (result.ok) this.installFavorites(result.value.sessionIds)
+    return result
+  }
+
+  /**
    * Replace the projection from one complete stream-generation baseline.
    * @param baseline - complete Workspace and archive projection.
    */
@@ -249,10 +279,18 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     return {
       items: this.items,
       archivedSessionIds: this.archivedSessionIds,
+      favoriteSessionIds: this.favoriteSessionIds,
       state: this.state,
       phase: this.phase,
       error: this.error,
     }
+  }
+
+  private installFavorites(sessionIds: WorkspaceFavoritesValue['sessionIds']): void {
+    if (sessionIds.length === this.favoriteSessionIds.length
+      && sessionIds.every((id, index) => id === this.favoriteSessionIds[index])) return
+    this.favoriteSessionIds = [...sessionIds]
+    this.invalidate()
   }
 
   private installArchived(archivedSessionIds: WorkspaceArchiveValue['archivedSessionIds']): void {

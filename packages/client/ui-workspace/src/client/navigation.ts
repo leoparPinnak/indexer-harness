@@ -35,9 +35,12 @@ export interface UiWorkspace {
   /**
    * Resolve the reusable or newly created blank Session for a Workspace.
    * @param workspaceId - target Workspace.
+   * @param excludeSession - Session the reuse scan must skip; the explicit New
+   *   Session flow passes the open Session so a click inside a blank chat
+   *   starts its successor instead of re-opening the view already on screen.
    * @returns a Session already addressable through the Session Controller.
    */
-  connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
+  connectWorkspace(workspaceId: WorkspaceId, excludeSession?: SessionId): Promise<SessionId>
   /**
    * Start a New Session flow and navigate to its Session.
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
@@ -107,7 +110,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     ctx.effect(() => this.watchNavigation(), 'ui-workspace: Workspace navigation policy')
   }
 
-  async connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId> {
+  async connectWorkspace(workspaceId: WorkspaceId, excludeSession?: SessionId): Promise<SessionId> {
     const workspace = this.workspaces.list.getSnapshot().items
       .find(item => item.workspaceId === workspaceId)
     if (workspace === undefined) {
@@ -120,9 +123,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const sessions = this.sessions.list.getSnapshot()
     for (const id of sessions.ids) {
       const summary = sessions.byId[id]
-      if (summary !== undefined && summary.blank && summary.cwd === workspace.path
-        && workspace.sessionIds.includes(summary.id)
-        && !archived.includes(summary.id)) return summary.id
+      if (summary === undefined || summary.id === excludeSession || !summary.blank) continue
+      if (summary.cwd !== workspace.path) continue
+      if (!workspace.sessionIds.includes(summary.id)) continue
+      if (archived.includes(summary.id)) continue
+      return summary.id
     }
 
     const attempt = this.sessions.create({ workspaceId })
@@ -136,10 +141,14 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     this.ctx.layout.selectPanel(null)
   }
 
-  async openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void> {
+  async openWorkspace(
+    workspaceId: WorkspaceId,
+    beforeOpen?: (sessionId: SessionId) => void,
+    excludeSession?: SessionId,
+  ): Promise<void> {
     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
     const isCurrent = (): boolean => !navigation.aborted
-    const sessionId = await this.connectWorkspace(workspaceId)
+    const sessionId = await this.connectWorkspace(workspaceId, excludeSession)
     if (!isCurrent()) return
     beforeOpen?.(sessionId)
     if (isCurrent()) this.openSession(sessionId)
@@ -152,24 +161,72 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   startSession(workspaceId?: WorkspaceId): void {
+    if (this.listsReady()) {
+      this.resolveNewSession(workspaceId)
+      return
+    }
+    // A click that lands before the Workspace and Session feeds report `ready`
+    // waits for them: resolving the target from a partial snapshot found no
+    // Workspace at all and cleared the view, which read as a dead button.
+    void this.whenListsReady().then(
+      () => {
+        if (this.lifetime.signal.aborted) return
+        this.resolveNewSession(workspaceId)
+      },
+      (reason: unknown) => { console.warn('new session failed:', reason) },
+    )
+  }
+
+  /**
+   * Resolve the New Session target from a complete snapshot and start it.
+   *
+   * The open Session is excluded from blank reuse, so the explicit action
+   * always leaves the operator in a chat they have not seen instead of
+   * re-opening the blank view already on screen.
+   *
+   * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
+   */
+  private resolveNewSession(workspaceId?: WorkspaceId): void {
     const workspace = this.workspaces.list.getSnapshot()
     const sessions = this.sessions.list.getSnapshot()
     const current = sessions.current
     const currentWorkspaceId = current === undefined
       ? undefined
       : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
-    const recent = workspace.phase === 'ready' && sessions.phase === 'ready'
-      ? recentWorkspace(workspace.items, sessions.byId)
-      : undefined
-    const target = workspaceId ?? currentWorkspaceId ?? recent
+    const target = workspaceId ?? currentWorkspaceId ?? recentWorkspace(workspace.items, sessions.byId)
     if (target === undefined) {
       this.sessions.clear()
       this.ctx.layout.selectPanel(null)
       return
     }
-    void this.openWorkspace(target).catch(
+    void this.openWorkspace(target, undefined, current).catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  /**
+   * Resolve once both list feeds report `ready`, or immediately when they do.
+   * @returns fulfillment when Workspace and Session snapshots are complete.
+   */
+  private whenListsReady(): Promise<void> {
+    if (this.listsReady()) return Promise.resolve()
+    const { promise, resolve } = Promise.withResolvers<void>()
+    const settle = (): void => {
+      if (!this.listsReady() && !this.lifetime.signal.aborted) return
+      offWorkspaces()
+      offSessions()
+      resolve()
+    }
+    const offWorkspaces = this.workspaces.list.subscribe(settle)
+    const offSessions = this.sessions.list.subscribe(settle)
+    settle()
+    return promise
+  }
+
+  /** @returns whether both list feeds are past their loading phase. */
+  private listsReady(): boolean {
+    return this.workspaces.list.getSnapshot().phase === 'ready'
+      && this.sessions.list.getSnapshot().phase === 'ready'
   }
 
   async archiveSession(sessionId: SessionId): Promise<void> {

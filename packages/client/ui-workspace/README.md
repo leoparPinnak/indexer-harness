@@ -39,6 +39,10 @@ Collapsed search is one header action beside the view and add actions: activatin
 
 The Session row's Rename action opens a dialog prefilled with the row's display title; confirming an unchanged title is deliberately allowed — it pins the current automatic title against regeneration. Archive commits without a confirmation dialog and the row disappears from every grouping surface when the archive-set echo lands. Fork forks at the source's last completed turn, increments the inherited persisted title on the client, and then opens the child. Workspace Delete opens a confirmation that states the retention boundary; success removes the group while its Sessions remain under Ungrouped.
 
+### Favorites
+
+A star on every Session row pins that Session into a **Favorites** section above the groups and the flat list, in the order the stars were set; the section is absent while nothing is starred. Toggling a star writes the Host favorites document, so the section and the row star both republish from the Workspace snapshot rather than from local state. A star whose Session left the list or was archived is skipped.
+
 ### Pending interactions
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, planning offers report **Planning offer awaiting answer**, and ordinary questions report **Waiting for answer**. Every pending interaction uses an amber warning dot that takes precedence over the running indicator.

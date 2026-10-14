@@ -238,6 +238,19 @@ Host service backing the generated `ctx.remote.workspace` namespace.
  * @returns baseline followed by ordered Workspace increments.
  */
 @Remote({ mode: 'stream' }) follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>
+
+/**
+ * Read the complete Session favorites order.
+ * @returns the Host-confirmed favorites document.
+ */
+@Remote('listFavorites') async listFavorites(): Promise<WorkspaceFavoritesValue>
+
+/**
+ * Star or unstar one Session and persist the resulting order.
+ * @param request - Session identity and the mark to set.
+ * @returns the complete favorites order after the write.
+ */
+@Remote('setFavorite') async setFavorite(request: WorkspaceSetFavoriteRequest): Promise<WorkspaceFavoritesValue>
 ```
 
 Source: [`packages/api/workspace-controller/src/index.ts`](../../packages/api/workspace-controller/src/index.ts)

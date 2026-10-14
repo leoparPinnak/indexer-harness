@@ -55,7 +55,10 @@ const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView 
 const workspaceState = (
   items: readonly WorkspaceView[],
   archivedSessionIds: readonly SessionId[] = [],
-): WorkspaceSnapshot => ({ items, archivedSessionIds, state: 'idle', phase: 'ready', error: null })
+  favoriteSessionIds: readonly SessionId[] = [],
+): WorkspaceSnapshot => ({
+  items, archivedSessionIds, favoriteSessionIds, state: 'idle', phase: 'ready', error: null,
+})
 const noPendingInteraction: SessionPendingInteractionSnapshot = new Map()
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
@@ -93,6 +96,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    setFavorite: vi.fn(),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -285,6 +289,70 @@ describe('WorkspaceBrowser', () => {
     // Collapse hides the row again.
     fireEvent.click(screen.getByText('alpha'))
     expect(screen.queryByText('alpha-s')).toBeNull()
+  })
+
+  it('pins starred Sessions above the groups in both browsing modes', () => {
+    const open = vi.fn()
+    const b = mount({
+      useSessions: hook(sessionState([summary('pinned', 2), summary('other', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['pinned', 'other'])], [], [sid('pinned')])),
+      open,
+    })
+    // The pinned row leads the tree; the folded group still hides its own rows.
+    expect(screen.getByText('收藏')).toBeTruthy()
+    expect(screen.getAllByRole('treeitem')[0]?.textContent).toContain('pinned')
+    expect(screen.queryByText('other')).toBeNull()
+
+    fireEvent.click(screen.getByText('pinned'))
+    expect(open).toHaveBeenCalledWith(sid('pinned'))
+
+    // The starred Session's own group row carries the removal label as well.
+    fireEvent.click(screen.getByText('alpha'))
+    expect(screen.getAllByRole('button', { name: '将“pinned”移出收藏' })).toHaveLength(2)
+
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
+    expect(b.store.getSnapshot().groupBy).toBe('flat')
+    expect(screen.getByText('收藏')).toBeTruthy()
+    expect(screen.getAllByRole('treeitem')[0]?.textContent).toContain('pinned')
+  })
+
+  it('hides the favorites section while nothing is starred', () => {
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+    })
+    expect(screen.queryByText('收藏')).toBeNull()
+  })
+
+  it('skips a star whose Session is no longer listed or is archived', () => {
+    mount({
+      useSessions: hook(sessionState([summary('kept', 1), summary('archived', 2)])),
+      useWorkspaces: hook(workspaceState(
+        [workspace('alpha', ['kept', 'archived'])],
+        [sid('archived')],
+        [sid('gone'), sid('archived'), sid('kept')],
+      )),
+    })
+    expect(screen.getByText('kept')).toBeTruthy()
+    expect(screen.queryByText('gone')).toBeNull()
+    expect(screen.queryByText('archived')).toBeNull()
+    // One pinned row plus the group header: neither dropped star left a row.
+    expect(screen.getAllByRole('treeitem')).toHaveLength(2)
+  })
+
+  it('stars a Session from its row star without opening it', () => {
+    const open = vi.fn()
+    const setFavorite = vi.fn()
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+      open, setFavorite,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '将“alpha-s”加入收藏' }))
+    expect(setFavorite).toHaveBeenCalledWith(sid('alpha-s'), true)
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('shows five sessions by default and clears transient show-all when the Workspace collapses', () => {

@@ -110,7 +110,7 @@
 }
 
 .sessionRow .title {
-  margin: 0 6px 0 4px;
+  margin: 0 6px 0 0;
 }
 
 .flatSessionRowWithoutStatus .title {
@@ -247,6 +247,70 @@
 .sessionRow:hover .time,
 .sessionRow.menuOpen .time {
   display: none;
+}
+
+.sessionSlot {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  position: relative;
+}
+
+.sessionSlot .statusContainer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sessionSlot .starButton {
+  display: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: color 120ms ease, filter 120ms ease;
+}
+
+.sessionRow:hover .sessionSlot .starButton,
+.sessionRow.menuOpen .sessionSlot .starButton,
+.sessionSlot .starButton.starActive {
+  display: inline-flex;
+}
+
+.sessionRow:hover .sessionSlot .statusContainer {
+  display: none;
+}
+
+.rowActions .starButton {
+  display: inline-flex;
+}
+
+.starButton.starActive,
+.iconButton.starActive {
+  color: var(--dsw-alias-state-warn-primary, #f59e0b);
+  filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.55));
+}
+
+.starButton.starActive:hover,
+.iconButton.starActive:hover {
+  color: var(--dsw-alias-state-warn-secondary, #f7ad31);
+  filter: drop-shadow(0 0 4px rgba(247, 173, 49, 0.75));
+}
+
+.starButton:active {
+  transform: scale(0.9);
+}
+
+/* A pointer without hover never reveals the action buttons on approach: the
+   first tap both enters the row's hover state and activates whatever sits
+   under the finger, so the tap that uncovers "+" opens the Session instead.
+   Coarse-pointer devices keep the buttons and the timestamp visible. */
+@media (hover: none) {
+  .projectRow .rowActions,
+  .sessionRow .rowActions {
+    display: inline-flex;
+  }
+
+  .sessionRow:hover .time {
+    display: inline;
+  }
 }
 
 /* An open row menu pins the hover affordances (figma: the row keeps its

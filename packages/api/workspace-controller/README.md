@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-api-workspace-controller` owns the Host `ctx.workspaceController` service and the generated Client `ctx.remote.workspace` namespace. Its Remote methods create, rename, remove, and reorder Workspaces, reorder Sessions within a Workspace, archive Sessions from Workspace navigation, and follow the complete Workspace projection. Use it through API Gateway when a Client must change or follow Workspace navigation. The package also owns `ctx.directoryPickerController` and the generated `ctx.remote.directoryPicker` namespace, because the directory-picking seam it carries is abstract and never a Loader entry of its own.
+`@deepseek-ai/dsh-api-workspace-controller` owns the Host `ctx.workspaceController` service and the generated Client `ctx.remote.workspace` namespace. Its Remote methods create, rename, remove, and reorder Workspaces, reorder Sessions within a Workspace, archive Sessions from Workspace navigation, star and unstar Sessions in the favorites document, and follow the complete Workspace projection. Use it through API Gateway when a Client must change or follow Workspace navigation. The package also owns `ctx.directoryPickerController` and the generated `ctx.remote.directoryPicker` namespace, because the directory-picking seam it carries is abstract and never a Loader entry of its own.
 
 ## Table of Contents
 
@@ -26,12 +26,14 @@ The Host controller serializes mutations whose correctness depends on current re
 
 The Client entry provides `ClientWorkspaceModel` and `createWorkspaceStateStream()`. The model owns Workspace rows, registry order, archived Session ids, unary mutation echoes, and stream/unary race resolution. A newer Host row wins by `updatedAt`; a committed stream order outranks an older unary response; a removed Workspace id cannot be resurrected by delayed data. The package exposes framework-neutral snapshots and subscriptions, leaving navigation policy and React hooks to the UI owner.
 
+Session favorites are one JSON document (`{"sessionIds": [...]}` in star order) whose absolute path comes from the required `favoritesFile` config field; the Web bundle points it at `sessions/favorites.json` inside the deployment's `$DSH_HOME`. `listFavorites` reads it and `setFavorite` rewrites it through an atomic write, serialized so two toggles cannot interleave. An absent document reads as empty, a malformed one fails with the path in the message, and the Client model carries the resulting order in the same snapshot as the archive set. Favorites only name Sessions: opening one navigates to that Session, and the document is never copied into a Session log.
+
 -----
 
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as Workspace organization is browser and Host control state and registers no prompt, tool, or session event.
+None, as Workspace organization and Session favorites are browser and Host control state and register no prompt, tool, or session event.
 
 #### KV Cache effect
 
@@ -43,6 +45,7 @@ No direct effect; Workspace mutations do not alter model requests.
 
 - `follow()` replaces the whole projection after reconnect and has no durable cursor or incremental catch-up protocol.
 - Process-local deletion markers prevent delayed data from reviving a removed Workspace only for the lifetime of the Client model.
+- The favorites document is deployment-global and untracked by the Workspace stream: another Client's toggle appears here only on the next boot or carrier reconnect, and a Session id stays listed after its Session is deleted (rows for missing Sessions are skipped by the UI).
 
 
 <a id="dev-note"></a>

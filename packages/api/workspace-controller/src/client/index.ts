@@ -44,15 +44,35 @@ export const inject = ['remote', 'remote.workspace']
 export function apply(ctx: Context): void {
   const model = new ClientWorkspaceModel(ctx.remote.workspace)
   new WorkspaceController(ctx, model)
+  reloadFavorites(model)
   const control = createWorkspaceStateStream(ctx.remote, {
     accept: model,
-    carrierFailed: () => { model.handleCarrierFailure() },
+    carrierFailed: () => {
+      model.handleCarrierFailure()
+      reloadFavorites(model)
+    },
     failed: (error) => { model.handleStreamFailure(error) },
   })
   control.start()
   ctx.effect(
     () => async () => { await control.dispose() },
     'workspace-controller.client.control',
+  )
+}
+
+/**
+ * Read the favorites document without failing the Client runtime.
+ *
+ * A reading failure leaves the last known order in place: the section is an
+ * addition to the Session list, so a Host that cannot answer must not take the
+ * browser down with it.
+ *
+ * @param model - Workspace projection receiving the order.
+ */
+function reloadFavorites(model: ClientWorkspaceModel): void {
+  void model.loadFavorites().then(
+    (result) => { if (!result.ok) console.warn('workspace favorites load failed:', result.error) },
+    (reason: unknown) => { console.warn('workspace favorites load failed:', reason) },
   )
 }
 

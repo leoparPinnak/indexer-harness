@@ -65,6 +65,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@deepseek-ai/dsh-atomic-write": "workspace:^",
     "@deepseek-ai/dsh-deque": "workspace:^",
     "zod": "^4.4.3"
   },

@@ -35,6 +35,8 @@ async function createRuntime(): Promise<SlotTestRuntime> {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('layout', { selectPanel: vi.fn() })
   runtime.releaseWorkspaceSource()
+  // The default test Workspace snapshot still predates the favorites field.
+  await runtime.workspaces.update((draft) => { draft.favoriteSessionIds = [] })
   // The rename flow never picks a directory; the namespace only has to be there
   // for ui-workspace's inject to settle.
   const directoryPicker = {}

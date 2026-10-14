@@ -142,4 +142,24 @@ export class TestWorkspaces implements IWorkspaces {
       draft.archivedSessionIds = [...draft.archivedSessionIds, sessionId]
     })
   }
+
+  /**
+   * Star or unstar a session (recorded). The default mirrors the production
+   * face's observable effect: the id joins or leaves the favorites order.
+   * @param sessionId - session to toggle.
+   * @param favorite - true stars the session, false unstars it.
+   */
+  async setFavorite(sessionId: SessionId, favorite: boolean): Promise<void> {
+    this.calls.push({ method: 'setFavorite', args: [sessionId, favorite] })
+    const stub = this.stubs.get('setFavorite')
+    if (stub !== undefined) {
+      await (stub(sessionId, favorite) as Promise<void>)
+      return
+    }
+    await this.update((draft) => {
+      draft.favoriteSessionIds = favorite
+        ? [...draft.favoriteSessionIds, sessionId]
+        : draft.favoriteSessionIds.filter(id => id !== sessionId)
+    })
+  }
 }

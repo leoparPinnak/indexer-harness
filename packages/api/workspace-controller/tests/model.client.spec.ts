@@ -9,11 +9,13 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFavoritesValue,
   WorkspaceFollowFrame,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspaceRenameRequest,
+  WorkspaceSetFavoriteRequest,
   WorkspaceValue,
   WorkspaceId,
   WorkspaceView,
@@ -84,6 +86,12 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     request: WorkspaceArchiveSessionRequest,
   ) => Promise<RemoteResult<WorkspaceArchiveValue>> = request =>
     Promise.resolve(remoteOk({ archivedSessionIds: [request.sessionId] }))
+  onListFavorites: () => Promise<RemoteResult<WorkspaceFavoritesValue>> = () =>
+    Promise.resolve(remoteOk({ sessionIds: [] }))
+  onSetFavorite: (
+    request: WorkspaceSetFavoriteRequest,
+  ) => Promise<RemoteResult<WorkspaceFavoritesValue>> = request =>
+    Promise.resolve(remoteOk({ sessionIds: request.favorite ? [request.sessionId] : [] }))
 
   create(request: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
     this.record('create', request)
@@ -113,6 +121,16 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   archiveSession(request: WorkspaceArchiveSessionRequest): Promise<RemoteResult<WorkspaceArchiveValue>> {
     this.record('archiveSession', request)
     return this.onArchiveSession(request)
+  }
+
+  listFavorites(): Promise<RemoteResult<WorkspaceFavoritesValue>> {
+    this.record('listFavorites', undefined)
+    return this.onListFavorites()
+  }
+
+  setFavorite(request: WorkspaceSetFavoriteRequest): Promise<RemoteResult<WorkspaceFavoritesValue>> {
+    this.record('setFavorite', request)
+    return this.onSetFavorite(request)
   }
 
   async *follow(_signal?: AbortSignal): AsyncGenerator<WorkspaceFollowFrame> {}

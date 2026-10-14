@@ -14,12 +14,14 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFavoritesValue,
   WorkspaceFollowFrame,
   WorkspaceId,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspaceRenameRequest,
+  WorkspaceSetFavoriteRequest,
   WorkspaceValue,
   WorkspaceView,
 } from '../../src/types.ts'
@@ -96,5 +98,9 @@ export const workspaceWorld: RemoteTable = {
       workspace: workspace(String(request.workspaceId), { sessionIds: [request.sessionId] }),
     }),
     'workspace/archiveSession': (request: WorkspaceArchiveSessionRequest): RemoteResult<WorkspaceArchiveValue> => ok({ archivedSessionIds: [request.sessionId] }),
+    'workspace/listFavorites': (): RemoteResult<WorkspaceFavoritesValue> => ok({ sessionIds: [] }),
+    'workspace/setFavorite': (request: WorkspaceSetFavoriteRequest): RemoteResult<WorkspaceFavoritesValue> => ok({
+      sessionIds: request.favorite ? [request.sessionId] : [],
+    }),
   },
 }

@@ -44,7 +44,6 @@ const DUPLICATE_SAFE_PACKAGES: readonly string[] = [
  * prominent heading in the pull request description.
  */
 const SAFE_HOST_DEPENDENCY_EXPORTS = {
-  '@deepseek-ai/dsh-credentials': ['credentialKey'],
   '@deepseek-ai/dsh-deque': ['Deque'],
   '@deepseek-ai/dsh-llm': ['callConfigEquals'],
   '@deepseek-ai/dsh-session-format': ['sessionFormatLogFilename'],

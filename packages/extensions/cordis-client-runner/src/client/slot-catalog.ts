@@ -174,7 +174,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.assistant-actions\', () => ctx.slots.register(\n      { name: \'conversation.chat.assistant-actions\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:229',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:256',
   },
   {
     key: 'conversation.chat.commandview',
@@ -221,7 +221,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.commandview\', () => ctx.slots.register(\n      { name: \'conversation.chat.commandview\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:217',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:244',
   },
   {
     key: 'conversation.chat.node',
@@ -238,7 +238,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/** Stable owner currency delivered to a keyed Chat renderer. */\nexport interface ChatNodeOwnerProps {\n  cwd?: string | undefined\n  /** Open the current source file of a skill referenced by a sent message. */\n  openSkill: (name: string) => void\n  openFile: (path: string, options?: OpenFileOptions) => void\n  inspectCall: (callId: ToolCallId) => void\n  forkAt: (seq: number) => void\n  /**\n   * Local STOP for an in-row wait (e.g. the model-retry countdown): cancels the\n   * live turn through the Session action chain — the retry timer is cleared and\n   * the turn closes NEUTRALLY (`turn/end` aborted/user), never as a failure row.\n   */\n  stopAction?: () => void\n  /**\n   * Session-authorized image loader, down-threaded from the Chat view so a\n   * chat-node renderer can render the attachment presentation slot directly\n   * with only the durable references plus this loader, instead of receiving a\n   * rendering closure.\n   */\n  loadImage: MessageImageLoader\n  renderMessageImages: RenderMessageImages\n  fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined\n  /** Turn-process state when this Node belongs to a projected Turn. */\n  turnProcess?: TurnProcessOwnerProps |  /* …truncated — full shape in source */',
+      '/** Stable owner currency delivered to a keyed Chat renderer. */\nexport interface ChatNodeOwnerProps {\n  cwd?: string | undefined\n  /** Open the current source file of a skill referenced by a sent message. */\n  openSkill: (name: string) => void\n  openFile: (path: string, options?: OpenFileOptions) => void\n  inspectCall: (callId: ToolCallId) => void\n  forkAt: (seq: number) => void\n  /**\n   * Local STOP for an in-row wait (e.g. the model-retry countdown): cancels the\n   * live turn through the Session action chain — the retry timer is cleared and\n   * the turn closes NEUTRALLY (`turn/end` aborted/user), never as a failure row.\n   */\n  stopAction?: () => void\n  /**\n   * Operator STOP for a running compaction row: cancels that transaction by its\n   * identity through the Session\'s agent realm. Neutral close — no summary or\n   * checkpoint lands, the conversation stays exactly as before the attempt.\n   */\n  cancelCompaction?: (compactionId: string) => void\n  /**\n   * Operator RESUME threaded down to chat rows: re-drives the model from the\n   * resume checkpoint in this view\'s own Session. `canResume` mirrors the\n   * shared journal fold so a row never offers what the Host would refuse.\n /* …truncated — full shape in source */',
     ],
     ownerPropsReferences: [
       'MarkdownFileMentions',
@@ -275,8 +275,8 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-chat SystemPromptNodeView key \'system-prompt\'',
       'client-ui-chat AssistantNodeView key \'assistant-step\'',
       'client-ui-chat CommandNodeView key \'command\'',
-      'client-ui-chat createManualCompactionLiveNodeView(cancelCompaction) key \'manual-compaction\'',
-      'client-ui-chat createCompactionNodeView(cancelCompaction) key \'compaction\'',
+      'client-ui-chat createManualCompactionLiveNodeView() key \'manual-compaction\'',
+      'client-ui-chat createCompactionNodeView() key \'compaction\'',
       'client-ui-chat RetryNodeView key \'model-retry\'',
       'client-ui-chat TurnErrorNodeView key \'turn-error\'',
       'client-ui-chat TurnMaxTokensNodeView key \'turn-max-tokens\'',
@@ -289,7 +289,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.node\', () => ctx.slots.register(\n      { name: \'conversation.chat.node\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:198',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:225',
   },
   {
     key: 'conversation.chat.turnTail',
@@ -336,7 +336,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.turnTail\', () => ctx.slots.register(\n      { name: \'conversation.chat.turnTail\', select: owner => null },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:223',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:250',
   },
   {
     key: 'conversation.composer',
@@ -958,8 +958,12 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
         doc: 'Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering.',
       },
     ],
-    ownerProps: [],
-    ownerPropsReferences: [],
+    ownerProps: [
+      '/** Owner share driving the composer RESUME affordance. */\nexport interface InputResumeOwnerProps {\n  /** Shared journal fold verdict (last-turn-cut + checkpoint). */\n  resumeState?: ComposerResumeState\n  /** Session-scoped dispatch; absent without a session. */\n  resume?: (() => Promise<{ readonly ok: boolean; readonly error?: { readonly message: string } }>) | undefined\n}',
+    ],
+    ownerPropsReferences: [
+      'ComposerResumeState',
+    ],
     standardProps: [
       'useResource: UseResource',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
@@ -980,7 +984,9 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'an entry in \'conversation.composer.bar\' (client-ui-conversation), so it exists while that entry is mounted',
-    occupants: [],
+    occupants: [
+      'client-ui-chat ResumeButton id \'resume\'',
+    ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.input.right\', () => ctx.slots.register(\n      { name: \'conversation.input.right\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-conversation/src/client/contract/slots.ts:174',
@@ -1025,7 +1031,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.message.images\', () => ctx.slots.register(\n      { name: \'conversation.message.images\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:211',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:238',
   },
   {
     key: 'conversation.session',

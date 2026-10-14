@@ -38,6 +38,8 @@ async function bench() {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.workspaces.update((draft) => {
+    // The default test Workspace snapshot still predates the favorites field.
+    draft.favoriteSessionIds = []
     draft.items = [{
       workspaceId: 'w1' as WorkspaceId, title: 'Project', path: '/home/u/Documents/project',
       sessionIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',

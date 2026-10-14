@@ -194,6 +194,16 @@ export class FakeApiClient {
   onWorkspaceArchiveSession: (payload: unknown) => Promise<RemoteResult<{ archivedSessionIds: SessionId[] }>> =
     payload => Promise.resolve(ok({ archivedSessionIds: [(payload as { sessionId: SessionId }).sessionId] }))
 
+  onWorkspaceListFavorites: () => Promise<RemoteResult<{ sessionIds: SessionId[] }>> =
+    () => Promise.resolve(ok({ sessionIds: [] }))
+
+  onWorkspaceSetFavorite: (payload: unknown) => Promise<RemoteResult<{ sessionIds: SessionId[] }>> =
+    payload => Promise.resolve(ok({
+      sessionIds: (payload as { favorite: boolean; sessionId: SessionId }).favorite
+        ? [(payload as { sessionId: SessionId }).sessionId]
+        : [],
+    }))
+
   /** Remote namespaces bound to this fake's programmable unary slots and stream pumps. */
   sessionRemotes(): RuntimeRemotes {
     return {
@@ -291,6 +301,16 @@ export class FakeApiClient {
           'workspace.archiveSession',
           payload,
           this.onWorkspaceArchiveSession(payload),
+        ),
+        listFavorites: () => this.record(
+          'workspace.listFavorites',
+          undefined,
+          this.onWorkspaceListFavorites(),
+        ),
+        setFavorite: payload => this.record(
+          'workspace.setFavorite',
+          payload,
+          this.onWorkspaceSetFavorite(payload),
         ),
         follow: signal => this.openWorkspace(signal),
       },

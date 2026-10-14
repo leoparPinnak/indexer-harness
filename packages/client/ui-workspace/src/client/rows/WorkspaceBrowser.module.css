@@ -377,6 +377,17 @@
   margin-top: 4px;
 }
 
+/* Pinned favorites: a group-like label row carrying the section name only. */
+.favoritesHeader {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .listTopDropIndicator,
 .workspaceDropBefore::before,
 .workspaceDropAfter::after {

@@ -63,6 +63,12 @@ export interface IWorkspaces {
    */
   archiveSession(sessionId: SessionId): Promise<void>
   /**
+   * Star or unstar a Session in the Host favorites document.
+   * @param sessionId - Session to toggle.
+   * @param favorite - true stars the Session, false unstars it.
+   */
+  setFavorite(sessionId: SessionId, favorite: boolean): Promise<void>
+  /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
    * @param sessionId - Session to move.
@@ -114,6 +120,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async archiveSession(sessionId: SessionId): Promise<void> {
     const result = await this.model.archiveSession(sessionId)
     if (!result.ok) throw commandError('session archive', result.error)
+  }
+
+  async setFavorite(sessionId: SessionId, favorite: boolean): Promise<void> {
+    const result = await this.model.setFavorite(sessionId, favorite)
+    if (!result.ok) throw commandError('favorite', result.error)
   }
 
   async insertSessionBefore(

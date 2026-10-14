@@ -62,12 +62,12 @@ describe('workspace browser rows', () => {
       id: sid('flat'), title: 'Flat Session', blank: false, running: false,
       runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
     }
-    const view = render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={vi.fn()}
+    const view = render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={idle} currentId={undefined} now={0} onOpen={vi.fn()}
       onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />)
     const title = screen.getByText('Flat Session')
     expect(title.previousElementSibling).toBeNull()
 
-    view.rerender(<SessionNodeItem node={{ ...idle, running: true }} currentId={undefined} now={0}
+    view.rerender(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={{ ...idle, running: true }} currentId={undefined} now={0}
       onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />)
     expect(screen.getByText('Flat Session').previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
   })
@@ -158,7 +158,7 @@ describe('workspace browser rows', () => {
     }
     const onOpen = vi.fn()
     render(
-      <SessionNodeItem node={node} currentId={node.id} now={0} onOpen={onOpen}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={node.id} now={0} onOpen={onOpen}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
     )
 
@@ -170,6 +170,36 @@ describe('workspace browser rows', () => {
     expect(onOpen).toHaveBeenCalledWith(node.id)
   })
 
+  it('reports the toggled favorite from the star without opening the row', () => {
+    const onOpen = vi.fn()
+    const setFavorite = vi.fn()
+    const node: SessionNode = {
+      id: sid('starred'), title: 'Starred', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
+    }
+    const view = render(
+      <SessionNodeItem isFavorite={false} setFavorite={setFavorite}
+        node={node} currentId={undefined} now={0} onOpen={onOpen}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+    )
+    const star = screen.getByRole('button', { name: '将“Starred”加入收藏' })
+    // The star sits in the leading slot to the left of the title.
+    const title = screen.getByText('Starred')
+    expect(star.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(star)
+    expect(setFavorite).toHaveBeenCalledWith(node.id, true)
+    expect(onOpen).not.toHaveBeenCalled()
+
+    view.rerender(
+      <SessionNodeItem isFavorite setFavorite={setFavorite}
+        node={node} currentId={undefined} now={0} onOpen={onOpen}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '将“Starred”移出收藏' }))
+    expect(setFavorite).toHaveBeenLastCalledWith(node.id, false)
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it('keeps the active-Schedule marker between the title and time in grouped and flat rows', () => {
     const onOpen = vi.fn()
     const node: SessionNode = {
@@ -177,7 +207,7 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, hasActiveSchedule: true, updatedAt: 0,
     }
     const view = render(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={onOpen}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
     )
 
@@ -196,7 +226,7 @@ describe('workspace browser rows', () => {
     expect(onOpen).toHaveBeenCalledWith(node.id)
 
     view.rerender(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={onOpen}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />,
     )
     assertIndicator()
@@ -204,7 +234,7 @@ describe('workspace browser rows', () => {
 
   it('shows the green done dot only on a finished, unviewed session (live activity wins the slot)', () => {
     const renderRow = (over: Partial<SessionNode>) => render(
-      <SessionNodeItem
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()}
         node={{
           id: sid('s1'), title: 'One', blank: false, running: false,
           runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0, ...over,
@@ -241,7 +271,7 @@ describe('workspace browser rows', () => {
         id: sid('owner'), title: 'Delegating', blank: false, running: false,
         runningSubagentCount: 2, completed: false, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       const row = screen.getByRole('treeitem')
       expect(row.querySelector('[data-state="ongoing"]')).not.toBeNull()
@@ -263,7 +293,7 @@ describe('workspace browser rows', () => {
         id: sid('owner'), title: 'Delegating', blank: false, running: true,
         runningSubagentCount: 1, completed: false, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       const row = screen.getByRole('treeitem')
       expect(row.querySelectorAll('[data-state="ongoing"]')).toHaveLength(1)
@@ -284,7 +314,7 @@ describe('workspace browser rows', () => {
       id: sid('owner'), title: 'Needs input', blank: false, pendingInteraction: 'question',
       running: false, runningSubagentCount: 1, completed: false, hasActiveSchedule: false, updatedAt: 0,
     }
-    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+    render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
       onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
     const row = screen.getByRole('treeitem')
     expect(row.querySelector('[data-state="warning"]')).not.toBeNull()
@@ -431,11 +461,13 @@ describe('workspace browser rows', () => {
         id: sid('s-blank'), title: 'ignored', blank: true, running: false,
         runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={node.id} now={0} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={node.id} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       // The placeholder has no content yet: no row verbs, no "now" stamp.
       expect(screen.queryByRole('button', { name: /会话.*的操作/ })).toBeNull()
       expect(screen.queryByText('刚刚')).toBeNull()
+      // The star is the one action a provisional row still exposes.
+      expect(screen.getByRole('button', { name: '将“新会话”加入收藏' })).toBeTruthy()
       // The hover card keeps title + status but drops the timestamp line.
       const wrapper = screen.getByRole('treeitem').parentElement as HTMLElement
       fireEvent.pointerEnter(wrapper)
@@ -458,7 +490,7 @@ describe('workspace browser rows', () => {
       id: sid('s1'), title: 'One', blank: false, running: false,
       runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
     }
-    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
+    render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={onOpen}
       onRename={onRename} onFork={onFork} onArchive={onArchive} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     expect(onOpen).not.toHaveBeenCalled()
@@ -492,7 +524,7 @@ describe('workspace browser rows', () => {
         id: sid('s1'), title: 'Hovered', blank: false, running: true,
         runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={60_000} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={60_000} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       const wrapper = screen.getByRole('treeitem').parentElement as HTMLElement
       fireEvent.pointerEnter(wrapper)
@@ -525,15 +557,23 @@ describe('workspace browser rows', () => {
         pendingInteraction, running: true, runningSubagentCount: 0, completed: false,
         hasActiveSchedule: false, updatedAt: 0,
       }
-      const view = render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
-        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
+      const view = render(
+        <SessionNodeItem
+          isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0}
+          onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t}
+        />,
+      )
       const row = screen.getByRole('treeitem')
       expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(screen.getByText(label)).toBeTruthy()
 
-      view.rerender(<SessionNodeItem node={{ ...node, running: false }} currentId={undefined} now={0}
-        onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
+      view.rerender(
+        <SessionNodeItem
+          isFavorite={false} setFavorite={vi.fn()} node={{ ...node, running: false }} currentId={undefined} now={0}
+          onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t}
+        />,
+      )
       expect(screen.getByRole('treeitem').querySelector('[data-state="warning"]')).toBeTruthy()
 
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
@@ -552,7 +592,7 @@ describe('workspace browser rows', () => {
         id: sid('s1'), title: 'Quiet', blank: false, running: false,
         runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(500) })
@@ -570,7 +610,7 @@ describe('workspace browser rows', () => {
         id: sid('s1'), title: 'Done', blank: false, running: false,
         runningSubagentCount: 0, completed: true, hasActiveSchedule: false, updatedAt: 0,
       }
-      render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      render(<SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(500) })
@@ -588,7 +628,7 @@ describe('workspace browser rows', () => {
     }
     const inactive = dragProps()
     const { rerender } = render(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} drag={inactive} t={t} />,
     )
     const row = screen.getByRole('treeitem')
@@ -606,7 +646,7 @@ describe('workspace browser rows', () => {
 
     const active = dragProps({ active: true, marker: 'before' })
     rerender(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} drag={active} t={t} />,
     )
     stubRect(screen.getByRole('treeitem'))
@@ -620,7 +660,7 @@ describe('workspace browser rows', () => {
 
     const after = dragProps({ active: true, marker: 'after' })
     rerender(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+      <SessionNodeItem isFavorite={false} setFavorite={vi.fn()} node={node} currentId={undefined} now={0} onOpen={vi.fn()}
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} drag={after} t={t} />,
     )
     expect(screen.getByRole('treeitem').className).toMatch(/dropAfter/)

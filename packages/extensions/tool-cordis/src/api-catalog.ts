@@ -1519,6 +1519,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'whether a live compaction was cancelled.',
       },
       {
+        signature: '@Remote(\'resume\') resume( request: SessionResumeRequest, ): Promise<SessionResumeValue>',
+        description: 'Operator RESUME: reopen a CUT turn\'s flow and re-drive the model from the resume checkpoint (the last COMPLETED model request).',
+        parameters: [{ name: 'request', description: 'owning Session identity.' }],
+        returns: 'whether a continuation turn was dispatched.',
+      },
+      {
+        signature: '@Remote(\'resumeState\') resumeState( request: SessionResumeStateRequest, ): Promise<SessionResumeStateValue>',
+        description: 'Read the operator RESUME verdict over the full durable journal (no side effects): the client window cannot answer this honestly because it omits turn lifecycle events.',
+        parameters: [{ name: 'request', description: 'owning Session identity.' }],
+        returns: 'the folded verdict behind the RESUME affordance.',
+      },
+      {
         signature: '@Remote(\'setCompactionMode\') setCompactionMode( request: SessionSetCompactionModeRequest, ): Promise<SessionSetCompactionModeValue>',
         description: 'Install one Session-local compaction mode.',
         parameters: [{ name: 'request', description: 'Session identity and complete next mode value.' }],
@@ -2963,6 +2975,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'signal', description: 'generation cancellation.' }],
         returns: 'baseline followed by ordered Workspace increments.',
       },
+      {
+        signature: '@Remote(\'listFavorites\') async listFavorites(): Promise<WorkspaceFavoritesValue>',
+        description: 'Read the complete Session favorites order.',
+        parameters: [],
+        returns: 'the Host-confirmed favorites document.',
+      },
+      {
+        signature: '@Remote(\'setFavorite\') async setFavorite(request: WorkspaceSetFavoriteRequest): Promise<WorkspaceFavoritesValue>',
+        description: 'Star or unstar one Session and persist the resulting order.',
+        parameters: [{ name: 'request', description: 'Session identity and the mark to set.' }],
+        returns: 'the complete favorites order after the write.',
+      },
     ],
   },
   {
@@ -3952,8 +3976,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionId = Branded<\'CompactionId\'>;',
   },
   {
+    name: 'CompactionMediaPreview',
+    declaration: 'export interface CompactionMediaPreview {\n    attachmentId: string;\n    name: string | null;\n    mediaType: string;\n    bytes: number;\n    disposition: \'kept\' | \'pruned\';\n}',
+  },
+  {
+    name: 'CompactionMediaReport',
+    declaration: 'export interface CompactionMediaReport {\n    images: number;\n    imagesKept: number;\n    imagesPruned: number;\n    inlineRunsPruned: number;\n    charactersPruned: number;\n    tokensPrunedEstimate: number;\n    previews: CompactionMediaPreview[];\n}',
+  },
+  {
     name: 'CompactionResult',
-    declaration: 'export interface CompactionResult {\n    compactionId: CompactionId;\n    sourceCommandId?: CommandId;\n    startSeq: SessionSeq;\n    summarySeq: SessionSeq;\n    endSeq: SessionSeq;\n    summary: ContentBlock[];\n    shadowedRange: {\n        start: SessionSeq;\n        end: SessionSeq;\n    };\n    shadowedSeqs: SessionSeq[];\n    shadowedTokenCount: number;\n}',
+    declaration: 'export interface CompactionResult {\n    compactionId: CompactionId;\n    sourceCommandId?: CommandId;\n    startSeq: SessionSeq;\n    summarySeq: SessionSeq;\n    endSeq: SessionSeq;\n    summary: ContentBlock[];\n    shadowedRange: {\n        start: SessionSeq;\n        end: SessionSeq;\n    };\n    shadowedSeqs: SessionSeq[];\n    shadowedTokenCount: number;\n    media?: CompactionMediaReport;\n}',
   },
   {
     name: 'CompactionSessionMode',
@@ -4365,7 +4397,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n    maxImagesPerRequest?: number;\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    parentSessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n    maxImagesPerRequest?: number;\n}',
   },
   {
     name: 'GenericCallView',
@@ -4801,7 +4833,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelModalityMap',
-    declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
+    declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n    audio: \'audio\';\n    video: \'video\';\n}',
   },
   {
     name: 'ModelProviderGroup',
@@ -5157,7 +5189,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionCancelCompactionRequest',
-    declaration: 'export interface SessionCancelCompactionRequest {\n    readonly compactionId: string;\n}',
+    declaration: 'export interface SessionCancelCompactionRequest {\n    readonly sessionId: SessionId;\n    readonly compactionId: string;\n}',
   },
   {
     name: 'SessionCancelCompactionValue',
@@ -5197,7 +5229,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventMap',
-    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'system/message\': {\n        turn: number;\n        step: number;\n        message: SystemMessage;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        stream: AssistantStreamRecord[];\n        usage?: TokenUsage;\n        interrupted?: true;\n    };\n    \'assistant/attempt\': {\n        turn: number;\n        step: number;\n        stream: AssistantStreamRecord[];\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: ToolCallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n        startsSeries?: true;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': {\n        inherited?: true;\n    };\n}',
+    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n        continuation?: {\n            ofTurn: number;\n        };\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'system/message\': {\n        turn: number;\n        step: number;\n        message: SystemMessage;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        stream: AssistantStreamRecord[];\n        usage?: TokenUsage;\n        interrupted?: true;\n    };\n    \'assistant/attempt\': {\n        turn: number;\n        step: number;\n        stream: AssistantStreamRecord[];\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: ToolCallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n        startsSeries?: true;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': {\n        inherited?: true;\n    };\n}',
   },
   {
     name: 'SessionEventMetadataFilter',
@@ -5478,6 +5510,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionResultRange',
     declaration: 'export interface SessionResultRange {\n    from?: number;\n    to?: number;\n}',
+  },
+  {
+    name: 'SessionResumeRequest',
+    declaration: 'export interface SessionResumeRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'SessionResumeStateRequest',
+    declaration: 'export interface SessionResumeStateRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'SessionResumeStateValue',
+    declaration: 'export interface SessionResumeStateValue {\n    readonly kind: \'ready\' | \'busy\' | \'not-cut\' | \'no-checkpoint\';\n    readonly checkpoint?: {\n        readonly turn: number;\n        readonly step: number;\n    };\n}',
+  },
+  {
+    name: 'SessionResumeValue',
+    declaration: 'export interface SessionResumeValue {\n    readonly resumed: boolean;\n}',
   },
   {
     name: 'SessionSearchCursor',
@@ -6548,6 +6596,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WorkspaceDirectoryListing {\n    readonly path: string;\n    readonly entries: readonly WorkspaceDirectoryEntry[];\n    readonly truncated: boolean;\n}',
   },
   {
+    name: 'WorkspaceFavoritesValue',
+    declaration: 'export interface WorkspaceFavoritesValue {\n    readonly sessionIds: readonly SessionId[];\n}',
+  },
+  {
     name: 'WorkspaceFileBytes',
     declaration: 'export interface WorkspaceFileBytes extends WorkspaceFileStat {\n    readonly offset: number;\n    readonly data: string;\n    readonly eof: boolean;\n}',
   },
@@ -6598,6 +6650,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceSetFavoriteRequest',
+    declaration: 'export interface WorkspaceSetFavoriteRequest {\n    readonly sessionId: SessionId;\n    readonly favorite: boolean;\n}',
   },
   {
     name: 'WorkspaceValue',

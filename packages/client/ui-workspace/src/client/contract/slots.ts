@@ -135,6 +135,11 @@ export type WorkspaceBrowserInjected = {
    */
   archiveSession: (sessionId: SessionId) => Promise<void>
   /**
+   * Star or unstar a Session. The favorites section and every row star read
+   * the Workspace snapshot, so callers never hold a local copy.
+   */
+  setFavorite: (sessionId: SessionId, favorite: boolean) => void
+  /**
    * Reorder a session inside its Workspace account (DOM-insertBefore
    * semantics: omitted anchor appends to the end). The view refreshes from
    * the Host response/changed frame; failures leave the order unchanged.

@@ -351,6 +351,36 @@ export function deriveFlat(
 }
 
 /**
+ * Derive the pinned favorites section: starred Sessions in the order the
+ * favorites document records them, whatever Workspace they belong to.
+ *
+ * A star whose Session left the current list (or was archived) is skipped:
+ * the section never renders an empty row. Content search lives outside this
+ * derivation (see {@link deriveSearchResults}).
+ * @param list - sessions list metadata authority.
+ * @param favoriteSessionIds - starred Session ids in starring order.
+ * @param archivedSessionIds - registry-global archive set.
+ * @param pendingInteractions - pending UI interactions by Session.
+ * @returns favorite rows in starring order.
+ */
+export function deriveFavorites(
+  list: SessionListState,
+  favoriteSessionIds: readonly SessionId[],
+  archivedSessionIds: readonly SessionId[],
+  pendingInteractions: SessionPendingInteractions,
+): SessionNode[] {
+  const archived = new Set(archivedSessionIds)
+  const descendants = indexSubagentDescendants(list.byId)
+  const rows: SessionSummary[] = []
+  for (const id of favoriteSessionIds) {
+    const summary = list.byId[id]
+    if (summary === undefined || archived.has(id)) continue
+    rows.push(summary)
+  }
+  return rows.map(session => sessionNode(session, descendants, pendingInteractions))
+}
+
+/**
  * Merge immediate title/Workspace substring matches with ranked Host content
  * matches. Local rows lead newest-first, content-only rows retain backend
  * order, and duplicate sessions receive the backend snippet in place.

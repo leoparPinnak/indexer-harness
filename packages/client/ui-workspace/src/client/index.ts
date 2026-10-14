@@ -126,6 +126,13 @@ export function apply(ctx: Context): void {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },
     archiveSession: async (sessionId) => { await uiWorkspace.archiveSession(sessionId) },
+    setFavorite: (sessionId, favorite) => {
+      workspaces.setFavorite(sessionId, favorite).catch((reason: unknown) => {
+        // A rejected star write leaves the snapshot unchanged, so the row keeps
+        // the state the operator saw; the failure is a console diagnostic.
+        console.warn('session favorite rejected:', reason)
+      })
+    },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },

@@ -10,8 +10,8 @@ import clsx from 'clsx'
 import {
   HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
   IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
-  IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
-  StateDot,
+  IconPlusOutline16, IconStarFill16, IconStarOutline16, IconTrashOutline16,
+  IconTriangleRightFill14, Menu, relativeTime, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
@@ -373,6 +373,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.onRename - open the session rename dialog (id + current title).
  * @param props.onFork - fork a session at its last completed turn.
  * @param props.onArchive - archive a session by id.
+ * @param props.isFavorite - the Session is starred, so the star offers removal.
+ * @param props.setFavorite - star or unstar this Session (the snapshot echoes the write).
  * @param props.onReveal - scroll this row into view after search navigation, then acknowledge it.
  * @param props.drag - optional draggable-row wiring.
  * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
@@ -380,7 +382,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, isFavorite, setFavorite,
+  onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -392,6 +395,10 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** This Session is starred; the star's label then offers removal. */
+  isFavorite: boolean
+  /** Star or unstar this Session; the row re-renders from the Workspace snapshot. */
+  setFavorite: (id: SessionNode['id'], favorite: boolean) => void
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
@@ -428,7 +435,7 @@ export function SessionNodeItem({
       ref={rowRef}
       className={clsx(
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
-        flat && !showStatus && css.flatSessionRowWithoutStatus,
+        flat && !showStatus && !isFavorite && css.flatSessionRowWithoutStatus,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
@@ -462,9 +469,27 @@ export function SessionNodeItem({
       {/* Pending interaction and own or descendant activity outrank the
           finished-but-unviewed reminder, which returns after activity stops
           and is cleared by opening the session. */}
-      {(!flat || showStatus) && (
-        <span className={css.slot}>
-          {showStatus && <SessionStatusDots statuses={statuses} />}
+      {(!flat || showStatus || isFavorite) && (
+        <span className={clsx(css.slot, css.sessionSlot)}>
+          {showStatus && !isFavorite && (
+            <span className={css.statusContainer}>
+              <SessionStatusDots statuses={statuses} />
+            </span>
+          )}
+          <button
+            type="button"
+            className={clsx(
+              css.iconButton,
+              css.starButton,
+              isFavorite && css.starActive,
+            )}
+            aria-label={isFavorite
+              ? t('favorite.remove.aria', { name: title })
+              : t('favorite.add.aria', { name: title })}
+            onClick={(e) => { e.stopPropagation(); setFavorite(node.id, !isFavorite) }}
+          >
+            {isFavorite ? <IconStarFill16 /> : <IconStarOutline16 />}
+          </button>
         </span>
       )}
       <span className={css.title}>{title}</span>
@@ -474,31 +499,43 @@ export function SessionNodeItem({
           (rename/fork/archive) would all act on content that does not
           exist — both trailing cells stay off until the first prompt. */}
       {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
-      {!row.blank && (
+      {((flat && !isFavorite) || !row.blank) && (
         <span className={css.rowActions}>
-          <Menu
-            open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
-            items={sessionMenuItems}
-            onSelect={(id) => {
-              setMenuOpen(false)
-              if (id === 'rename') onRename(node.id, row.title)
-              if (id === 'fork') onFork(node.id)
-              if (id === 'archive') onArchive(node.id)
-            }}
-            portal
-            closeOnPointerLeave
-            anchor={(
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('actions.session.aria', { name: title })}
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
-              >
-                <IconEllipsisOutline16 />
-              </button>
-            )}
-          />
+          {flat && !isFavorite && (
+            <button
+              type="button"
+              className={clsx(css.iconButton, css.starButton)}
+              aria-label={t('favorite.add.aria', { name: title })}
+              onClick={(e) => { e.stopPropagation(); setFavorite(node.id, true) }}
+            >
+              <IconStarOutline16 />
+            </button>
+          )}
+          {!row.blank && (
+            <Menu
+              open={menuOpen}
+              onClose={() => { setMenuOpen(false) }}
+              items={sessionMenuItems}
+              onSelect={(id) => {
+                setMenuOpen(false)
+                if (id === 'rename') onRename(node.id, row.title)
+                if (id === 'fork') onFork(node.id)
+                if (id === 'archive') onArchive(node.id)
+              }}
+              portal
+              closeOnPointerLeave
+              anchor={(
+                <button
+                  type="button"
+                  className={css.iconButton}
+                  aria-label={t('actions.session.aria', { name: title })}
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
+                >
+                  <IconEllipsisOutline16 />
+                </button>
+              )}
+            />
+          )}
         </span>
       )}
     </div>
