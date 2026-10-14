@@ -33,6 +33,7 @@ try {
     cancel: () => {},
     runMaintenance: job => job(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
+    resume: () => {},
   }
   const decision = await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',

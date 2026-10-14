@@ -59,6 +59,7 @@ function stubAgentForSession(session: Session, suppliedCtx?: Context): StubAgent
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle() { return Promise.resolve() },
+    resume: () => {},
   }
   const stub = {
     agent,

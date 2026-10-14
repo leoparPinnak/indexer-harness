@@ -58,6 +58,7 @@ async function harness(withJobs: boolean): Promise<{
     cancel: () => {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
+    resume: () => {},
   }
   ctx.agents.register(agent)
   const control = new SessionControlController(ctx)

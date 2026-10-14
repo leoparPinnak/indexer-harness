@@ -17,7 +17,6 @@ import type {
   LlmProviderInfo,
   PreparedAdapterCall,
   LlmResolvedModelInfo,
-  ModelModality,
   ResolvedRetryPolicy,
   StreamChunk,
   SystemPromptUpdate,
@@ -46,6 +45,9 @@ import { parseSse } from './sse.ts'
 import { translate } from './translate.ts'
 import type { WireError, WireRequest } from './types.ts'
 
+/** Request modalities the DeepSeek catalog accepts; this provider serves text and images. */
+export type DeepSeekInputModality = 'text' | 'image'
+
 /** One optional model entry advertised by the direct-fetch adapter. */
 export interface DeepSeekCatalogModel {
   /** Wire model id accepted by the configured endpoint. */
@@ -59,7 +61,7 @@ export interface DeepSeekCatalogModel {
   /** Per-request output cap for this model; omission falls back to the profile's {@link DeepSeekConnectionOptions.maxTokens}. */
   maxTokens?: number
   /** Accepted request modalities; omission is text-only. */
-  inputModalities?: ModelModality[]
+  inputModalities?: DeepSeekInputModality[]
   /** Total-pixel budget for one deterministic request preview, or the 512-by-512 `low` preset. */
   imagePixelBudget?: number | 'low'
   /** Encoded-byte target for one deterministic request preview; the smallest quality-ladder output is used when no quality fits. */

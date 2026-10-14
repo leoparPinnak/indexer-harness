@@ -111,6 +111,7 @@ async function bench(script: Script): Promise<{
         steer: () => {},
         inject: () => {},
         whenIdle: () => idle,
+        resume: () => {},
       }
       await options.setup?.(ownerCtx, agent)
       script.before?.(session)

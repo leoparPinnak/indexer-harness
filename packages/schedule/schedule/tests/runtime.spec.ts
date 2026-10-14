@@ -96,6 +96,7 @@ async function harness(): Promise<RuntimeHarness> {
     },
     steer(_message: UserMessage) {},
     inject(_message: UserMessage) {},
+    resume: () => {},
   }
   const disposeAgent = ctx.agents.register(agent)
   ctx.on('session/event', (_session, event) => {

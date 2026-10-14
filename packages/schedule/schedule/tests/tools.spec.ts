@@ -39,6 +39,7 @@ function stubAgent(ctx: Context, id: string): Agent {
     followup(_message: UserMessage) {},
     steer(_message: UserMessage) {},
     inject(_message: UserMessage) {},
+    resume: () => {},
   }
   return agent
 }

@@ -66,6 +66,7 @@ function agentForCwd(cwd: string): Agent {
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
+    resume: () => {},
   }
 }
 
@@ -84,6 +85,7 @@ function sessionAgent(session: Session, id = 'tool-skill-agent'): Agent {
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
+    resume: () => {},
   }
   return agent
 }

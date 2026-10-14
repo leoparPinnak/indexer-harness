@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type SessionEvent, type SessionEventType } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -55,10 +55,10 @@ function send(agent: Agent, text: string): void {
   agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
 }
 
-function journal(agent: Agent, type: string): readonly { data: unknown }[] {
+function journal<T extends SessionEventType>(agent: Agent, type: T): readonly SessionEvent<T>[] {
   // Existing Session history read; migration deferred.
   // oxlint-disable-next-line typescript/no-deprecated
-  return agent.session.snapshotEvents().filter(event => event.type === type)
+  return agent.session.snapshotEvents().filter((event): event is SessionEvent<T> => event.type === type)
 }
 
 describe('operator resume', () => {

@@ -109,6 +109,7 @@ function sessionAgent(session: Session, id = 'agent'): Agent {
     cancel() {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
+    resume: () => {},
   }
   return agent
 }
