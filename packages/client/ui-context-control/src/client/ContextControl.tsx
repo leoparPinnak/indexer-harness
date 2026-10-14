@@ -1,6 +1,7 @@
-import { memo, useEffect, useRef, useState } from 'react'
-// Type-only: the compactionPolicy / contextPressure / contextBreakdown key merges.
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+// Type-only: the compactionPolicy / contextPressure / contextBreakdown / modelSelection key merges.
 import type {} from '@deepseek-ai/dsh-token-meter/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import type { CompactionSessionMode } from '@deepseek-ai/dsh-compaction'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -37,6 +38,14 @@ export interface SummarizerModelGroup {
   models: readonly string[]
 }
 
+/** Catalog-derived capacities behind the fresh-session occupancy fallback. */
+export interface ModelCatalogContexts {
+  /** Deployment default selection: what an unconfigured session runs. */
+  default: { provider: string; model: string }
+  /** Every catalog model beside the route capacity its adapter reports. */
+  models: readonly { provider: string; model: string; contextWindow?: number }[]
+}
+
 /** Registrant-supplied operations and copy for the context control. */
 export interface ContextControlInjected {
   /** Context-control locale seat. */
@@ -47,6 +56,8 @@ export interface ContextControlInjected {
   saveCompactionMode: (mode: CompactionSessionMode) => Promise<void>
   /** Provider-grouped routable model names for the dedicated pickers. */
   loadSummarizerModels: () => Promise<readonly SummarizerModelGroup[]>
+  /** Model capacities and the default selection, for the meter before a request. */
+  loadModelContexts: () => Promise<ModelCatalogContexts>
 }
 
 /** Full props of the composer context control. */
@@ -187,19 +198,30 @@ export const ContextControl = memo(function ContextControl({
   runCompact,
   saveCompactionMode,
   loadSummarizerModels,
+  loadModelContexts,
 }: ContextControlProps) {
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
   const policy = useProjection('compactionPolicy')
+  const selection = useProjection('modelSelection')
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<ModeDraft>(() => draftOf(policy?.mode, policy))
   const [status, setStatus] = useState<string | null>(null)
   const [compacting, setCompacting] = useState(false)
   const [groups, setGroups] = useState<readonly SummarizerModelGroup[]>([])
+  const [contexts, setContexts] = useState<ModelCatalogContexts | null>(null)
   const rootRef = useRef<HTMLSpanElement | null>(null)
   const seededRef = useRef<string>('')
   const seedKeyRef = useRef<string | null>(null)
-  const context = contextOccupancy(pressure)
+  // The meter runs on the session's own model: the queued pick, then the model
+  // the last request logged, then the deployment default.
+  const fallbackCapacity = useMemo(() => {
+    if (contexts === null) return undefined
+    const current = selection?.next ?? selection?.lastUsed ?? contexts.default
+    return contexts.models.find(entry =>
+      entry.provider === current.provider && entry.model === current.model)?.contextWindow
+  }, [contexts, selection])
+  const context = contextOccupancy(pressure, fallbackCapacity)
   const available = context !== null
 
   // A model switch can temporarily remove capacity while this component stays
@@ -253,6 +275,12 @@ export const ContextControl = memo(function ContextControl({
     if (!open) return
     void loadSummarizerModels().then(setGroups, () => { setGroups([]) })
   }, [open, loadSummarizerModels])
+
+  // Capacities feed the ring before the panel opens, so this loads on mount;
+  // a refused read leaves the meter on request-reported capacity alone.
+  useEffect(() => {
+    void loadModelContexts().then(setContexts, () => { setContexts(null) })
+  }, [loadModelContexts])
 
   // One durable write per settled slider move or field edit: dragging updates
   // the readouts live and the mode commits after the gesture pauses.

@@ -13,7 +13,7 @@ composer 上下文控制：带每会话压缩触发点的上下文占用环、`S
 
 每个数值都带有范围标记——绿色表示仅本会话的设置，蓝色表示部署全局的设置。压缩上限的默认值可通过本包在 General 设置页的 `settings.general.item` 行（`compaction-basic.maxTokens`）编辑。
 
-占用量与触发点来自 `contextPressure` 与 `compactionPolicy` Session 投影；设置经 `session.setCompactionMode` 保存，压缩动作经 `remote.commands` 提交 `/compact`。文案位于 zh/en/tr 语言词典中。
+占用量与触发点来自 `contextPressure` 与 `compactionPolicy` Session 投影；在请求记录自身路由容量之前，计量环以模型目录的 `contextWindow` 计量，因此全新会话显示为零而不是隐藏。设置经 `session.setCompactionMode` 保存，压缩动作经 `remote.commands` 提交 `/compact`。文案位于 zh/en/tr 语言词典中。
 
 ## 目录
 

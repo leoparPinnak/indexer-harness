@@ -71,6 +71,23 @@ export const apply = (ctx: Context): void => {
             models: group.models.map(model => model.id),
           }))
         },
+        loadModelContexts: async () => {
+          const result = await ctx.remote.session.modelCatalog()
+          if (!result.ok) {
+            throw new Error(`session.modelCatalog failed: ${result.error.code}: ${result.error.message}`)
+          }
+          return {
+            default: {
+              provider: result.value.default.provider,
+              model: result.value.default.model,
+            },
+            models: result.value.groups.flatMap(group => group.models.map(model => ({
+              provider: group.id,
+              model: model.id,
+              ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+            }))),
+          }
+        },
       }),
     }, ContextControl)),
     'ui-context-control: composer context seat',

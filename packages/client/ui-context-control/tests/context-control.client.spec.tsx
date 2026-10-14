@@ -57,6 +57,10 @@ function control(
         return Promise.resolve()
       }}
       loadSummarizerModels={() => Promise.resolve([{ provider: 'big', models: ['big-1'] }])}
+      loadModelContexts={() => Promise.resolve({
+        default: { provider: 'big', model: 'big-1' },
+        models: [{ provider: 'big', model: 'big-1', contextWindow: 128_000 }],
+      })}
     />,
   )
   return { view, calls }
@@ -70,23 +74,38 @@ const withContext = (extra: Record<string, unknown> = {}): Record<string, unknow
 })
 
 describe('context occupancy', () => {
-  it('computes occupancy only when both a numerator and capacity are known', () => {
+  it('computes occupancy from reported usage, or zero before the first report', () => {
     expect(contextOccupancy({ pressureTokens: 32_000, projectedTokens: 6_000, contextWindow: 128_000 }))
       .toEqual({ percent: 5, usedTokens: 6_000, contextWindow: 128_000 })
     expect(contextOccupancy({ pressureTokens: 32_000, contextWindow: 128_000 }))
       .toEqual({ percent: 25, usedTokens: 32_000, contextWindow: 128_000 })
     expect(contextOccupancy({ pressureTokens: 32_000 })).toBeNull()
-    expect(contextOccupancy({ contextWindow: 128_000 })).toBeNull()
+    expect(contextOccupancy({})).toBeNull()
     expect(contextOccupancy(undefined)).toBeNull()
+    // No provider sample yet: a fresh session sits at zero rather than hiding.
+    expect(contextOccupancy({ contextWindow: 128_000 }))
+      .toEqual({ percent: 0, usedTokens: 0, contextWindow: 128_000 })
+    // The catalog's capacity covers the meter until a request records its own.
+    expect(contextOccupancy({}, 256_000))
+      .toEqual({ percent: 0, usedTokens: 0, contextWindow: 256_000 })
+    expect(contextOccupancy({ pressureTokens: 32_000 }, 256_000))
+      .toEqual({ percent: 13, usedTokens: 32_000, contextWindow: 256_000 })
     expect(contextOccupancy({ pressureTokens: 300_000, contextWindow: 128_000 })?.percent).toBe(100)
   })
 })
 
 describe('ContextControl', () => {
-  it('renders nothing until both pressure and capacity are known', () => {
+  it('renders nothing while the pressure face is absent, and fills capacity from the catalog', async () => {
     expect(control({}).view.container.textContent).toBe('')
-    expect(control({ contextPressure: { pressureTokens: 32_000 } }).view.container.textContent).toBe('')
-    expect(control({ contextPressure: { contextWindow: 128_000 } }).view.container.textContent).toBe('')
+    // A session that has not sent a request shows zero instead of hiding.
+    const fresh = control({ contextPressure: {} })
+    await waitFor(() => {
+      expect(fresh.view.getByRole('button', { name: '上下文已用 0%' })).toBeTruthy()
+    })
+    const used = control({ contextPressure: { pressureTokens: 32_000 } })
+    await waitFor(() => {
+      expect(used.view.getByRole('button', { name: '上下文已用 25%' })).toBeTruthy()
+    })
   })
 
   it('keeps only the ring in the composer row', () => {
@@ -196,6 +215,10 @@ describe('ContextControl', () => {
         runCompact={() => Promise.resolve()}
         saveCompactionMode={() => Promise.resolve()}
         loadSummarizerModels={() => Promise.resolve([])}
+        loadModelContexts={() => Promise.resolve({
+          default: { provider: 'big', model: 'big-1' },
+          models: [{ provider: 'big', model: 'big-1', contextWindow: 128_000 }],
+        })}
       />
     )
     const view = render(build(values))

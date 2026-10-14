@@ -402,6 +402,16 @@ describe('Web session model selection', () => {
         return Promise.reject('string catalog failure')
       }
     }('String Failure', []))
+    ctx.llm.registerAdapter(['capacity'], new class extends CatalogAdapter {
+      override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+        return Promise.resolve({
+          provider,
+          id: model,
+          name: model,
+          context: { contextWindow: 65_536 },
+        })
+      }
+    }('Capacity', [{ provider: 'capacity', id: 'capacity-model', name: 'Capacity Model' }]))
     createSessionTestRemote(ctx, {
       defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
       cwd: '/tmp',
@@ -420,6 +430,12 @@ describe('Web session model selection', () => {
             efforts: [{ id: 'high', name: 'High', description: 'More thinking' }],
           },
         }],
+      },
+      // The route capacity rides along so a fresh session can size its meter.
+      {
+        id: 'capacity',
+        name: 'Capacity',
+        models: [{ id: 'capacity-model', name: 'Capacity Model', contextWindow: 65_536 }],
       },
     ]))
     expect(catalog.failures).toContainEqual({

@@ -13,7 +13,7 @@ Composer context control: the context-occupancy ring with its per-session compac
 
 Figures carry scope markers — green for session-only settings, blue for deployment-wide ones. The compaction-cap default is editable in General settings via this package's `settings.general.item` row (`compaction-basic.maxTokens`).
 
-Occupancy and trigger come from the `contextPressure` and `compactionPolicy` Session projections; settings save via `session.setCompactionMode`, and the compact action submits `/compact` through `remote.commands`. Copy lives in the zh/en/tr locale dictionaries.
+Occupancy and trigger come from the `contextPressure` and `compactionPolicy` Session projections; until a request records its own route capacity the meter sizes against the model catalog's `contextWindow`, so a fresh session shows zero instead of hiding. Settings save via `session.setCompactionMode`, and the compact action submits `/compact` through `remote.commands`. Copy lives in the zh/en/tr locale dictionaries.
 
 ## Table of Contents
 

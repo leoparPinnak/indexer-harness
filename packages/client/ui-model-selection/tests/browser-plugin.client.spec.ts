@@ -259,6 +259,25 @@ describe('ui-model-selection dual entry', () => {
     })
   })
 
+  it('follows the logged header once a request consumes the pick', async () => {
+    const b = await bench()
+    b.mint('s1')
+    const seatFace = b.seat().inject!(sid('s1'))
+    seatFace.load()
+    await Promise.resolve()
+    // The request that used the pick clears `next` the way the Host fold does;
+    // the session keeps running that model, and the seat must follow it.
+    b.setProjected(sid('s1'), {
+      lastUsed: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      next: null,
+    })
+    await Promise.resolve()
+    expect(seatFace.directory.getSnapshot().current).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-pro',
+    })
+  })
+
   it('both entries share one directory instance per session, isolated across sessions', async () => {
     const b = await bench()
     b.mint('a')

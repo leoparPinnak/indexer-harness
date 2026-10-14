@@ -159,7 +159,11 @@ export class ModelDirectory {
       })
       return
     }
-    const current = projected.next ?? catalog.value.default
+    // `next` is the queued pick and `lastUsed` is that same pick once a request
+    // consumed it — the session keeps running it (the Host resolves pending,
+    // then the logged header, then the default), so the chip must follow the
+    // logged header instead of snapping back to the catalog default.
+    const current = projected.next ?? projected.lastUsed ?? catalog.value.default
     this.resolved = true
     this.store.set({
       current,

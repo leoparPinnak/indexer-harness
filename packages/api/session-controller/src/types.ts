@@ -125,6 +125,8 @@ export interface ModelCatalogModel {
   readonly name: string
   readonly description?: string
   readonly reasoning?: ModelReasoning
+  /** Route context capacity in tokens, when the adapter reports one. */
+  readonly contextWindow?: number
 }
 
 /** One provider and its successfully loaded model catalog. */

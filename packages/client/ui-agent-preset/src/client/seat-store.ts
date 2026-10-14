@@ -188,8 +188,14 @@ export class AgentPresetSeatController {
     }
     if (session === undefined) return
     // A started session's history was produced under its own composition; the
-    // host refuses the swap, so the stage is no longer meaningful.
-    if (!session.blank || presetOf(session) === staged) {
+    // host refuses the swap. The pick still belongs to the NEXT session, so it
+    // survives this one — dropping it here lost picks whenever a list tick (or
+    // a still-current running session) met the stage before the flow's blank
+    // arrived, and the next session silently opened on the deployment default.
+    if (!session.blank) return
+    // The blank already runs the staged preset: nothing to switch, and keeping
+    // the stage would re-apply it to a later session the pick never meant.
+    if (presetOf(session) === staged) {
       this.staged = undefined
       return
     }

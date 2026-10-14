@@ -571,6 +571,39 @@ describe('ui-agent-preset apply', () => {
     expect(calls.filter(call => call === 'select:minimal')).toHaveLength(spent)
   })
 
+  it('keeps the stage across a running session and lands it on the next blank', async () => {
+    const { ctx, slots, calls } = await bench()
+    declareRoot(slots)
+    declareConversation(slots)
+    ctx.provide('conversation', {} as never)
+    const state = {
+      current: 'running',
+      byId: {
+        running: { id: 'running', blank: false, projectionValues: { agentPreset: 'cordis' } },
+        blank: { id: 'blank', blank: true, projectionValues: {} },
+      },
+    }
+    const sessions = sessionsDouble(state)
+    ctx.provide('sessions', sessions as never)
+    ctx.provide('uiWorkspace', uiWorkspaceDouble() as never)
+    await ctx.plugin({ inject: [...inject, 'conversation', 'sessions', 'uiWorkspace'], apply }).await()
+    const chip = (slots.entries('conversation.hero.agentPreset')[0]!
+      .inject as unknown as () => AgentPresetSeatInjected)()
+
+    await chip.load()
+    await chip.select('standard')
+    // A list tick meeting the running session must not spend the pick.
+    sessions.notify()
+    await Promise.resolve()
+    expect(calls.filter(call => call === 'select:standard')).toHaveLength(0)
+
+    // The blank the flow lands on takes it.
+    state.current = 'blank'
+    sessions.notify()
+    await Promise.resolve()
+    expect(calls.filter(call => call === 'select:standard')).toHaveLength(1)
+  })
+
   it('loads the header label from the shared roster store', async () => {
     const { ctx, slots } = await bench()
     declareRoot(slots)
