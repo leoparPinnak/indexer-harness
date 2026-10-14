@@ -41,7 +41,7 @@ function pdfAssets(): string {
 const pdfWorker: NonNullable<UserConfig['plugins']> = [{
   name: 'dsh-pdf-worker-source',
   resolveId(source) {
-    return source === workerSpecifier ? workerModule : null
+    return (source === workerSpecifier || source === 'pdfjs-dist/build/pdf.worker.min.mjs') ? workerModule : null
   },
   load(id) {
     if (id !== workerModule) return null

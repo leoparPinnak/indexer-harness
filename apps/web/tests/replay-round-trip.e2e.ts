@@ -114,10 +114,13 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     const system = systemPromptText(agent.session)
     if (system === undefined) throw new Error('the settled Web request has no system prompt')
     const paragraphs = system.split('\n\n')
-    expect(paragraphs.slice(0, 2)).toEqual([
+    expect(paragraphs.slice(0, 3)).toEqual([
       'You are an AI agent powered by DeepSeek Harness.',
       'You are a coding agent powered by the deepseek-v4-flash model.',
+      '## Request execution — the user\'s request outranks every rule',
     ])
+    expect(paragraphs).toContain('## Reporting back — the closing message is for the operator, not for a peer')
+    expect(system).toContain('Clarification is not permission: when the request is genuinely ambiguous about a choice only the user owns, ask with `ask_user_question`')
     const suffix = paragraphs.slice(-3).join('\n\n')
       .split(REPO_ROOT).join('{{sourceRoot}}')
       .split(join(scaffold.workspaceCwd, 'workspace')).join('{{cwd}}')

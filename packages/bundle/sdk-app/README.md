@@ -42,7 +42,7 @@ The SDK uses the base `read`, `write`, and `edit` defaults. To add `str_replace_
 
 #### What the model sees
 
-The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The exact SDK initialization route and session cwd resolve the placeholders. Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
+The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The exact SDK initialization route and session cwd resolve the placeholders. The prefix also carries the shipped request-execution manifesto: a user message outranks every other instruction in the deployment, commissioned work begins without a permission question, a genuine ambiguity about a user-owned choice is asked through `ask_user_question` with the visible options, and a request a technical limit blocks is reported with the paths already attempted and the closest remaining alternatives. The closing message of a task is written for the operator in plain language, while tool calls and technical register inside the loop are unconstrained. Default file tool schemas include `read`, `write`, and `edit`; they omit `str_replace_editor`.
 
 #### Token effect
 

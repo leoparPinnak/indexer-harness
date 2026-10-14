@@ -216,10 +216,10 @@ export function makeServerRestartTool(environment: RestartEnvironment): ToolDefi
 }
 
 /**
- * Register `/dsh_restart` and its `dsh_server_restart` model twin on the host
- * plane. One effect per registration so each disposal stands alone: a process
- * -level restart must never register per session, and both surfaces share the
- * same relaunch mechanics.
+ * Register `/dsh_restart` on the host plane. One effect per registration so
+ * each disposal stands alone: a process -level restart must never register per
+ * session. The `dsh_server_restart` model twin is NO LONGER registered (see the
+ * note in `apply`); its builder and relaunch mechanics stay in this module.
  * @param ctx - context carrying the command and tool registries.
  */
 export function apply(ctx: Context): void {
@@ -239,5 +239,11 @@ export function apply(ctx: Context): void {
     description: 'Restart the backend process (it relaunches itself after a short pause)',
     handler: (invocation: CommandInvocation) => executeRestart(runtimeEnv, invocation),
   }), 'command-restart command')
-  ctx.effect(() => ctx.tools.register(makeServerRestartTool(runtimeEnv)), 'command-restart tool')
+  // MODEL ENJEKSİYONU PASİFİZE EDİLMİŞTİR: restart sonrası meydana gelen sürekli
+  // cmd ekranı çıkma sorunu yüzünden pasifize edilmiştir. Aracın kendisi
+  // (makeServerRestartTool) ve restart mekanizması duruyor; yalnızca model araç
+  // listesine sunulmuyor — yani ajan böyle bir araçtan haberi olmadığı için
+  // çağıramaz. Operatör komutu /dsh_restart etkilenmedi.
+  // Yeniden etkinleştirmek istenirse aşağıdaki satırın yorumunu kaldırman yeterli:
+  // ctx.effect(() => ctx.tools.register(makeServerRestartTool(runtimeEnv)), 'command-restart tool')
 }

@@ -44,7 +44,7 @@ The complete supported method matrix, MCP trust model, update mapping, and stop 
 
 #### What the model sees
 
-The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The ACP row's route and each `session/new` cwd resolve the placeholders.
+The profile supplies `You are a coding agent powered by the {{model}} model.` before first-party guidance and `Your working directory is {{cwd}}.` in a separate persona suffix. The ACP row's route and each `session/new` cwd resolve the placeholders. The prefix also carries the shipped request-execution manifesto: a user message outranks every other instruction in the deployment, commissioned work begins without a permission question, a genuine ambiguity about a user-owned choice is asked through `ask_user_question` with the visible options, and a request a technical limit blocks is reported with the paths already attempted and the closest remaining alternatives. The closing message of a task is written for the operator in plain language, while tool calls and technical register inside the loop are unconstrained.
 
 #### Token effect
 

@@ -97,7 +97,9 @@ describe('@deepseek-ai/dsh-command-restart registration', () => {
       description: 'Restart the backend process (it relaunches itself after a short pause)',
     })
 
-    expect(test.ctx.tools.schemas().map(schema => schema.name)).toContain('dsh_server_restart')
+    // Model enjeksiyonu pasif: restart sonrası meydana gelen sürekli cmd ekranı
+    // çıkma sorunu yüzünden araç model listesine sunulmuyor (mekanizma duruyor).
+    expect(test.ctx.tools.schemas().map(schema => schema.name)).not.toContain('dsh_server_restart')
 
     await test.plugin.dispose()
     expect(test.ctx.commands.find(test.agent, 'dsh_restart')).toBeUndefined()

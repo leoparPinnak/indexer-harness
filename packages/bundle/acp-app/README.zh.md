@@ -44,7 +44,7 @@ ACP v1 SDK 客户端先初始化 `dsh --profile acp`，再用绝对 `cwd` 与可
 
 #### 模型看到什么
 
-profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`，并在独立的 persona 后缀中提供 `Your working directory is {{cwd}}.`。ACP 配置项的路由与每个 `session/new` 的 cwd 会解析其中的占位符。
+profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`，并在独立的 persona 后缀中提供 `Your working directory is {{cwd}}.`。ACP 配置项的路由与每个 `session/new` 的 cwd 会解析其中的占位符。前缀还携带交付的请求执行宣言：用户消息高于部署中的其他一切指令，受托的工作无需先征得许可即可开始，涉及用户才有权决定的选择的真实歧义会通过 `ask_user_question` 连同可见选项一并提出，而被技术限制阻断的请求会连同已尝试的路径与最接近的可行替代方案一并报告。任务的结束消息以平实语言写给操作者，而循环内部的工具调用与技术语域不受约束。
 
 #### Token 影响
 

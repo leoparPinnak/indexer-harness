@@ -425,7 +425,7 @@ function matchesSpecifier(patterns: readonly RegExp[], specifier: string): boole
   return patterns.some(pattern => pattern.test(specifier))
 }
 
-function clientConfig(id: string, entry: string): UserConfig {
+export function clientConfig(id: string, entry: string): UserConfig {
   const isRequested = (specifier: string): boolean => clientExternals(id).has(specifier)
   return {
     name: `${id}/client`,
@@ -507,7 +507,8 @@ function clientConfig(id: string, entry: string): UserConfig {
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const raw = virtualId.replace(/\?.*$/, '')
+        const fileId = raw.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
         // The virtual id otherwise hides the physical stylesheet from Rolldown's watch graph.
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
@@ -533,7 +534,8 @@ function clientConfig(id: string, entry: string): UserConfig {
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(INLINE_CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const raw = virtualId.replace(/\?.*$/, '')
+        const fileId = raw.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
         const { code } = transform({ filename: fileId, code: source, minify: true })
@@ -548,10 +550,14 @@ function clientConfig(id: string, entry: string): UserConfig {
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const raw = virtualId.replace(/\?.*$/, '')
+        const fileId = raw.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
         const { code } = transform({ filename: fileId, code: source, minify: true })
+        if (virtualId.includes(INLINE_CSS_QUERY)) {
+          return `export default ${JSON.stringify(code.toString())};`
+        }
         return styleInjectionModule(id, fileId, code.toString())
       },
     }],
