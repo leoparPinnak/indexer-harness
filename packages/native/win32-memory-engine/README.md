@@ -1,5 +1,7 @@
 # win32-memory-engine
 
+English | [中文](README.zh.md)
+
 Win32 bellek/gözlem/girdi motoru. `packages/host/win32-memory-bridge` için düz C-ABI + JSON satır IPC çekirdeği: `observer` (OpenProcess + ReadProcessMemory + AOB + pointer zinciri), `writer` (WriteProcessMemory, yalnız `MemoryActuator` üzerinden, çağrı-başı onay kancası), `hwnd` (Direct HWND Mapping + UI cache), `input` (ham Scan Code `SendInput`, adanmış OS thread), `policy` (yetenek yoklaması + düşüş merdiveni), `lib` (FFI yüzeyi).
 
 Sıcak döngüler hiçbir zaman async yürütücüye girmez; kalıcı OS thread'ler + kanallar kullanılır (`tokio` yok).

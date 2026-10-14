@@ -28,7 +28,7 @@ Work internally however the task demands: tool calls, code, and precise technica
 
 两段文本承载四条规则。优先顺序：当前用户消息高于其他一切指令，受托的工作无需先征得许可即可开始。边界：只有用户才能决定的选择上的真实歧义不是许可问题，所以它通过 `ask_user_question` 提出，并附上模型已经能看到的选项——这条边界正是 plan 模式段落早已写下的「user-owned choices or material ambiguity that inspection cannot answer」（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml:184`）。危险：模型判断为严重且超出既有授权的风险，是提出确认请求的唯一理由——只提一次，连同具体风险与最接近的更安全变体；操作者重申或坚持即终结该问题，并把请求重新变回命令。报告：结束任务的那条消息以平实语言写给操作者，而循环内部的工具调用、代码与技术语域保持不变。
 
-`packages/bundle/web-app/cordis.patch.yml`、`packages/bundle/headless/cordis.patch.yml`、`packages/bundle/acp-app/cordis.patch.yml` 与 `packages/bundle/sdk-app/cordis.patch.yml` 通过 `personaPrefix` 提供它，并把该标量从折叠式（`>-`）改为字面式（`|-`），使段落在组装后仍然保留。`cordis` agent preset（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml`）重复同一段文本，因为 preset 的 persona 会整体遮蔽部署 persona，而它本来就持有本宣言所延伸的操作者权威、禁止清单与反过度拒绝段落。`sdk-minimal` 保持其由环境选择的精简 persona 不变。
+`packages/bundle/web-app/cordis.patch.yml`、`packages/bundle/headless/cordis.patch.yml`、`packages/bundle/acp-app/cordis.patch.yml` 与 `packages/bundle/sdk-app/cordis.patch.yml` 通过 `personaPrefix` 提供它，并把该标量从折叠式（`>-`）改为字面式（`|-`），使段落在组装后仍然保留。`cordis` agent preset（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml`）重复同一段文本，因为 preset 的 persona 会整体遮蔽部署 persona，而它本来就持有本宣言所延伸的操作者权威、禁止清单与反过度拒绝段落。`standard` 与 `ptc` preset（`packages/preset/agent-presets/presets/standard/agent.cordis.yml`、`packages/preset/agent-presets/presets/ptc/agent.cordis.yml`）出于同一遮蔽原因，在职责句之后携带同一段文本；[preset 遮蔽修复](../bug-fix/2026-10-14-preset-persona-shadowing-manifesto.zh.md)在网关转录日志显示这些会话只组装出光秃的职责句之后补上了它们。`sdk-minimal` 保持其由环境选择的精简 persona 不变。
 
 位置选择遵循[提示词归属决策](../architecture/2026-07-05-prompt-variables-and-tool-guidance-ownership.zh.md)：部署角色与行为属于部署 persona，而不属于工具描述或插件段落，因此该宣言同样适用于任何其 preset 未遮蔽 persona 的会话。
 
@@ -48,7 +48,7 @@ Work internally however the task demands: tool calls, code, and precise technica
 
 ## 后果
 
-- 该文本在构造上存在于五个文件：四份部署 persona 加上 `cordis` preset，因为 preset 遮蔽使单一归属方不可能成立。未来修改宣言必须触及全部五处。
+- 该文本在构造上存在于七个文件：四份部署 persona 加上 `cordis`、`standard` 与 `ptc` preset 的 persona 行，因为 preset 遮蔽使单一归属方不可能成立。未来修改宣言必须触及全部七处；其中任何一份偏离时，`packages/preset/agent-presets/tests/persona-manifesto-consistency.spec.ts` 会失败。
 - 该宣言为每个请求的提示词前缀增加约 2.4 KB 的 persona 文本；[环境提示词后缀决策](../bug-fix/2026-09-06-environment-prompt-suffix.zh.md)中的交付可复用前缀策略不受影响，因为同一模型下的各会话文本完全一致。
 - 固定已交付 persona 的提示词 sidecar 随之移动：`snapshots/web/{fresh-round-trip,ptc-round,cordis-tool-round}` 与 `snapshots/sdk/{text-turn,bash-tool,subagent-dsh-sdk-dynamic-route,subagent-dsh-sdk-diagnostic}` 携带完整文本块，`apps/web/tests/replay-round-trip.e2e.ts` 把请求执行标题断言为组装后的第三个段落、把报告标题断言为更靠后的段落，并把澄清句与危险句断言为提示词文本。
 - `snapshots/web/schedule-catalog/system-prompt.expected.md` 是以合并了 persona 与 cwd 的段落、以及当前组装不会产生的段落顺序撰写的；在其归属方刷新之前保持不动，本代码树中没有任何可运行的测试比较其内容。

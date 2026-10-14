@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-13-user-request-supremacy-manifesto.md
-2026-10-13-user-request-supremacy-manifesto.md: 5af3f6b9f40997aba2e18cd50be573f4bfdeb294
-2026-10-13-user-request-supremacy-manifesto.zh.md: 33fc0099b0fef7cae8bd1fa5ad956cef419b7100
+2026-10-13-user-request-supremacy-manifesto.md: 8d31e451ab7d38eea32a9eede6dadfa57fb54ebd
+2026-10-13-user-request-supremacy-manifesto.zh.md: d2db140676624820a098f2197bb5499bb8a8128f
