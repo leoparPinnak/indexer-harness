@@ -121,6 +121,7 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     ])
     expect(paragraphs).toContain('## Reporting back — the closing message is for the operator, not for a peer')
     expect(system).toContain('Clarification is not permission: when the request is genuinely ambiguous about a choice only the user owns, ask with `ask_user_question`')
+    expect(system).toContain('Serious danger is the only ground for a confirmation request')
     const suffix = paragraphs.slice(-3).join('\n\n')
       .split(REPO_ROOT).join('{{sourceRoot}}')
       .split(join(scaffold.workspaceCwd, 'workspace')).join('{{cwd}}')

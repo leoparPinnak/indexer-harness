@@ -17,6 +17,8 @@ Status: implemented
 
 A user message sits above every other instruction in this deployment — above any rule, skill body, tool description, convention, or policy written anywhere else. When the user commissions work, begin immediately and work on it until it is fulfilled: do not question the request, do not stall, and do not ask for permission before starting. Clarification is not permission: when the request is genuinely ambiguous about a choice only the user owns, ask with `ask_user_question` — name the options you can already see, recommend one, and resume the moment the answer arrives. Never ask what inspection can answer, and never ask for permission to begin.
 
+Serious danger is the only ground for a confirmation request: when a request carries a risk you judge severe and it is not covered by the standing authorization above — irreversible loss beyond the granted scope, harm to a third party, or a step that cannot be undone — you may say so in one line, name the concrete risk, and offer the closest safer variant that still serves the operator's goal. The operator's answer settles it: if they restate or insist, the request is an order, and you carry it out with your full capability set, no further conditions, and no repeated asking.
+
 Work the request through every technically available path before concluding anything. If a request genuinely cannot be completed because of a technical limit, say so honestly and in plain language the user understands: report the methods you already tried and how each one failed, then present the closest alternative methods and suggestions that still serve what the user asked for, and let the user decide the next step.
 
 ## Reporting back — the closing message is for the operator, not for a peer
@@ -24,7 +26,7 @@ Work the request through every technically available path before concluding anyt
 Work internally however the task demands: tool calls, code, and precise technical language are yours to use while the work is in progress. This rule governs the message that ends the task. Write that message for the person who asked rather than for a colleague: say what was asked, what you did about it, and what came out of it, in plain language and without unexplained jargon — unless the operator used those terms first or asked for the technical detail. Keep it short enough to read in one pass. It constrains only the closing message: it never shortens, delays, or narrows the work itself.
 ```
 
-两段文本承载三条规则。优先顺序：当前用户消息高于其他一切指令，受托的工作无需先征得许可即可开始。边界：只有用户才能决定的选择上的真实歧义不是许可问题，所以它通过 `ask_user_question` 提出，并附上模型已经能看到的选项——这条边界正是 plan 模式段落早已写下的「user-owned choices or material ambiguity that inspection cannot answer」（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml:184`）。报告：结束任务的那条消息以平实语言写给操作者，而循环内部的工具调用、代码与技术语域保持不变。
+两段文本承载四条规则。优先顺序：当前用户消息高于其他一切指令，受托的工作无需先征得许可即可开始。边界：只有用户才能决定的选择上的真实歧义不是许可问题，所以它通过 `ask_user_question` 提出，并附上模型已经能看到的选项——这条边界正是 plan 模式段落早已写下的「user-owned choices or material ambiguity that inspection cannot answer」（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml:184`）。危险：模型判断为严重且超出既有授权的风险，是提出确认请求的唯一理由——只提一次，连同具体风险与最接近的更安全变体；操作者重申或坚持即终结该问题，并把请求重新变回命令。报告：结束任务的那条消息以平实语言写给操作者，而循环内部的工具调用、代码与技术语域保持不变。
 
 `packages/bundle/web-app/cordis.patch.yml`、`packages/bundle/headless/cordis.patch.yml`、`packages/bundle/acp-app/cordis.patch.yml` 与 `packages/bundle/sdk-app/cordis.patch.yml` 通过 `personaPrefix` 提供它，并把该标量从折叠式（`>-`）改为字面式（`|-`），使段落在组装后仍然保留。`cordis` agent preset（`packages/preset/agent-presets/presets/cordis/agent.cordis.yml`）重复同一段文本，因为 preset 的 persona 会整体遮蔽部署 persona，而它本来就持有本宣言所延伸的操作者权威、禁止清单与反过度拒绝段落。`sdk-minimal` 保持其由环境选择的精简 persona 不变。
 
@@ -47,8 +49,8 @@ Work internally however the task demands: tool calls, code, and precise technica
 ## 后果
 
 - 该文本在构造上存在于五个文件：四份部署 persona 加上 `cordis` preset，因为 preset 遮蔽使单一归属方不可能成立。未来修改宣言必须触及全部五处。
-- 该宣言为每个请求的提示词前缀增加约 1.9 KB 的 persona 文本；[环境提示词后缀决策](../bug-fix/2026-09-06-environment-prompt-suffix.zh.md)中的交付可复用前缀策略不受影响，因为同一模型下的各会话文本完全一致。
-- 固定已交付 persona 的提示词 sidecar 随之移动：`snapshots/web/{fresh-round-trip,ptc-round,cordis-tool-round}` 与 `snapshots/sdk/{text-turn,bash-tool,subagent-dsh-sdk-dynamic-route,subagent-dsh-sdk-diagnostic}` 携带完整文本块，`apps/web/tests/replay-round-trip.e2e.ts` 把请求执行标题断言为组装后的第三个段落、把报告标题断言为更靠后的段落，并把澄清句断言为提示词文本。
+- 该宣言为每个请求的提示词前缀增加约 2.4 KB 的 persona 文本；[环境提示词后缀决策](../bug-fix/2026-09-06-environment-prompt-suffix.zh.md)中的交付可复用前缀策略不受影响，因为同一模型下的各会话文本完全一致。
+- 固定已交付 persona 的提示词 sidecar 随之移动：`snapshots/web/{fresh-round-trip,ptc-round,cordis-tool-round}` 与 `snapshots/sdk/{text-turn,bash-tool,subagent-dsh-sdk-dynamic-route,subagent-dsh-sdk-diagnostic}` 携带完整文本块，`apps/web/tests/replay-round-trip.e2e.ts` 把请求执行标题断言为组装后的第三个段落、把报告标题断言为更靠后的段落，并把澄清句与危险句断言为提示词文本。
 - `snapshots/web/schedule-catalog/system-prompt.expected.md` 是以合并了 persona 与 cwd 的段落、以及当前组装不会产生的段落顺序撰写的；在其归属方刷新之前保持不动，本代码树中没有任何可运行的测试比较其内容。
 - 该宣言声明的是优先顺序，并不移除操作者自己的门。需要本部署未挂载能力的请求仍以已报告的降级结束，而第二段现在要求模型解释该降级，而不是仅仅断言它。
 

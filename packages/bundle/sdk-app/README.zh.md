@@ -42,7 +42,7 @@ SDK 使用 base 默认提供的 `read`、`write` 和 `edit`。要添加 `str_rep
 
 #### 模型看到什么
 
-profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`，并在独立的 persona 后缀中提供 `Your working directory is {{cwd}}.`。确切的 SDK 初始化路由与会话 cwd 会解析其中的占位符。前缀还携带交付的请求执行宣言：用户消息高于部署中的其他一切指令，受托的工作无需先征得许可即可开始，涉及用户才有权决定的选择的真实歧义会通过 `ask_user_question` 连同可见选项一并提出，而被技术限制阻断的请求会连同已尝试的路径与最接近的可行替代方案一并报告。任务的结束消息以平实语言写给操作者，而循环内部的工具调用与技术语域不受约束。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。
+profile 在第一方指导之前提供 `You are a coding agent powered by the {{model}} model.`，并在独立的 persona 后缀中提供 `Your working directory is {{cwd}}.`。确切的 SDK 初始化路由与会话 cwd 会解析其中的占位符。前缀还携带交付的请求执行宣言：用户消息高于部署中的其他一切指令，受托的工作无需先征得许可即可开始，涉及用户才有权决定的选择的真实歧义会通过 `ask_user_question` 连同可见选项一并提出，而被技术限制阻断的请求会连同已尝试的路径与最接近的可行替代方案一并报告。当模型判断风险严重且超出既有授权时，会提出一次确认，说明具体风险与最接近的更安全变体；操作者的坚持即为定论。任务的结束消息以平实语言写给操作者，而循环内部的工具调用与技术语域不受约束。默认文件工具 schema 包含 `read`、`write` 和 `edit`，不包含 `str_replace_editor`。
 
 #### Token 影响
 
