@@ -12,7 +12,7 @@ The gap was proven from the operator's model-gateway transcript logs: a standard
 
 ## Decision
 
-The `standard` and `ptc` preset persona rows carry the same manifesto block the bundles carry, transplanted byte-identically from `packages/bundle/web-app/cordis.patch.yml` (2,492 characters) immediately after the role sentence, with the scalar switched from folded (`>-`) to literal (`|-`) so the paragraph breaks survive assembly. A preset that shadows the deployment persona now ships the text it shadows with.
+The `standard` and `ptc` preset persona rows carry the constitution their rows shadow, immediately after the role sentence and transplanted byte-identically, with the scalar switched from folded (`>-`) to literal (`|-`) so the paragraph breaks survive assembly. A preset that shadows the deployment persona now ships the text it shadows with. The carried scope is the full `cordis` constitution as of [the follow-up note](2026-10-15-full-constitution-in-preset-personas.md).
 
 ## Alternatives considered
 
@@ -24,8 +24,8 @@ The `standard` and `ptc` preset persona rows carry the same manifesto block the 
 
 ## Consequences
 
-- The manifesto text now exists in seven files by construction — four bundle patches, the `cordis`, `standard`, and `ptc` preset persona rows — and a future edit must move all seven.
-- Standard and ptc sessions assemble a prompt roughly 2.4 KB larger than before; the GUI default composition is the main beneficiary.
+- The persona text now exists in seven files by construction — four bundle patches carrying the two-section persona, and the `cordis`, `standard`, and `ptc` preset persona rows carrying the full constitution — and a future edit must move every copy its scope covers.
+- Standard and ptc sessions assemble a persona of 12,309 characters instead of the bare role sentence; the GUI default composition is the main beneficiary.
 - `snapshots/web/schedule-catalog/system-prompt.expected.md` stays untouched per its owner note (authored sidecar, no runnable comparison in this tree); the raw-composition snapshots pin the bundle persona and were already correct.
 - `sdk-minimal` keeps its bare, environment-selected persona unchanged.
 - The verification path is the same evidence that exposed the gap: a new standard-preset session's outgoing request, read from the gateway transcript, contains the request-execution heading after the role sentence.
@@ -33,3 +33,4 @@ The `standard` and `ptc` preset persona rows carry the same manifesto block the 
 ## Related
 
 - [The user-request manifesto in every deployment persona](../feature/2026-10-13-user-request-supremacy-manifesto.md) owns the text and its precedence rules; this note closes its deployment gap.
+- [The full deployment constitution reaches standard and ptc preset personas](2026-10-15-full-constitution-in-preset-personas.md) widens the transplanted scope from the two-section persona to the full constitution.

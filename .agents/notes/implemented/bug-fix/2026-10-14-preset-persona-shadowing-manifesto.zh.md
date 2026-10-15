@@ -12,7 +12,7 @@ Status: implemented
 
 ## 决策
 
-`standard` 与 `ptc` preset 的 persona 行在职责句之后携带与 bundle 相同的宣言文本块，从 `packages/bundle/web-app/cordis.patch.yml` 逐字节移植（2,492 字符），并把标量从折叠式（`>-`）改为字面式（`|-`），使段落分隔在组装后仍然保留。遮蔽部署 persona 的 preset，现在随身携带它所遮蔽的文本。
+`standard` 与 `ptc` preset 的 persona 行在职责句之后携带其所遮蔽的宪法文本，逐字节拼接移植，并把标量从折叠式（`>-`）改为字面式（`|-`），使段落分隔在组装后仍然保留。遮蔽部署 persona 的 preset，现在随身携带它所遮蔽的文本。携带范围现为 `cordis` 的完整宪法，见[后续笔记](2026-10-15-full-constitution-in-preset-personas.zh.md)。
 
 ## 曾考虑的替代方案
 
@@ -24,8 +24,8 @@ Status: implemented
 
 ## 后果
 
-- 宣言文本现在在构造上存在于七个文件——四份 bundle patch，加上 `cordis`、`standard` 与 `ptc` preset 的 persona 行——未来的修改必须触及全部七处。
-- standard 与 ptc 会话组装出的提示词比之前大约 2.4 KB；GUI 默认组合是主要受益者。
+- persona 文本现在在构造上存在于七个文件——四份 bundle patch 携带两段式人设，`cordis`、`standard` 与 `ptc` preset 的 persona 行携带完整宪法——未来的修改必须触及其所辖范围的每一处。
+- standard 与 ptc 会话组装出的 persona 现为 12,309 字符而非裸职责句；GUI 默认组合是主要受益者。
 - `snapshots/web/schedule-catalog/system-prompt.expected.md` 依照其归属笔记保持未动（手写的侧车文件，本树中没有可运行的比较）；raw 组合的快照固定的是 bundle persona，本来就正确。
 - `sdk-minimal` 保持其由环境选择的精简 persona 不变。
 - 验证路径与暴露缺口的证据相同：从网关转录读取一个新的 standard preset 会话的外发请求，在职责句之后包含请求执行标题。
@@ -33,3 +33,4 @@ Status: implemented
 ## 相关
 
 - [每份部署 persona 中的用户请求宣言](../feature/2026-10-13-user-request-supremacy-manifesto.zh.md) 拥有文本及其优先顺序规则；本笔记关闭它的部署缺口。
+- [完整部署宪法到达 standard 与 ptc preset 人设](2026-10-15-full-constitution-in-preset-personas.zh.md) 将移植范围从两段式人设扩宽为完整宪法。

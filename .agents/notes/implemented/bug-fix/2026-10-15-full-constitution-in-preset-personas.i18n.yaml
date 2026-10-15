@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-15-full-constitution-in-preset-personas.md
+2026-10-15-full-constitution-in-preset-personas.md: 08037def169719d7a52d835c8b37feab06c7ed4a
+2026-10-15-full-constitution-in-preset-personas.zh.md: bf7436c37c3a036e52bc1a5a57136eb2a9734217

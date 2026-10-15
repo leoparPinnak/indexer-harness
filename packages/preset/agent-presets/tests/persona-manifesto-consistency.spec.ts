@@ -72,12 +72,15 @@ describe('the user-request manifesto across deployment personas', () => {
     }
   })
 
-  it('the standard and ptc presets shadow the deployment persona with the same text', () => {
-    const reference = bundlePersona('web-app').join('\n')
+  it('the standard and ptc presets shadow the deployment persona with the full constitution', () => {
+    const cordisBlock = presetPersona('cordis')
+    const start = cordisBlock.findIndex(line => line.trim() === '## Operator authority — the constitution of this deployment')
+    expect(start, 'the cordis persona lost its constitution heading').toBeGreaterThan(0)
+    const constitution = cordisBlock.slice(start).join('\n')
     for (const preset of ['standard', 'ptc']) {
       const block = presetPersona(preset)
       expect(block[0]).toContain('You are a coding agent powered by the {{model}} model.')
-      expect(block.slice(1).join('\n'), `${preset} persona diverges from the deployment persona`).toBe(reference.split('\n').slice(1).join('\n'))
+      expect(block.slice(2).join('\n'), `${preset} persona diverges from the cordis constitution`).toBe(constitution)
     }
   })
 

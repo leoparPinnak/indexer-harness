@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-14-preset-persona-shadowing-manifesto.md
-2026-10-14-preset-persona-shadowing-manifesto.md: dafb38234a557a7bd8ce6c1ea3b5311abff13619
-2026-10-14-preset-persona-shadowing-manifesto.zh.md: d68ed28817dfe5ff765f8e511a6ab8f8b846c41b
+2026-10-14-preset-persona-shadowing-manifesto.md: 9abbe148b280878dea2debdad19a662bd8eb29fb
+2026-10-14-preset-persona-shadowing-manifesto.zh.md: 22c9e775e1da89cd13453ac0d48c7159cfb6864e
