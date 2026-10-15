@@ -364,6 +364,19 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
 }
 
 /**
+ * Pinned-favorite row presentation: separator between the title and the
+ * workspace name, title clipping length, hover-scroll seconds for a clipped
+ * title, and workspace-name placement ('left' beside the title, 'right' far
+ * right).
+ */
+export const FAVORITE_ROW_CONFIG = {
+  separator: '/',
+  titleMaxChars: 18,
+  scrollDurationSec: 2,
+  alignWorkspace: 'right' as 'left' | 'right',
+}
+
+/**
  * One top-level 34px session row: status dot (pending user interaction outranks
  * own or descendant activity), title, relative time, and the row actions menu.
  * @param props.node - derived session node.
@@ -383,7 +396,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  */
 export function SessionNodeItem({
   node, currentId, now, onOpen, onRename, onFork, onArchive, isFavorite, setFavorite,
-  onReveal, drag, flat = false, t,
+  onReveal, drag, flat = false, workspaceName, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -405,6 +418,8 @@ export function SessionNodeItem({
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
   flat?: boolean | undefined
+  /** Workspace name this session belongs to (shown on pinned favorites). */
+  workspaceName?: string | undefined
   t: RowTranslate
 }) {
   const row = node
@@ -413,6 +428,12 @@ export function SessionNodeItem({
   const statuses = sessionStatuses(node, t)
   const primaryStatus = statuses[0]
   const showStatus = primaryStatus.state !== 'done' || row.completed
+  const hasOngoing = statuses.some(s => s.state === 'ongoing')
+  const isFavoriteWithWorkspace = workspaceName !== undefined
+  const isOverflow = title.length > FAVORITE_ROW_CONFIG.titleMaxChars
+  const displayLeft = isOverflow
+    ? `${title.slice(0, FAVORITE_ROW_CONFIG.titleMaxChars)}..`
+    : title
   const [menuOpen, setMenuOpen] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -481,24 +502,56 @@ export function SessionNodeItem({
             className={clsx(
               css.iconButton,
               css.starButton,
-              isFavorite && css.starActive,
+              isFavoriteWithWorkspace && css.starActive,
+              !isFavoriteWithWorkspace && isFavorite && css.starFavoritedOutline,
             )}
             aria-label={isFavorite
               ? t('favorite.remove.aria', { name: title })
               : t('favorite.add.aria', { name: title })}
             onClick={(e) => { e.stopPropagation(); setFavorite(node.id, !isFavorite) }}
           >
-            {isFavorite ? <IconStarFill16 /> : <IconStarOutline16 />}
+            {isFavoriteWithWorkspace ? <IconStarFill16 /> : <IconStarOutline16 />}
           </button>
+          {isFavorite && hasOngoing && (
+            <svg className={css.orbitRing} viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9.5" className={css.orbitTrack} />
+              <circle cx="12" cy="12" r="9.5" className={css.orbitBeam} />
+            </svg>
+          )}
+          {isFavorite && showStatus && !hasOngoing && (
+            <span className={css.statusBadge}>
+              <StateDot state={primaryStatus.state} size={7} />
+              {statuses.map(status => (
+                <span className={css.visuallyHidden} key={status.label}>{status.label}</span>
+              ))}
+            </span>
+          )}
         </span>
       )}
-      <span className={css.title}>{title}</span>
-      {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
-      {/* A blank New Session row is a provisional placeholder: nothing has
-          happened in it yet, so a "now" timestamp and the row verbs
-          (rename/fork/archive) would all act on content that does not
-          exist — both trailing cells stay off until the first prompt. */}
-      {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
+      {isFavoriteWithWorkspace ? (
+        <span className={css.favoriteRowBody}>
+          <span className={css.favoriteTitleContainer} data-overflow={isOverflow}>
+            <span className={css.favoriteTitleStatic}>{displayLeft}</span>
+            {isOverflow && (
+              <span
+                className={css.favoriteTitleMarquee}
+                style={{ animationDuration: `${FAVORITE_ROW_CONFIG.scrollDurationSec}s` }}
+              >
+                {title}
+              </span>
+            )}
+          </span>
+          <span className={clsx(css.favoriteMeta, FAVORITE_ROW_CONFIG.alignWorkspace === 'right' && css.favoriteMetaRight)}>
+            &nbsp;{FAVORITE_ROW_CONFIG.separator}&nbsp;{workspaceName}
+          </span>
+        </span>
+      ) : (
+        <>
+          <span className={css.title}>{title}</span>
+          {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
+          {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
+        </>
+      )}
       {((flat && !isFavorite) || !row.blank) && (
         <span className={css.rowActions}>
           {flat && !isFavorite && (

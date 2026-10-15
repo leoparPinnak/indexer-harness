@@ -270,8 +270,18 @@
 
 .sessionRow:hover .sessionSlot .starButton,
 .sessionRow.menuOpen .sessionSlot .starButton,
-.sessionSlot .starButton.starActive {
+.sessionSlot .starButton.starActive,
+.sessionSlot .starButton.starFavoritedOutline {
   display: inline-flex;
+}
+
+.sessionSlot .starButton.starFavoritedOutline {
+  color: var(--dsw-alias-label-tertiary, #adb2b8);
+  filter: none;
+}
+
+.sessionSlot .starButton.starFavoritedOutline:hover {
+  color: var(--dsw-alias-label-primary, #ffffff);
 }
 
 .sessionRow:hover .sessionSlot .statusContainer {
@@ -285,17 +295,145 @@
 .starButton.starActive,
 .iconButton.starActive {
   color: var(--dsw-alias-state-warn-primary, #f59e0b);
-  filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.55));
 }
 
 .starButton.starActive:hover,
 .iconButton.starActive:hover {
   color: var(--dsw-alias-state-warn-secondary, #f7ad31);
-  filter: drop-shadow(0 0 4px rgba(247, 173, 49, 0.75));
 }
 
 .starButton:active {
   transform: scale(0.9);
+}
+
+/* Orbiting light beam around the star during ongoing agent loop */
+.orbitRing {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.orbitTrack {
+  fill: none;
+  stroke: var(--dsh-state-ongoing, #4d6bfe);
+  stroke-width: 1.2px;
+  opacity: 0.18;
+}
+
+.orbitBeam {
+  fill: none;
+  stroke: var(--dsh-state-ongoing, #4d6bfe);
+  stroke-width: 2px;
+  stroke-dasharray: 18 42;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px #60a5fa);
+  transform-origin: 12px 12px;
+  animation: orbitRotate 1.2s linear infinite;
+}
+
+.statusBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}
+
+@keyframes orbitRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dual-column presentation on favorite rows: Title + Separator + Workspace */
+.favoriteRowBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  height: 20px;
+}
+
+.favoriteTitleContainer {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-right: 6px;
+}
+
+.favoriteTitleStatic {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  overflow: hidden;
+}
+
+.favoriteTitleMarquee {
+  display: none;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  will-change: transform;
+}
+
+.sessionRow:hover .favoriteTitleContainer[data-overflow='true'] {
+  flex: 1;
+}
+
+.sessionRow:hover .favoriteTitleContainer[data-overflow='true'] .favoriteTitleStatic {
+  display: none;
+}
+
+.sessionRow:hover .favoriteTitleContainer[data-overflow='true'] .favoriteTitleMarquee {
+  display: inline-block;
+  animation-name: favoriteTitleScroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+@keyframes favoriteTitleScroll {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  85%, 100% {
+    transform: translateX(calc(-100% + 100px));
+  }
+}
+
+.favoriteMetaRight {
+  margin-left: auto;
+}
+
+.favoriteMeta {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
 }
 
 /* A pointer without hover never reveals the action buttons on approach: the

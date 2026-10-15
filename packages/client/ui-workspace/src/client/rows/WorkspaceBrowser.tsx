@@ -239,7 +239,7 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
  * is no longer listed.
  */
 function FavoritesSection({
-  rows, currentId, now, onOpen, onRename, onFork, onArchive, setFavorite, t,
+  rows, currentId, now, onOpen, onRename, onFork, onArchive, setFavorite, workspaces, t,
 }: {
   rows: readonly SessionNode[]
   currentId: SessionId | undefined
@@ -249,27 +249,33 @@ function FavoritesSection({
   onFork: (id: SessionNode['id']) => void
   onArchive: (id: SessionNode['id']) => void
   setFavorite: (id: SessionId, favorite: boolean) => void
+  workspaces: readonly WorkspaceView[]
   t: WorkspaceBrowserProps['t']
 }) {
   if (rows.length === 0) return null
   return (
-    <div className={css.groupSection}>
+    <div className={clsx(css.groupSection, css.favoritesSection)}>
       <div className={css.favoritesHeader}>{t('section.favorites')}</div>
-      {rows.map(node => (
-        <SessionNodeItem
-          key={node.id}
-          node={node}
-          currentId={currentId}
-          now={now}
-          onOpen={onOpen}
-          onRename={onRename}
-          onFork={onFork}
-          onArchive={onArchive}
-          isFavorite
-          setFavorite={setFavorite}
-          t={t}
-        />
-      ))}
+      {rows.map((node) => {
+        const workspace = workspaces.find(w => w.sessionIds.includes(node.id))
+        const workspaceName = workspace?.title ?? t('group.ungrouped')
+        return (
+          <SessionNodeItem
+            key={node.id}
+            node={node}
+            currentId={currentId}
+            now={now}
+            onOpen={onOpen}
+            onRename={onRename}
+            onFork={onFork}
+            onArchive={onArchive}
+            isFavorite
+            setFavorite={setFavorite}
+            workspaceName={workspaceName}
+            t={t}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -514,6 +520,7 @@ function SessionTree({
           onFork={forkSession}
           onArchive={onSessionArchive}
           setFavorite={setFavorite}
+          workspaces={workspaces}
           t={t}
         />
         {groups.length === 0 && (
@@ -683,7 +690,7 @@ function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
   archivedSessionIds, favoriteSessionIds, setFavorite, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
-  revealSessionId, onSessionRevealed, t,
+  revealSessionId, onSessionRevealed, workspaces, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessions'
@@ -703,6 +710,7 @@ function FlatList({
   | 'setSessionOrder'
   | 'revealSessionId'
   | 'onSessionRevealed'
+  | 'workspaces'
   | 't'
 >) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
@@ -776,6 +784,7 @@ function FlatList({
           onFork={forkSession}
           onArchive={onSessionArchive}
           setFavorite={setFavorite}
+          workspaces={workspaces}
           t={t}
         />
         {rows.length === 0 && (
@@ -1368,6 +1377,7 @@ export function WorkspaceBrowser({
                 setSessionOrder={actions.setSessionOrder}
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
+                workspaces={workspaces}
                 t={t}
               />
             )
