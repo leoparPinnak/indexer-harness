@@ -371,7 +371,7 @@ describe('replay anchors and surface folds', () => {
     expect(advanced.surfaceDeltaTokens).toBeGreaterThan(0)
   })
 
-  it('keeps only the latest successful request anchor across model switches', () => {
+  it('keeps one provider anchor per route across model switches', () => {
     const service = meter()
     const session = Session.create(SessionId('switch'))
     const alphaHeader = header('alpha', { tools: [READ_TOOL] })
@@ -388,8 +388,36 @@ describe('replay anchors and surface folds', () => {
 
     appendHeader(session, alphaHeader)
     const switchedBack = service.measure(session)
-    expect(switchedBack.baseline.kind).toBe('estimated')
-    expect(switchedBack.surfaceDeltaTokens).toBe(0)
+    // Switching back reuses route alpha's own anchor instead of falling back
+    // to the heuristic; only beta's call moved the surface since that anchor.
+    expect(switchedBack.baseline).toMatchObject({ kind: 'usage', tokens: 34, usage: USAGE })
+    expect(switchedBack.surfaceDeltaTokens).toBeGreaterThan(0)
+    expect(switchedBack.totalTokens).toBe(34 + switchedBack.surfaceDeltaTokens)
+  })
+
+  it('keeps the four most recently captured route anchors and evicts the least recent', () => {
+    const service = meter()
+    const session = Session.create(SessionId('anchor-cap'))
+    const alphaHeader = header('alpha')
+    const call = (model: string, step: number): void => {
+      appendSuccessfulCall(session, header(model), {
+        turn: 1,
+        step,
+        usage: { inputTokens: 500, outputTokens: 200 },
+        providerText: `${model} response`,
+      })
+    }
+    call('alpha', 1)
+    call('beta', 2)
+    call('gamma', 3)
+    call('delta', 4)
+    // Re-capturing alpha refreshes its recency before the fifth route lands.
+    call('alpha', 5)
+    call('epsilon', 6)
+
+    expect(service.measure(session, alphaHeader).baseline)
+      .toMatchObject({ kind: 'usage', tokens: 700 })
+    expect(service.measure(session, header('beta')).baseline.kind).toBe('estimated')
   })
 
   it('invalidates usage for any canonical envelope change or explicit override', () => {

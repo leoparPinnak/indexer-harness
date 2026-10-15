@@ -15,6 +15,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {
   CompactionStreamCall, CompactionStreamPhase, CompactionSummaryCall,
 } from '@deepseek-ai/dsh-compaction'
+import { TargetPressureConfigError } from './config.ts'
 
 /**
  * Effective summarization policy for one agent: the route that writes the
@@ -25,6 +26,8 @@ export interface SummaryConfig {
   readonly summarizationProvider: string
   readonly summarizationModel: string
   readonly maxTokens: number
+  /** Multiplier trusting heuristic token estimates before they size a request. */
+  readonly estimateSafetyFactor: number
 }
 
 /** Tags wrapping the structured summary inside the landed checkpoint node. */
@@ -240,16 +243,28 @@ export async function summarizeWithLlm(
   }
 
   const meter = ctx.tokenMeter
-  const estimate = (message: Message): number => meter.estimateMessage(message)
+  // Heuristic prices underprice dense content (JSON schemas, code, non-Latin
+  // text), so every estimate is trusted at the configured safety factor while
+  // sizing the request against the provider's own hard ceiling.
+  const safety = config.estimateSafetyFactor
+  const estimate = (message: Message): number => Math.ceil(meter.estimateMessage(message) * safety)
   const headMessages: Message[] = head === undefined ? [] : [head]
-  const toolsTokens = meter.estimateTools(input.tools)
+  const toolsTokens = Math.ceil(meter.estimateTools(input.tools) * safety)
   const headTokens = headMessages.reduce((total, message) => total + estimate(message), 0)
 
   const contextWindow = (await ctx.llm.resolveModelInfo(target.provider, target.model, signal)).context?.contextWindow
   const mapInstruction = instructionMessage(WINDOW_INSTRUCTION)
-  const mapBudget = contextWindow === undefined
-    ? Number.POSITIVE_INFINITY
-    : contextWindow - config.maxTokens - toolsTokens - headTokens - estimate(mapInstruction)
+  if (contextWindow === undefined) {
+    // Without a capacity there is no honest way to size a window; the previous
+    // unbounded single call packed everything into one request and the provider
+    // rejected it as a mystery overflow.
+    throw new TargetPressureConfigError(
+      `${target.provider}/${target.model}`,
+      `compaction-basic: summarizer ${target.provider}/${target.model} reports no context capacity; `
+      + 'configure contextWindow on that adapter model so compaction can size its windows',
+    )
+  }
+  const mapBudget = contextWindow - config.maxTokens - toolsTokens - headTokens - estimate(mapInstruction)
   const windows = packWindows(messages, mapBudget, estimate)
 
   if (windows.length <= 1) {

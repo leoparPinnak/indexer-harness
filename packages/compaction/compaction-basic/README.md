@@ -71,10 +71,13 @@ All settings are optional. The defaults start condensing at 80% of the routed mo
 | `maxTokens` | `8192` | Output cap for the summarization request; may include reasoning tokens. |
 | `compactionRetries` | `1` | Extra condensation attempts after the first when pressure remains above threshold. |
 | `maxOverflowRetries` | `1` | Maximum retries after a confirmed context-window overflow; `0` disables recovery only. |
+| `estimateSafetyFactor` | `1.5` | Multiplier trusting heuristic token estimates before they gate condensation or size a summarizer window; a provider-reported count is used as it stands. |
 | `modelPolicies` | `[]` | Exact `{ provider, model, ...partialPolicy }` overrides for individual model routes. |
 | `auto` | `true` | Enable automatic condensation and overflow recovery; set `false` for manual-only operation. |
 
 Misconfiguration fails fast: an unknown setting, a duplicate per-model override, both retention forms together, or a ratio retention that is not below the threshold all reject the plugin at load. An absolute `retainTokens` budget — top-level or per-model — that is not below its threshold fails when that model is first used, because the comparison needs the model's context size.
+
+Every heuristic token figure — the tool schemas, the system head, and the messages being condensed — is priced at `estimateSafetyFactor` before it sizes a request, because the fixed 4-chars-per-token estimate underprices JSON schemas, code, and non-Latin text while the provider counts real tokens; a measurement on a provider-reported usage baseline is trusted as it stands. A summarizer route that declares no context capacity refuses to condense with a `TargetPressureConfigError` naming the route, instead of sending one unbounded window the provider would reject.
 
 Each session can additionally override where condensation starts and how much context it may hold, without touching the file. The composer's context control writes one `compaction/mode` event per change (whole-value replace): the summarizer strategy — the conversation model or a dedicated provider/model — plus optional `contextBudgetTokens`, `thresholdTokens`, and `maxTokens` (the summarization output cap). The effective budget is the session's `contextBudgetTokens`, or the routed model's declared `contextWindow` when unset; the effective trigger is the session's `thresholdTokens`, or `thresholdRatio × budget` when unset; the effective cap is the session's `maxTokens`, or this plugin's `maxTokens` when unset. The ratios and caps above are the defaults for sessions that set no mode; the deployment default for the cap is editable on the General settings page.
 

@@ -213,7 +213,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/api/session-controller/src/index.ts:75`](../packages/api/session-controller/src/index.ts)
+Source: [`packages/api/session-controller/src/index.ts:79`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -228,6 +228,26 @@ export interface Config {
 ```
 
 Source: [`packages/api/settings-controller/src/index.ts:36`](../packages/api/settings-controller/src/index.ts)
+
+<a id="deepseek-aidsh-api-workspace-controller"></a>
+
+## `@deepseek-ai/dsh-api-workspace-controller`
+
+Requires: `typert` · `workspaceRegistry`
+
+```ts config-catalog
+/** Workspace Controller deployment policy. */
+export interface Config {
+  /**
+   * Absolute path of the Session favorites document. Required (no default): a
+   * deployment that keeps its Sessions elsewhere must name the file itself
+   * rather than inherit a document in an unrelated directory.
+   */
+  favoritesFile: string
+}
+```
+
+Source: [`packages/api/workspace-controller/src/index.ts:39`](../packages/api/workspace-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-workspace-files"></a>
 
@@ -549,6 +569,20 @@ export interface CompactionPolicyConfig {
   compactionRetries?: number
   /** Maximum retries after canonical context overflow; `0` disables recovery. Defaults to `1`. */
   maxOverflowRetries?: number
+  /**
+   * Multiplier applied to heuristic token estimates before they size a request
+   * or gate compaction. The fixed 4-chars-per-token estimate underprices dense
+   * content (JSON schemas, code, non-Latin text), so an unanchored estimate is
+   * trusted at this factor while a provider-reported count is used as-is.
+   * Defaults to `1.5`.
+   */
+  estimateSafetyFactor?: number
+  /**
+   * Fallback summarizer target chain tried in order when the primary route
+   * fails with a quota, context-overflow, empty-response, or truncated-stream
+   * failure. Defaults to no fallback (empty chain).
+   */
+  fallbackTargets?: FallbackTarget[]
 }
 
 /** Exact provider/model override merged over the default compaction policy. */
@@ -558,9 +592,17 @@ export interface ModelCompactPolicyConfig extends CompactionPolicyConfig {
   /** Exact routed model id to match within `provider`. */
   model: string
 }
+
+/** One fallback summarizer route: a registered provider route and exact model id. */
+export interface FallbackTarget {
+  /** Registered provider route to try instead of the primary summarizer route. */
+  provider: string
+  /** Exact model id within `provider`. */
+  model: string
+}
 ```
 
-Source: [`packages/compaction/compaction-basic/src/types.ts:38`](../packages/compaction/compaction-basic/src/types.ts)
+Source: [`packages/compaction/compaction-basic/src/types.ts:60`](../packages/compaction/compaction-basic/src/types.ts)
 
 <a id="deepseek-aidsh-compaction-tool-result-pruner"></a>
 
@@ -1229,7 +1271,7 @@ export interface DeepSeekCatalogModel {
   /** Per-request output cap for this model; omission falls back to the profile's {@link DeepSeekConnectionOptions.maxTokens}. */
   maxTokens?: number
   /** Accepted request modalities; omission is text-only. */
-  inputModalities?: ModelModality[]
+  inputModalities?: DeepSeekInputModality[]
   /** Total-pixel budget for one deterministic request preview, or the 512-by-512 `low` preset. */
   imagePixelBudget?: number | 'low'
   /** Encoded-byte target for one deterministic request preview; the smallest quality-ladder output is used when no quality fits. */
@@ -1241,11 +1283,85 @@ export interface DeepSeekCatalogModel {
    */
   systemPromptUpdate?: SystemPromptUpdate
 }
+
+/** Request modalities the DeepSeek catalog accepts; this provider serves text and images. */
+export type DeepSeekInputModality = 'text' | 'image'
 ```
 
-Depends on: [`ModelModality`](../packages/llm/llm/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · [`SystemPromptUpdate`](../packages/llm/llm/src/index.ts)
+Depends on: [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · [`SystemPromptUpdate`](../packages/llm/llm/src/index.ts)
 
 Source: [`packages/llm/llm-deepseek/src/index.ts:134`](../packages/llm/llm-deepseek/src/index.ts)
+
+<a id="deepseek-aidsh-llm-openai-compatible"></a>
+
+## `@deepseek-ai/dsh-llm-openai-compatible`
+
+Requires: `llm`
+
+```ts config-catalog
+/** Plugin config, validated by the same-named schemastery schema. */
+export interface Config {
+  /** Set `false` to register no route. Defaults to `true`. */
+  enabled?: boolean
+  /** Endpoint bindings; each becomes its own provider route. */
+  routes?: RouteConfig[]
+}
+
+/** One OpenAI-compatible endpoint binding: exactly what "adding a model" is. */
+export interface RouteConfig {
+  /** Provider route id registered on `ctx.llm` (prefix `openai:` by convention). */
+  provider: string
+  /** Endpoint base; `/chat/completions` is appended. */
+  baseURL: string
+  /** Credential reference (environment-variable name) resolved per request. */
+  apiKeyEnv?: string
+  /** Request defaults applied to every call of this route. */
+  defaults?: RouteDefaultsConfig
+  /** Default per-request output cap; a model's own cap and explicit request values win. */
+  maxTokens?: number
+  /** Positive context capacity used when the selected model has no exact value. */
+  defaultContextWindow?: number
+  /** Advisory models shown by discovery consumers; requests remain unrestricted. */
+  models?: OpenAiCompatibleCatalogModel[]
+  /** Maximum provider idle time while one stream read is outstanding. */
+  streamIdleTimeoutMs?: number
+  /** Provider-owned model-request retry policy; omission uses the normal defaults. */
+  retryPolicy?: RetryPolicyConfig
+}
+
+/** Defaults applied to every call of one route (from plugin config). */
+interface RouteDefaultsConfig {
+  /** Sampling temperature sent on calls that do not set one. */
+  temperature?: number
+  /** Nucleus-sampling top-p sent on calls that do not set one. */
+  topP?: number
+  /** Adapter-owned reasoning effort sent on calls that do not set one. */
+  reasoningEffort?: 'low' | 'medium' | 'high'
+}
+
+/** One optional model entry advertised by the binder. */
+export interface OpenAiCompatibleCatalogModel {
+  /** Wire model id accepted by the configured endpoint. */
+  id: string
+  /** Selector label; defaults to {@link id}. */
+  name?: string
+  /** Optional selector detail for deployments with similar model variants. */
+  description?: string
+  /** Known combined request/response context capacity; omitted when unavailable. */
+  contextWindow?: number
+  /** Per-request output cap for this model; omission falls back to the route's maxTokens. */
+  maxTokens?: number
+  /**
+   * `'in-history'` declares that the endpoint reads the latest `system`
+   * message at any position as the complete effective system prompt.
+   */
+  systemPromptUpdate?: SystemPromptUpdate
+}
+```
+
+Depends on: [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · [`SystemPromptUpdate`](../packages/llm/llm/src/index.ts)
+
+Source: [`packages/llm/llm-openai-compatible/src/index.ts:82`](../packages/llm/llm-openai-compatible/src/index.ts)
 
 <a id="deepseek-aidsh-llm-pi-ai"></a>
 
@@ -1386,10 +1502,12 @@ export interface PiAiModelProfile {
    * installed catalog entry's modalities, then the route's `defaultInput`.
    * Declaring images is what makes a hand-declared vision model usable, and
    * declaring text alone corrects a catalog model whose gateway does not serve
-   * what the catalog records. This is a claim about the endpoint, not a check
-   * of it: nothing interrogates a gateway for what it accepts, so a model
-   * claiming images its endpoint refuses is refused by the provider instead,
-   * mid-turn.
+   * what the catalog records. `audio` and `video` are declarable capability
+   * metadata that reach the model info unchanged; no adapter serializes
+   * request content in either, so they gate nothing. This is a claim about
+   * the endpoint, not a check of it: nothing interrogates a gateway for what
+   * it accepts, so a model claiming images its endpoint refuses is refused by
+   * the provider instead, mid-turn.
    */
   input?: PiAiModality[]
   /**
@@ -1505,10 +1623,26 @@ export interface PiAiCompatProfile {
   allowEmptySignature?: boolean
   /** Whether the endpoint accepts Anthropic strict tool schemas; `anthropic-messages`. */
   supportsStrictTools?: boolean
+  /**
+   * Whether to send session-affinity headers derived from the request's session
+   * id, shaped by `sessionAffinityFormat`; `openai-completions`. Made for an
+   * anonymous gateway whose session routing nothing can infer: pi-ai's
+   * detection answers as though the endpoint were OpenAI itself, where the
+   * feature is off, so a deployment states it instead.
+   */
+  sendSessionAffinityHeaders?: boolean
+  /**
+   * Which session-affinity headers one request carries when
+   * `sendSessionAffinityHeaders` is on: `openai` sends `session_id`,
+   * `x-client-request-id`, and `x-session-affinity`; `openai-nosession` sends
+   * `x-client-request-id` and `x-session-affinity`; `openrouter` sends
+   * `x-session-id`. `openai-completions`.
+   */
+  sessionAffinityFormat?: NonNullable<OpenAICompletionsCompat['sessionAffinityFormat']>
 }
 
-/** One request modality a pi-ai model may accept. */
-export type PiAiModality = Model<Api>['input'][number]
+/** Every request modality a profile may declare. */
+export type PiAiModality = PiAiUpstreamModality | (typeof MEDIA_MODALITIES)[number]
 
 /**
  * Selectable reasoning efforts for one model: each key is a level the model
@@ -1525,6 +1659,9 @@ export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFo
 
 /** The reasoning-budget field spellings pi-ai accepts. */
 export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['thinkingTokenBudgetField']>
+
+/** One request modality pi-ai's own `Model` type declares. */
+type PiAiUpstreamModality = Model<Api>['input'][number]
 ```
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
@@ -1885,7 +2022,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/shell/pwsh-local/src/index.ts:58`](../packages/shell/pwsh-local/src/index.ts)
+Source: [`packages/shell/pwsh-local/src/index.ts:59`](../packages/shell/pwsh-local/src/index.ts)
 
 <a id="deepseek-aidsh-pwsh-sandbox"></a>
 
@@ -3623,7 +3760,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-acp-app` — requires `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — requires `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
-- `@deepseek-ai/dsh-api-workspace-controller` — requires `typert` · `workspaceRegistry` ([`packages/api/workspace-controller/src/index.ts`](../packages/api/workspace-controller/src/index.ts))
 - `@deepseek-ai/dsh-authorization` — requires `credentials` ([`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts))
 - `@deepseek-ai/dsh-client-file-upload` — requires `agents` · `attachments` · `commands` · `connection` ([`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts))
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
@@ -3676,6 +3812,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-command-compact` — requires `commands` · `compaction` ([`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts))
 - `@deepseek-ai/dsh-command-feedback` — requires `commands` ([`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts))
 - `@deepseek-ai/dsh-command-goal` — requires `commands` · `goals` ([`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts))
+- `@deepseek-ai/dsh-command-restart` — requires `commands` · `tools` ([`packages/host/command-restart/src/index.ts`](../packages/host/command-restart/src/index.ts))
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))

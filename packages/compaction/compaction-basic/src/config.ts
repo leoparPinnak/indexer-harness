@@ -23,6 +23,14 @@ const DEFAULT_THRESHOLD_RATIO = 0.8
 /** Default verbatim-tail fraction for every routed model. */
 const DEFAULT_RETAIN_RATIO = 0.16
 
+/**
+ * Default multiplier for heuristic token estimates. The fixed 4-chars-per-token
+ * estimate underprices JSON schemas, code, and non-Latin text, so an
+ * unanchored measurement is trusted at this factor before it gates compaction
+ * or sizes a summarizer window.
+ */
+const DEFAULT_ESTIMATE_SAFETY_FACTOR = 1.5
+
 /** Fields shared by top-level defaults and exact-target overrides. */
 const POLICY_CONFIG_KEYS = [
   'thresholdRatio',
@@ -33,6 +41,7 @@ const POLICY_CONFIG_KEYS = [
   'maxTokens',
   'compactionRetries',
   'maxOverflowRetries',
+  'estimateSafetyFactor',
   'fallbackTargets',
 ] as const
 
@@ -123,6 +132,7 @@ export function resolveConfig(config: BasicCompactionConfig = {}): ResolvedConfi
     maxTokens: config.maxTokens ?? 8192,
     compactionRetries: config.compactionRetries ?? 1,
     maxOverflowRetries: config.maxOverflowRetries ?? 1,
+    estimateSafetyFactor: config.estimateSafetyFactor ?? DEFAULT_ESTIMATE_SAFETY_FACTOR,
     modelPolicies,
     fallbackTargets: resolveFallbackTargets(config.fallbackTargets),
     auto: config.auto ?? true,
@@ -154,6 +164,7 @@ export function resolveTargetPolicy(
     maxTokens: override?.maxTokens ?? config.maxTokens,
     compactionRetries: override?.compactionRetries ?? config.compactionRetries,
     maxOverflowRetries: override?.maxOverflowRetries ?? config.maxOverflowRetries,
+    estimateSafetyFactor: override?.estimateSafetyFactor ?? config.estimateSafetyFactor,
     fallbackTargets: override?.fallbackTargets ?? config.fallbackTargets,
   })
 }
@@ -215,6 +226,7 @@ export function resolveCompactSpec(
     maxTokens: policy.maxTokens,
     compactionRetries: policy.compactionRetries,
     maxOverflowRetries: policy.maxOverflowRetries,
+    estimateSafetyFactor: policy.estimateSafetyFactor,
   })
 }
 
@@ -286,6 +298,7 @@ function validatePolicy(
   const maxTokens = config.maxTokens
   const compactionRetries = config.compactionRetries
   const maxOverflowRetries = config.maxOverflowRetries
+  const estimateSafetyFactor = config.estimateSafetyFactor
   if (thresholdRatio !== undefined) assertRatio(`${name}.thresholdRatio`, thresholdRatio)
   if (retainRatio !== undefined) assertRatio(`${name}.retainRatio`, retainRatio)
   if (retainTokens !== undefined) assertNonNegativeInteger(`${name}.retainTokens`, retainTokens)
@@ -298,6 +311,12 @@ function validatePolicy(
   }
   if (maxOverflowRetries !== undefined) {
     assertNonNegativeInteger(`${name}.maxOverflowRetries`, maxOverflowRetries)
+  }
+  if (estimateSafetyFactor !== undefined
+    && (typeof estimateSafetyFactor !== 'number'
+      || !Number.isFinite(estimateSafetyFactor)
+      || estimateSafetyFactor < 1)) {
+    throw new Error(`${name}.estimateSafetyFactor must be a finite number >= 1`)
   }
 
   validateSummarizationPair(config, name)

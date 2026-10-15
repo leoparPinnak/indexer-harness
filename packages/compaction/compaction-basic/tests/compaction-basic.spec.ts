@@ -252,6 +252,38 @@ function oversizedToolResult(chars = 3_000, withCompactablePrompt = false): Sess
   return session
 }
 
+/** One closed routed step whose assistant message reports provider usage. */
+function usageConversation(usage: TokenUsage): Session {
+  const session = Session.create(SessionId('usage-anchored'))
+  session.append('turn/start', { turn: 1 })
+  session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: 'usage anchor' }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+  session.append('step/start', { turn: 1, step: 1 })
+  session.append('request/header', {
+    header: { config: { provider: MODEL, model: MODEL } },
+    reason: 'initial',
+  })
+  session.append('assistant/message', {
+    stream: [],
+    turn: 1,
+    step: 1,
+    message: createMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'ok' }],
+      source: {
+        kind: 'model',
+        ...{ provider: MODEL, model: MODEL },
+      },
+    }),
+    usage,
+  }, { surfaceOp: 'append' })
+  session.append('step/end', { turn: 1, step: 1 })
+  session.append('turn/start', { turn: 2 })
+  return session
+}
+
 class TestCompactionEngine extends BasicCompactionEngine {
   summary: ContentBlock[] = [{ type: 'text', text: 'small checkpoint' }]
   rawOutput: ContentBlock[] | undefined
@@ -349,6 +381,7 @@ describe('compact configuration and defaults', () => {
       maxTokens: 8192,
       compactionRetries: 1,
       maxOverflowRetries: 1,
+      estimateSafetyFactor: 1.5,
       fallbackTargets: [],
       modelPolicies: [],
       auto: true,
@@ -416,6 +449,7 @@ describe('compact configuration and defaults', () => {
         maxTokens: 512,
         compactionRetries: 2,
         maxOverflowRetries: 3,
+        estimateSafetyFactor: 2,
       }],
     }), { provider: 'ratio-provider', model: 'ratio-model' })
     expect(resolveCompactSpec(ratioOverride, 2_000)).toMatchObject({
@@ -426,6 +460,7 @@ describe('compact configuration and defaults', () => {
       maxTokens: 512,
       compactionRetries: 2,
       maxOverflowRetries: 3,
+      estimateSafetyFactor: 2,
     })
   })
 
@@ -664,7 +699,9 @@ describe('pressure measurement and retention', () => {
 
   it('does nothing below threshold and compacts a priced head above threshold', async () => {
     const compact = service(compactConfig)
-    expect(await compactIfNeeded(compact, conversation(2))).toBeNull()
+    // The heuristic total must sit below threshold / estimateSafetyFactor, or
+    // the trusted gate would already see it at the threshold.
+    expect(await compactIfNeeded(compact, conversation(1))).toBeNull()
 
     const session = conversation(4)
     const head = session.surface.nodes[0]!
@@ -673,6 +710,33 @@ describe('pressure measurement and retention', () => {
     expect(result?.shadowedSeqs[0]).toBe(head)
     expect(result?.shadowedSeqs.length).toBeGreaterThan(2)
     expect(session.surface.nodes.length).toBeLessThan(8)
+  })
+
+  it('gates heuristic measurements at the configured estimate safety factor', async () => {
+    const base: BasicCompactionConfig = { auto: false, thresholdRatio: 0.5, retainTokens: 50 }
+    // conversation(2) prices below the 500-token threshold as measured but at
+    // or above it once a factor >= 1.5 trusts the heuristic.
+    expect(await compactIfNeeded(service(base), conversation(2))).not.toBeNull()
+    expect(await compactIfNeeded(
+      service({ ...base, estimateSafetyFactor: 1 }),
+      conversation(2),
+    )).toBeNull()
+    expect(await compactIfNeeded(
+      service({ ...base, estimateSafetyFactor: 2 }),
+      conversation(2),
+    )).not.toBeNull()
+  })
+
+  it('gates a provider-anchored measurement at its measured total without the safety factor', async () => {
+    const ctx = createContext(2_000)
+    const compact = service({ auto: false, thresholdRatio: 0.5, retainTokens: 50 }, ctx)
+    const session = usageConversation({ inputTokens: 900, outputTokens: 6 })
+    const measurement = ctx.tokenMeter.measure(session)
+    expect(measurement.baseline).toMatchObject({ kind: 'usage', tokens: 906 })
+    // The provider count gates as it stands: below the 1000-token threshold,
+    // while the 1.5 factor applied to it would already cross the threshold.
+    expect(measurement.totalTokens).toBeLessThan(1_000)
+    expect(await compactIfNeeded(compact, session)).toBeNull()
   })
 
   it('starts the range after a system head and keeps that node at surface position 0', async () => {
@@ -713,13 +777,13 @@ describe('pressure measurement and retention', () => {
       thresholdRatio: 0.9,
       retainTokens: 50,
     })
-    const session = conversation(2, 'x'.repeat(600))
+    const session = conversation(2, 'x'.repeat(400))
     expect(await compactIfNeeded(compact, session)).toBeNull()
 
     session.append('request/header', {
       header: {
         config: { provider: MODEL, model: MODEL },
-        tools: [{ name: 'bulk', description: 's'.repeat(2_000), parameters: { type: 'object' } }],
+        tools: [{ name: 'bulk', description: 's'.repeat(1_000), parameters: { type: 'object' } }],
       },
       reason: 'resume',
     })
@@ -901,7 +965,9 @@ describe('optional model-free tool-result pruning', () => {
     void new ToolResultPruner(ctx, pruneConfig)
     const compact = new TestCompactionEngine(ctx, {
       auto: false,
-      thresholdRatio: 0.5,
+      // The settled checkpoint plus its retained tool pair must gate below the
+      // threshold even at the 1.5 estimate safety factor.
+      thresholdRatio: 0.75,
       retainTokens: 50,
     })
     const session = toolConversation()
@@ -916,7 +982,9 @@ describe('optional model-free tool-result pruning', () => {
     const ctx = createContext(2_000)
     const compact = new TestCompactionEngine(ctx, {
       auto: false,
-      thresholdRatio: 0.5,
+      // The settled checkpoint plus its retained tool pair must gate below the
+      // threshold even at the 1.5 estimate safety factor.
+      thresholdRatio: 0.75,
       retainTokens: 50,
     })
     const session = oversizedToolResult(3_000, true)
@@ -1274,6 +1342,15 @@ class ScriptedAdapter extends LlmAdapter {
     private readonly finish: (StreamChunk & { type: 'finish' })['reason'] = { kind: 'stop' },
   ) {
     super()
+  }
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({
+      provider,
+      id: model,
+      name: model,
+      context: { contextWindow: 100_000 },
+    })
   }
 
   override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -2276,7 +2353,7 @@ describe('route-priced image pressure', () => {
   })
 
   it('triggers pressure compaction from routed visual tokens and logs heuristic shadow prices', async () => {
-    const ctx = pricedContext(1_000)
+    const ctx = pricedContext(2_000)
     const session = imageConversation()
     const before = ctx.tokenMeter.measure(session)
     const compact = new TestCompactionEngine(ctx, {
@@ -2285,12 +2362,12 @@ describe('route-priced image pressure', () => {
       retainTokens: 350,
     })
 
-    // The same history stays below the 800-token threshold without pricing.
+    // The same history stays below the 1600-token threshold without pricing.
     const neutralResult = await compactIfNeeded(service({
       auto: false,
       thresholdRatio: 0.8,
       retainTokens: 350,
-    }), session)
+    }, createContext(2_000)), session)
     expect(neutralResult).toBeNull()
 
     const result = await compact.compactIfNeeded(agent(session), 'pressure', SIGNAL)

@@ -11,6 +11,7 @@ import {
   resolveCompactSpec,
   resolveConfig,
   resolveTargetPolicy,
+  TargetPressureConfigError,
   thresholdTokensFor,
 } from '@deepseek-ai/dsh-compaction-basic/src/config.ts'
 import { summarizeWithLlm } from '@deepseek-ai/dsh-compaction-basic/src/summarizer.ts'
@@ -29,7 +30,11 @@ const MODEL = 'test-model'
 class RecordingAdapter extends LlmAdapter {
   readonly calls: GenerateOptions[] = []
 
-  constructor(private readonly replies: readonly string[]) {
+  constructor(
+    private readonly replies: readonly string[],
+    /** Declared model capacity; `undefined` models a route that reports none. */
+    private readonly contextWindow: number | undefined,
+  ) {
     super()
   }
 
@@ -38,7 +43,7 @@ class RecordingAdapter extends LlmAdapter {
       provider,
       id: model,
       name: model,
-      context: { contextWindow: 4000 },
+      ...this.contextWindow === undefined ? {} : { context: { contextWindow: this.contextWindow } },
     })
   }
 
@@ -52,7 +57,10 @@ class RecordingAdapter extends LlmAdapter {
   }
 }
 
-function harness(replies: readonly string[]): {
+function harness(
+  replies: readonly string[],
+  contextWindow: number | undefined = 4000,
+): {
   ctx: Context
   adapter: RecordingAdapter
   meter: TokenMeter
@@ -61,7 +69,7 @@ function harness(replies: readonly string[]): {
   void new LlmRuntime(ctx)
   new SessionProjectionRegistry(ctx)
   const meter = new TokenMeter(ctx)
-  const adapter = new RecordingAdapter(replies)
+  const adapter = new RecordingAdapter(replies, contextWindow)
   ctx.llm.registerAdapter([MODEL], adapter)
   return { ctx, adapter, meter }
 }
@@ -82,7 +90,12 @@ function windowInput(count: number): { messages: Message[] } {
   return { messages: Array.from({ length: count }, () => userText(4000)) }
 }
 
-const CONFIG = { summarizationProvider: '', summarizationModel: '', maxTokens: 200 }
+const CONFIG = {
+  summarizationProvider: '',
+  summarizationModel: '',
+  maxTokens: 200,
+  estimateSafetyFactor: 1.5,
+}
 
 describe('windowed map-reduce summarizer', () => {
   it('checkpoints each window and consolidates with one merge call', async () => {
@@ -97,27 +110,27 @@ describe('windowed map-reduce summarizer', () => {
       windows => notices.push(windows),
     )
 
-    expect(notices).toEqual([3])
-    expect(adapter.calls).toHaveLength(4)
-    for (const call of adapter.calls.slice(0, 3)) {
+    expect(notices).toEqual([4])
+    expect(adapter.calls).toHaveLength(5)
+    for (const call of adapter.calls.slice(0, 4)) {
       expect(textOf(call.messages.at(-1)!)).toContain('one section of a longer conversation')
     }
-    const merge = adapter.calls[3]!
+    const merge = adapter.calls[4]!
     expect(textOf(merge.messages.at(-1)!)).toContain('Consolidate them into ONE structured checkpoint')
-    expect(merge.messages.filter(message => textOf(message).startsWith('<compacted-summary>'))).toHaveLength(3)
+    expect(merge.messages.filter(message => textOf(message).startsWith('<compacted-summary>'))).toHaveLength(4)
     expect(result.llmStreamCall).toBe(true)
     expect(result.summary).toEqual([{ type: 'text', text: 'CHECKPOINT' }])
-    expect(result.intermediateCalls?.map(call => call.stage)).toEqual(['window', 'window', 'window'])
+    expect(result.intermediateCalls?.map(call => call.stage)).toEqual(['window', 'window', 'window', 'window'])
     expect(result.intermediateCalls?.[0]?.rawOutput).toEqual([{ type: 'text', text: 'part one' }])
   })
 
   it('records intermediate merge calls when consolidation needs two rounds', async () => {
-    const summary = 'z'.repeat(6000)
+    const summary = 'z'.repeat(3600)
     const { ctx, adapter } = harness([summary, summary, summary, 'merged', 'CHECKPOINT'])
     const result = await summarizeWithLlm(
       ctx,
       CONFIG,
-      windowInput(8),
+      windowInput(6),
       agent(Session.create(SessionId('windowed-rounds'))),
       SIGNAL,
     )
@@ -129,7 +142,7 @@ describe('windowed map-reduce summarizer', () => {
   })
 
   it('rejects partial checkpoints that are too large to consolidate', async () => {
-    const summary = 'z'.repeat(8000)
+    const summary = 'z'.repeat(5333)
     const { ctx, adapter } = harness([summary, summary])
     await expect(summarizeWithLlm(
       ctx,
@@ -138,7 +151,7 @@ describe('windowed map-reduce summarizer', () => {
       agent(Session.create(SessionId('windowed-stall'))),
       SIGNAL,
     )).rejects.toThrow(/too large to consolidate/)
-    expect(adapter.calls).toHaveLength(2)
+    expect(adapter.calls).toHaveLength(3)
   })
 
   it('rejects one message larger than the summarization window budget', async () => {
@@ -146,10 +159,37 @@ describe('windowed map-reduce summarizer', () => {
     await expect(summarizeWithLlm(
       ctx,
       CONFIG,
-      { messages: [userText(50_000)] },
+      { messages: [userText(33_000)] },
       agent(Session.create(SessionId('windowed-oversize'))),
       SIGNAL,
     )).rejects.toThrow(/exceeds the summarization window budget/)
+    expect(adapter.calls).toHaveLength(0)
+  })
+
+  it('rejects a summarizer route that reports no context capacity', async () => {
+    const ctx = new Context()
+    void new LlmRuntime(ctx)
+    new SessionProjectionRegistry(ctx)
+    void new TokenMeter(ctx)
+    // Explicitly no capacity on the resolved model metadata.
+    const adapter = new RecordingAdapter(['unused'], undefined)
+    ctx.llm.registerAdapter([MODEL], adapter)
+    let thrown: unknown
+    try {
+      await summarizeWithLlm(
+        ctx,
+        CONFIG,
+        windowInput(2),
+        agent(Session.create(SessionId('windowed-no-capacity'))),
+        SIGNAL,
+      )
+    } catch (error: unknown) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(TargetPressureConfigError)
+    expect((thrown as TargetPressureConfigError).targetKey).toBe(`${MODEL}/${MODEL}`)
+    expect((thrown as Error).message)
+      .toContain(`summarizer ${MODEL}/${MODEL} reports no context capacity`)
     expect(adapter.calls).toHaveLength(0)
   })
 

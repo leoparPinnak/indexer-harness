@@ -44,9 +44,13 @@ export type * from './usage-projection.ts'
 export type * from './breakdown-projection.ts'
 
 /**
- * Raw anchor facts captured at the latest successful call; the baseline is
- * derived per measurement so the anchored surface reprices under the same
- * route pricing as the current surface it is compared with.
+ * Raw anchor facts captured at one route's latest successful call; the
+ * baseline is derived per measurement so the anchored surface reprices under
+ * the same route pricing as the current surface it is compared with. One
+ * anchor is kept per request header, so a model switch costs nothing: each
+ * route keeps its own provider-reported count until its own next call
+ * replaces it, instead of the whole measurement falling back to the
+ * underpricing heuristic the moment the route moves.
  */
 interface MeasurementAnchor {
   readonly header: EpochHeader | undefined
@@ -58,12 +62,26 @@ interface MeasurementAnchor {
   readonly usage: TokenUsage | undefined
 }
 
+/** Per-route usage anchors one session keeps before the oldest is evicted. */
+const ANCHOR_LIMIT = 4
+
+/**
+ * Route identity of a request header for anchor lookup: serialization of the
+ * header as it is compared. A caller-supplied header that only matches loosely
+ * finds no anchor and measures on the heuristic, which is the safe direction.
+ * @param header - request envelope, or undefined for a headerless surface.
+ * @returns the anchor map key.
+ */
+function anchorKey(header: EpochHeader | undefined): string {
+  return JSON.stringify(header ?? null)
+}
+
 interface ReplayState {
   consumedEvents: SessionLogOffsetType
   header: EpochHeader | undefined
   surface: MeterSurfaceNode[]
   stepStart: { turn: number; step: number } | undefined
-  anchor: MeasurementAnchor | undefined
+  anchors: Map<string, MeasurementAnchor>
 }
 
 /** Sum disjoint provider usage buckets without double-counting reasoning output. */
@@ -150,7 +168,7 @@ export class TokenMeter extends Service {
     const pricing = this._routeImagePricing(session, header)
     const fileText = this._fileRequestText()
     const surface = priceSurface(state.surface, pricing, fileText)
-    const anchor = state.anchor
+    const anchor = state.anchors.get(anchorKey(header))
 
     let baseline: TokenMeasurementBaseline
     let surfaceDeltaTokens: number
@@ -247,7 +265,7 @@ export class TokenMeter extends Service {
         header: undefined,
         surface: [],
         stepStart: undefined,
-        anchor: undefined,
+        anchors: new Map(),
       }
       this.states.set(session, state)
     }
@@ -270,7 +288,7 @@ export class TokenMeter extends Service {
   private _foldEvent(state: ReplayState, event: SessionEvent): void {
     let nextHeader = state.header
     let nextStepStart = state.stepStart
-    let nextAnchor = state.anchor
+    let nextAnchor: MeasurementAnchor | undefined
 
     switch (event.type) {
       case 'request/header':
@@ -336,7 +354,18 @@ export class TokenMeter extends Service {
     if (plan !== undefined) {
       commitSurfaceTokens(state.surface, plan)
     }
-    state.anchor = nextAnchor
+    if (nextAnchor !== undefined) {
+      // Re-inserting refreshes recency, so the map stays oldest-first and the
+      // size cap evicts the route least recently confirmed by a provider.
+      const key = anchorKey(nextAnchor.header)
+      state.anchors.delete(key)
+      state.anchors.set(key, nextAnchor)
+      while (state.anchors.size > ANCHOR_LIMIT) {
+        const oldest = state.anchors.keys().next()
+        if (oldest.done === true) break
+        state.anchors.delete(oldest.value)
+      }
+    }
   }
 
   /**

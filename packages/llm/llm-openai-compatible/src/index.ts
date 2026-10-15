@@ -48,8 +48,11 @@ const DEFAULT_CONTEXT_WINDOW = 128_000
 
 /** Defaults applied to every call of one route (from plugin config). */
 interface RouteDefaultsConfig {
+  /** Sampling temperature sent on calls that do not set one. */
   temperature?: number
+  /** Nucleus-sampling top-p sent on calls that do not set one. */
   topP?: number
+  /** Adapter-owned reasoning effort sent on calls that do not set one. */
   reasoningEffort?: 'low' | 'medium' | 'high'
 }
 

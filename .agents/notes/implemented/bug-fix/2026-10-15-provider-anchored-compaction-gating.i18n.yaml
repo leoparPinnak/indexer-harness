@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-15-provider-anchored-compaction-gating.md
+2026-10-15-provider-anchored-compaction-gating.md: b3e7d32f15bc567b3caf359f7c7f149775f57558
+2026-10-15-provider-anchored-compaction-gating.zh.md: 475cda3ab31a51144824fb3f1f77c5f31dd97bd0

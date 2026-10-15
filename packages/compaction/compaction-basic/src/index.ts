@@ -10,7 +10,7 @@ import { CompactionEngine, CompactionId, ManualCompactionError } from '@deepseek
 import type {
   CompactionPolicyState, CompactionResult, CompactionStreamFrame, CompactionTrigger,
 } from '@deepseek-ai/dsh-compaction'
-import type { TokenMeter } from '@deepseek-ai/dsh-token-meter'
+import type { TokenMeasurement, TokenMeter } from '@deepseek-ai/dsh-token-meter'
 import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import { CONTEXT_WINDOW_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
@@ -131,6 +131,7 @@ const summarizationModelSchema = z.string()
 const maxTokensSchema = z.number().step(1).min(1)
 const compactionRetriesSchema = z.number().step(1).min(0)
 const maxOverflowRetriesSchema = z.number().step(1).min(0)
+const estimateSafetyFactorSchema = z.number().min(1)
 const fallbackTarget: z<{ provider: string; model: string }> = z.object({
   provider: z.string().required(),
   model: z.string().required(),
@@ -148,6 +149,7 @@ const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
   maxTokens: maxTokensSchema,
   compactionRetries: compactionRetriesSchema,
   maxOverflowRetries: maxOverflowRetriesSchema,
+  estimateSafetyFactor: estimateSafetyFactorSchema,
   fallbackTargets: fallbackTargetsSchema,
 })
 
@@ -171,6 +173,7 @@ export class BasicCompactionEngine extends CompactionEngine {
     maxTokens: maxTokensSchema,
     compactionRetries: compactionRetriesSchema,
     maxOverflowRetries: maxOverflowRetriesSchema,
+    estimateSafetyFactor: estimateSafetyFactorSchema,
     fallbackTargets: fallbackTargetsSchema,
     modelPolicies: z.array(modelPolicy),
     auto: z.boolean(),
@@ -386,6 +389,7 @@ export class BasicCompactionEngine extends CompactionEngine {
       summarizationProvider: fallback.provider,
       summarizationModel: fallback.model,
       maxTokens: policy.maxTokens,
+      estimateSafetyFactor: policy.estimateSafetyFactor,
     }))
   }
 
@@ -489,7 +493,15 @@ export class BasicCompactionEngine extends CompactionEngine {
       )
     }
     const spec = resolveCompactSpec(policy, contextWindow, mode?.thresholdTokens)
-    if (measurement.totalTokens < spec.thresholdTokens) return null
+    // A provider-anchored measurement is the provider's own count and gates as
+    // it stands; a heuristic one underprices dense content, so it is trusted at
+    // the policy's safety factor before meeting a real-unit threshold.
+    const gateTokens = (measured: TokenMeasurement): number => (
+      measured.baseline.kind === 'usage'
+        ? measured.totalTokens
+        : Math.ceil(measured.totalTokens * policy.estimateSafetyFactor)
+    )
+    if (gateTokens(measurement) < spec.thresholdTokens) return null
 
     // Once pressure qualifies, land the model-free pass before choosing a
     // summary range, then remeasure through the singleton replay fold.
@@ -497,7 +509,7 @@ export class BasicCompactionEngine extends CompactionEngine {
       prune.pruneSession(agent.session)
       measurement = meter.measure(agent.session)
     }
-    if (measurement.totalTokens < spec.thresholdTokens) return null
+    if (gateTokens(measurement) < spec.thresholdTokens) return null
 
     let result: CompactionResult | null = null
     for (let attempt = 0; attempt <= spec.compactionRetries; attempt += 1) {
@@ -511,12 +523,12 @@ export class BasicCompactionEngine extends CompactionEngine {
       result = await this.compactRegionQuiet(range.start, range.end, agent, signal)
       if (result === null) return null
       measurement = meter.measure(agent.session)
-      if (measurement.totalTokens < spec.thresholdTokens) return result
+      if (gateTokens(measurement) < spec.thresholdTokens) return result
     }
 
     throw new Error(
       `compaction still above threshold after ${spec.compactionRetries + 1} compaction attempts `
-      + `(${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`,
+      + `(${gateTokens(measurement)} gated tokens >= threshold ${spec.thresholdTokens})`,
     )
   }
 

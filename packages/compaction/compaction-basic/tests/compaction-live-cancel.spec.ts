@@ -41,7 +41,7 @@ class HangingAdapter extends LlmAdapter {
       provider,
       id: model,
       name: model,
-      context: { contextWindow: 3000 },
+      context: { contextWindow: 4000 },
     })
   }
 
@@ -82,9 +82,10 @@ async function liveHarness(): Promise<LiveHarness> {
   await ctx.plugin(TokenMeter)
   const adapter = new HangingAdapter()
   ctx.llm.registerAdapter([MODEL], adapter)
-  // Measured sizing: the six-node seed prices at ~4.5K tokens, so a 3000-token
-  // window against a 256-token summary cap (budget ≈ 2.4K) forces a genuine
-  // 2-window map phase (the assertion below) while leaving each window
+  // Measured sizing: the six-node seed prices at ~6.8K trusted tokens (the
+  // ~4.5K heuristic at the 1.5 estimate safety factor), so a 4000-token
+  // window against a 256-token summary cap (budget ≈ 3.0K) forces a genuine
+  // multi-window map phase (the assertion below) while leaving each window
   // dispatchable — a summary cap larger than the window makes every window
   // budget negative and the run refuses before the first call.
   const compact = new BasicCompactionEngine(ctx, { auto: false, maxTokens: 256 })

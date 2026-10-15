@@ -71,10 +71,13 @@ kind: "package-reference"
 | `maxTokens` | `8192` | 摘要请求的输出上限；可包含推理 token。 |
 | `compactionRetries` | `1` | 压力仍高于阈值时，在首次压缩后进行的额外尝试次数。 |
 | `maxOverflowRetries` | `1` | 已确认上下文窗口溢出后的最大重试次数；`0` 只禁用恢复。 |
+| `estimateSafetyFactor` | `1.5` | 启发式 token 估计在参与压缩门槛或为摘要窗口定尺寸之前所乘的信任系数；provider 报告的计数按原样采用。 |
 | `modelPolicies` | `[]` | 针对个别模型路由的精确 `{ provider, model, ...partialPolicy }` 覆盖。 |
 | `auto` | `true` | 启用自动压缩与溢出恢复；设为 `false` 则仅手动执行。 |
 
 配置错误会快速失败：未知设置、重复的按模型覆盖、两种保留形式同时出现，或比例保留量不低于阈值，都会在加载时拒绝插件。任何绝对 `retainTokens` 预算——顶层或按模型——不低于其阈值时，都会在该模型首次使用时失败，因为该比较需要模型的上下文大小。
+
+每个启发式 token 数值——工具 schema、系统头以及被压缩的消息——在为请求定尺寸之前都按 `estimateSafetyFactor` 计价，因为固定的每 token 4 字符估计会低报 JSON schema、代码与非拉丁文本，而 provider 数的是真实 token；处于 provider 用量基线上的测量按原样信任。声明了上下文容量缺失的摘要器路由会以 `TargetPressureConfigError`（指名该路由）拒绝压缩，而不是发送一个 provider 必然拒绝的无限窗口。
 
 每个会话还可以在不改动文件的情况下，另行覆盖压缩从何处开始以及可持有多少上下文。composer 上下文控制每变更一次就写入一条 `compaction/mode` 事件（整体值替换）：摘要器策略——会话模型或专用 provider/model——外加可选的 `contextBudgetTokens`、`thresholdTokens` 与 `maxTokens`（摘要输出上限）。生效预算取会话的 `contextBudgetTokens`，未设置时为已路由模型声明的 `contextWindow`；生效触发点取会话的 `thresholdTokens`，未设置时为 `thresholdRatio × budget`；生效上限取会话的 `maxTokens`，未设置时为本插件的 `maxTokens`。上述比例与上限是未设置模式的会话的默认值；上限的部署默认值可在 General 设置页编辑。
 

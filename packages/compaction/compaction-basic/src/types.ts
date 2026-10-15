@@ -33,6 +33,14 @@ export interface CompactionPolicyConfig {
   /** Maximum retries after canonical context overflow; `0` disables recovery. Defaults to `1`. */
   maxOverflowRetries?: number
   /**
+   * Multiplier applied to heuristic token estimates before they size a request
+   * or gate compaction. The fixed 4-chars-per-token estimate underprices dense
+   * content (JSON schemas, code, non-Latin text), so an unanchored estimate is
+   * trusted at this factor while a provider-reported count is used as-is.
+   * Defaults to `1.5`.
+   */
+  estimateSafetyFactor?: number
+  /**
    * Fallback summarizer target chain tried in order when the primary route
    * fails with a quota, context-overflow, empty-response, or truncated-stream
    * failure. Defaults to no fallback (empty chain).
@@ -69,6 +77,7 @@ interface ResolvedPolicyFields {
   readonly maxTokens: number
   readonly compactionRetries: number
   readonly maxOverflowRetries: number
+  readonly estimateSafetyFactor: number
   readonly fallbackTargets: readonly Readonly<FallbackTarget>[]
 }
 
