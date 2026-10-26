@@ -66,9 +66,10 @@ import { PiAiAdapter } from './adapter.ts'
 import { authContextFrom, credentialStoreFrom } from './auth.ts'
 import { catalogProviderIds } from './catalog.ts'
 import { assertServiceable, Config, resolveProfiles } from './config.ts'
-import type { ResolvedPiAiProviderProfile } from './config.ts'
+import type { PiAiModelProfile, ResolvedPiAiProviderProfile } from './config.ts'
 import { discoverModels } from './discovery.ts'
 import type { StoredModelDiscoveryProfile } from './discovery.ts'
+import { deviceHeaders } from './device.ts'
 import { registerPiAiFlows } from './login.ts'
 
 export { PiAiAdapter } from './adapter.ts'
@@ -91,6 +92,12 @@ export const name = 'llm-pi-ai'
 export const inject = ['llm']
 
 const NS = 'llm-pi-ai'
+
+/** How long a route with no endpoint listing yet waits before asking again. */
+const DISCOVERY_RETRY_MS = 15_000
+
+/** Upper bound for one model-listing fetch, which also runs on catalog reads. */
+const DISCOVERY_TIMEOUT_MS = 8_000
 
 /**
  * The registry captures these per route; a change here must re-register.
@@ -150,6 +157,16 @@ export function apply(ctx: Context, config: Config): void {
   let lastRaw: Config | undefined
   let memoized: ReadonlyMap<string, ResolvedPiAiProviderProfile> | undefined
   /**
+   * Endpoint-published model lists keyed by route, and the epoch their latest
+   * stored reply bumped. The epoch is part of the memo key because a discovery
+   * reply changes what a route serves without any settings write: the memoized
+   * profiles (and the adapter snapshot derived from them) must be rebuilt when
+   * it lands.
+   */
+  const discovered = new Map<string, PiAiModelProfile[]>()
+  let discoveryEpoch = 0
+  let lastEpoch = -1
+  /**
    * The resolved profiles for the current configuration, memoized by the raw
    * snapshot's identity — which is also what makes the adapter's own snapshot
    * stable across operations that observe no change.
@@ -160,9 +177,10 @@ export function apply(ctx: Context, config: Config): void {
    */
   const profiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
     const raw = current()
-    if (raw === lastRaw && memoized !== undefined) return memoized
-    const next = resolveProfiles(raw.providers, 'deferred')
+    if (raw === lastRaw && memoized !== undefined && lastEpoch === discoveryEpoch) return memoized
+    const next = resolveProfiles(raw.providers, 'deferred', provider => discovered.get(provider))
     lastRaw = raw
+    lastEpoch = discoveryEpoch
     memoized = next
     return next
   }
@@ -250,7 +268,10 @@ export function apply(ctx: Context, config: Config): void {
     const profile = profiles().get(provider)
     if (profile === undefined) return undefined
     return {
-      headers: profile.headers,
+      // Discovery goes to the same gateway as the chat calls, so it carries the
+      // same installation identity: a gateway that gates `/v1/*` on the device
+      // signature must accept the model listing too.
+      headers: { ...profile.headers, ...deviceHeaders() },
       resolveApiKey: () => resolveApiKey(provider, profile),
     }
   }
@@ -264,6 +285,94 @@ export function apply(ctx: Context, config: Config): void {
     { ...request, ...signal === undefined ? {} : { signal } },
     () => storedDiscoveryProfile(request.provider),
   ))
+
+  // A configuration surface reads the catalogue through the Host; without this
+  // the routes keep serving whatever they discovered at boot, so a gateway that
+  // changed its model pool would never reach the picker. The previous listing
+  // stays in place until the new one arrives: a refresh that fails must not
+  // blank a working route.
+  ctx.llm.registerCatalogRefresher(NS, async () => {
+    await refreshDiscoveredModels()
+  })
+
+  /** Routes whose model list comes from their own endpoint, in configuration order. */
+  const discoveryTargets = (): { provider: string; baseURL: string; api?: string }[] =>
+    [...profiles().entries()].flatMap(([provider, profile]) => profile.discoverModels !== true
+      || profile.baseURL === undefined
+      ? []
+      : [{ provider, baseURL: profile.baseURL, ...profile.api === undefined ? {} : { api: profile.api } }])
+
+  const discoveryPending = new Set<string>()
+  let discoveryRetry: ReturnType<typeof setTimeout> | undefined
+
+  /**
+   * Ask every discovering route's endpoint for its model list, store what it
+   * publishes, and let the registries follow. Failures stay warnings: a
+   * gateway that is still starting must not stop the Harness from booting, and
+   * the retry below asks again.
+   */
+  const refreshDiscoveredModels = async (): Promise<void> => {
+    await Promise.all(discoveryTargets().map(async ({ provider, baseURL, api }) => {
+      if (discoveryPending.has(provider)) return
+      discoveryPending.add(provider)
+      try {
+        // A refresh runs on the catalog read path, so it must settle: an
+        // endpoint that accepts the connection and never answers would
+        // otherwise stall the picker for the whole request timeout.
+        const controller = new AbortController()
+        const timer = setTimeout(() => { controller.abort(new Error('discovery timeout')) }, DISCOVERY_TIMEOUT_MS)
+        try {
+          const models = await discoverModels(
+            {
+              provider,
+              baseURL,
+              ...api === undefined ? {} : { api },
+              signal: controller.signal,
+            },
+            () => storedDiscoveryProfile(provider),
+          )
+          discovered.set(provider, models.map(model => ({
+            id: model.id,
+            name: model.name ?? model.id,
+            ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+            ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+          })))
+        } finally {
+          clearTimeout(timer)
+        }
+        discoveryEpoch += 1
+        // The listing is what makes the route servable and configurable, so
+        // both registries follow it without waiting for a settings write.
+        ensureDirectory()
+        ensureRegistrationFacts()
+      } catch (error) {
+        ctx.logger.warn(`llm-pi-ai: route "${provider}" has not published its model list at ${baseURL}`)
+        ctx.logger.warn(error)
+      } finally {
+        discoveryPending.delete(provider)
+      }
+    }))
+    scheduleDiscoveryRetry()
+  }
+
+  /**
+   * Keep asking until every discovering route has a listing. One timer at a
+   * time; the fiber's cleanup cancels it with the plugin.
+   */
+  const scheduleDiscoveryRetry = (): void => {
+    if (discoveryRetry !== undefined) return
+    if (discoveryTargets().every(({ provider }) => discovered.has(provider))) return
+    discoveryRetry = setTimeout(() => {
+      discoveryRetry = undefined
+      void refreshDiscoveredModels()
+    }, DISCOVERY_RETRY_MS)
+  }
+
+  ctx.effect(() => () => {
+    if (discoveryRetry !== undefined) clearTimeout(discoveryRetry)
+    discoveryRetry = undefined
+  })
+
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below. A bare
   // mount (zero routes) is the dormant posture: nothing registers until a
@@ -280,6 +389,10 @@ export function apply(ctx: Context, config: Config): void {
     // `registeredFacts` only advances once the registry actually holds the
     // new set — so returning to a working configuration always re-applies.
     const routes = [...profiles().keys()]
+    // One line per registration change: a route that never reaches the registry
+    // is the difference between "the model call failed" and "the model call was
+    // never made", and nothing else in the process records that.
+    console.error('[llm-pi-ai] registering routes', { routes, hadRegistration: registration !== undefined })
     if (registration === undefined) {
       // Dormant bare mount: nothing is registered until a section supplies
       // profiles, and an empty section keeps it that way.
@@ -294,6 +407,10 @@ export function apply(ctx: Context, config: Config): void {
     registeredFacts = facts
   }
   ensureRegistrationFacts()
+  // A route that takes its catalog from its endpoint has none until the fetch
+  // lands, so discovery starts with the plugin rather than with the first
+  // configuration change.
+  void refreshDiscoveredModels()
 
   ctx.inject(['settings'], (settingsCtx) => {
     let registering = true
@@ -333,6 +450,9 @@ export function apply(ctx: Context, config: Config): void {
           ctx.logger.error('llm-pi-ai: keeping the previous configurable-provider directory after a refused update')
           ctx.logger.error(error)
         }
+        // A discovering route re-asks its own endpoint whenever the
+        // configuration moves: an edited baseURL is a different listing.
+        void refreshDiscoveredModels()
       },
     })
     registering = false

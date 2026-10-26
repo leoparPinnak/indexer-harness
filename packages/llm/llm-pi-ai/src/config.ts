@@ -123,6 +123,23 @@ export interface PiAiProviderProfile {
    */
   models?: PiAiModelProfile[]
   /**
+   * Take this route's model catalog from its own endpoint listing
+   * (`GET {baseURL}/models`) instead of hand-listing it. The listing is fetched
+   * once the route resolves and again when settings change, so a deployment
+   * whose gateway publishes its models needs no model entries here. Refused
+   * beside a `models` list: the endpoint's answer and a hand-written list would
+   * disagree about what the route serves.
+   */
+  discoverModels?: boolean
+  /**
+   * Serve this route without any credential. pi-ai refuses a request whose
+   * provider resolves no API key (`No API key for provider`), so a deployment
+   * whose gateway authenticates by network position rather than by key sets
+   * this to have a placeholder sent. It never becomes real authentication:
+   * {@link apiKeyEnv} still wins whenever it is declared and resolvable.
+   */
+  allowNoApiKey?: boolean
+  /**
    * Installed-catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
    * rest of the catalog keeps serving untouched. Only meaningful on a catalog
@@ -353,6 +370,8 @@ const profile = z.object({
   api: z.union(supportedProtocols()),
   baseURL: z.string(),
   models: z.array(modelProfile),
+  discoverModels: z.boolean(),
+  allowNoApiKey: z.boolean(),
   modelOverrides: z.dict(modelOverride),
   compat: compatProfile,
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
@@ -430,11 +449,13 @@ function assertValidHeaders(provider: string, headers: Readonly<Record<string, s
  * routes. An omitted dict resolves to the empty, dormant route set.
  * @param providers - configured provider profiles keyed by route.
  * @param validation - writes require a complete catalog; stored reads retain catalog diagnostics.
+ * @param discoveredModels - endpoint-listed models for a route with `discoverModels`, read once per route.
  * @returns validated profiles in configuration order.
  */
 export function resolveProfiles(
   providers: Readonly<Record<string, PiAiProviderProfile>> | undefined,
   validation: 'strict' | 'deferred' = 'strict',
+  discoveredModels?: (provider: string) => readonly PiAiModelProfile[] | undefined,
 ): Map<string, ResolvedPiAiProviderProfile> {
   if (Array.isArray(providers)) {
     throw new Error('llm-pi-ai: providers is now a dict keyed by provider route, not an array of profiles')
@@ -450,6 +471,31 @@ export function resolveProfiles(
     if (source.displayName !== undefined && source.displayName.length === 0) {
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
     }
+    // The schema materializes an absent list as `[]`, so "no hand-written
+    // models" is an EMPTY list, not an absent key: a discovering route is
+    // refused only when someone actually listed models beside the endpoint.
+    const configuredModels = Array.isArray(source.models) && source.models.length > 0
+      ? source.models
+      : undefined
+    if (source.discoverModels === true && configuredModels !== undefined) {
+      throw new Error(`llm-pi-ai: provider "${provider}" sets discoverModels beside a models list; the endpoint`
+        + ' listing already decides what the route serves')
+    }
+    // A discovered route passes whatever the endpoint last published; an empty
+    // or absent listing resolves exactly like a route with no models at all —
+    // a catalog diagnostic until the fetch lands, never a silent empty route.
+    //
+    // Per-model overrides are merged ON TOP of a discovered listing: the
+    // endpoint publishes ids, an operator supplies what an id-only listing
+    // cannot (a real context window, the modalities the model takes). A route
+    // that hand-lists its models keeps the stricter rule — `models` already
+    // replaces the catalog, so an override beside it stays refused.
+    const discovered = configuredModels === undefined && discoveredModels !== undefined
+    const overrides = discovered ? source.modelOverrides ?? {} : {}
+    const baseRouteModels = configuredModels ?? discoveredModels?.(provider)
+    const routeModels = baseRouteModels === undefined
+      ? undefined
+      : baseRouteModels.map(entry => (overrides[entry.id] === undefined ? entry : { ...entry, ...overrides[entry.id] }))
     assertValidHeaders(provider, source.headers)
     const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
     if (!Number.isFinite(streamIdleTimeoutMs)
@@ -496,8 +542,8 @@ export function resolveProfiles(
         provider,
         ...source.api === undefined ? {} : { api: source.api },
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-        ...source.models === undefined ? {} : { models: source.models },
-        ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
+        ...routeModels === undefined ? {} : { models: routeModels },
+        ...source.modelOverrides === undefined || discovered ? {} : { modelOverrides: source.modelOverrides },
         ...source.compat === undefined ? {} : { compat: source.compat },
         defaultInput,
         defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,

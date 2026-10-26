@@ -197,8 +197,8 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'create' | 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
-      | 'clear' | 'refresh' | 'search' | 'fork'
+    method: 'create' | 'createFast' | 'fastSessionRoot' | 'open' | 'openSubagent'
+      | 'setSubagentCatalogOpen' | 'refreshSubagents' | 'clear' | 'refresh' | 'search' | 'fork'
     args: unknown[]
   }[] = []
 
@@ -208,6 +208,10 @@ export class TestSessions implements ISessions {
   /** Replaceable search behavior (see {@link TestSessions.stubSearch}). */
   private searchStub: ((query: string, signal: AbortSignal) => { items: SessionSearchResultItem[]; hasMore: boolean }) | undefined
   private createStub: ((opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>) | undefined
+  private createFastStub: ((workspaceTitle?: string) => Promise<SessionId>) | undefined
+
+  /** Fast Session root this double reports; empty until a fixture sets one. */
+  private fastRoot = ''
 
   /**
    * @param stabilize - the owning runtime's act wrapper.
@@ -426,6 +430,43 @@ export class TestSessions implements ISessions {
     const id = await this.createStub(opts)
     this.require(id)
     return id
+  }
+
+  /**
+   * Install Fast Session creation behavior for navigation tests.
+   * @param impl - implementation that must return an already-added fixture id.
+   */
+  stubCreateFast(impl: (workspaceTitle?: string) => Promise<SessionId>): void {
+    this.createFastStub = impl
+  }
+
+  /**
+   * Set the Fast Session root this double reports.
+   * @param root - absolute root path, or the empty string for a deployment without one.
+   */
+  setFastSessionRoot(root: string): void {
+    this.fastRoot = root
+  }
+
+  /** Create a Fast Session through the installed test behavior and require an addressable binding. */
+  async createFast(workspaceTitle?: string): Promise<SessionId> {
+    this.calls.push({ method: 'createFast', args: [workspaceTitle] })
+    if (this.createFastStub === undefined) {
+      throw new Error('test sessions: createFast is not stubbed — call stubCreateFast() first')
+    }
+    const id = await this.createFastStub(workspaceTitle)
+    this.require(id)
+    return id
+  }
+
+  /**
+   * Replaceable Fast Session root read: the directory every Fast Session
+   * working directory sits under. Empty by default, which is the shape a
+   * deployment without the feature reports.
+   */
+  async fastSessionRoot(): Promise<string> {
+    this.calls.push({ method: 'fastSessionRoot', args: [] })
+    return this.fastRoot
   }
 
   /**

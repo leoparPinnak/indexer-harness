@@ -68,3 +68,62 @@ export interface PluginInventorySnapshot {
    */
   readonly agentPresets?: readonly AgentPresetPluginGroup[]
 }
+
+/** Connection lifecycle state one MCP server instance reported. */
+export type McpServerConnectionState =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed'
+  | 'stopped'
+
+/** Point-in-time view of one configured MCP server. */
+export interface McpServerView {
+  /**
+   * Entry id a patch list addresses: the id the row declares (`mcp-rea`),
+   * never the tree-qualified path (`include:mcp-rea`). This is the toggle key
+   * `setMcpServerEnabled` writes into the managed patch block.
+   */
+  readonly entryId: PluginEntryId
+  /** Configured `serverName` namespace of the server's tool names. */
+  readonly serverName: string
+  /** Effective Loader enablement, including disabled ancestor groups. */
+  readonly enabled: boolean
+  readonly fiberPhase: PluginFiberPhase
+  /** Tools currently registered under `mcp__<serverName>__`. */
+  readonly toolCount: number
+  /** Last connection transition the status registry recorded; null before the first. */
+  readonly state: McpServerConnectionState | null
+  /** Error text behind the last `reconnecting`/`failed` transition; null otherwise. */
+  readonly lastError: string | null
+}
+
+/** Point-in-time MCP server list returned by the plugin inventory Remote. */
+export interface McpServersSnapshot {
+  readonly servers: readonly McpServerView[]
+}
+
+/** Remote-payload config the add-MCP-server form submits. */
+export interface AddMcpServerRequest {
+  /**
+   * Stable local namespace for the server's tool names
+   * (`mcp__<serverName>__<tool>`); `[A-Za-z0-9_-]{1,32}`.
+   */
+  readonly serverName: string
+  /** The transport the server speaks. */
+  readonly transport: 'stdio' | 'streamable-http'
+  /** stdio: executable used to start the server. */
+  readonly command?: string
+  /** stdio: arguments passed directly, without shell interpolation. */
+  readonly args?: readonly string[]
+  /** stdio: extra environment variables merged on top of scrubbed ambient env. */
+  readonly env?: Readonly<Record<string, string>>
+  /** stdio: working directory for the child process. */
+  readonly cwd?: string
+  /** Streamable HTTP: the MCP endpoint URL. */
+  readonly url?: string
+  /** Streamable HTTP: additional headers attached to MCP requests. */
+  readonly headers?: Readonly<Record<string, string>>
+  /** Per-tool-call timeout in milliseconds; omission keeps the bridge default. */
+  readonly toolCallTimeoutMs?: number
+}

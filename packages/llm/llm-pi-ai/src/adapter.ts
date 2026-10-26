@@ -62,6 +62,7 @@ import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attac
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
+import { deviceHeaders } from './device.ts'
 import { toStreamChunks } from './stream.ts'
 
 /** One resolution's frozen view: the profiles and the collection built from them. */
@@ -214,6 +215,20 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
 }
 
 /**
+ * The session this request belongs to, as a transport header.
+ *
+ * A gateway in front of the provider groups captured traffic by it, so an
+ * operator reading the gateway's request log can tell which Session produced
+ * which call. It travels as a header, never as model-visible content.
+ * @param options - the request whose session identity is stamped.
+ * @returns the header to merge, or none when the caller named no session.
+ */
+function sessionStampHeader(options: GenerateOptions): Record<string, string> {
+  if (options.sessionId === undefined) return {}
+  return { 'x-dsh-session-id': String(options.sessionId) }
+}
+
+/**
  * The parent-session link header, offered only to routes that opted into
  * session affinity: internal session lineage must not leave for providers
  * that never asked for session identity.
@@ -261,6 +276,10 @@ export class PiAiAdapter extends LlmAdapter {
   private profileOf(snapshot: PiAiSnapshot, provider: string): ResolvedPiAiProviderProfile {
     const profile = snapshot.profiles.get(provider)
     if (profile === undefined) {
+      console.error('[llm-pi-ai] unknown provider route', {
+        provider,
+        routes: [...snapshot.profiles.keys()],
+      })
       throw new LlmError(`pi-ai adapter does not own provider "${provider}"`, 'NO_ADAPTER')
     }
     return profile
@@ -271,9 +290,29 @@ export class PiAiAdapter extends LlmAdapter {
     const profile = this.profileOf(snapshot, provider)
     const failure = profile.modelErrors.get(model)
       ?? (profile.piProvider === undefined ? profile.catalogError : undefined)
-    if (failure !== undefined) throw new LlmError(failure, 'INVALID_CONFIG')
+    if (failure !== undefined) {
+      // A failing turn is retried by the loop, so the operator never sees this
+      // text on screen; one line here is what makes a misconfigured route
+      // diagnosable from the host log.
+      console.error('[llm-pi-ai] route rejected the request', {
+        provider,
+        model,
+        failure,
+        routes: [...snapshot.profiles.keys()],
+        modelErrors: [...profile.modelErrors.keys()],
+      })
+      throw new LlmError(failure, 'INVALID_CONFIG')
+    }
     const resolved = snapshot.models.getModel(provider, model)
     if (resolved === undefined) {
+      console.error('[llm-pi-ai] model is not in the resolved route catalog', {
+        provider,
+        model,
+        routes: [...snapshot.profiles.keys()],
+        catalogError: profile.catalogError,
+        modelErrors: [...profile.modelErrors.keys()],
+        discoverModels: profile.discoverModels === true,
+      })
       throw new LlmError(`pi-ai provider "${provider}" has no configured model "${model}"`, 'UNKNOWN_MODEL')
     }
     return resolved
@@ -399,6 +438,11 @@ export class PiAiAdapter extends LlmAdapter {
         ?? profile.reasoning,
     )
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
+    // pi-ai refuses a request whose provider resolves no key. A route that
+    // authenticates by network position (a local gateway) opts into a
+    // placeholder; a declared-and-missing apiKeyEnv still fails loud upstream
+    // of this line, so this can never paper over a broken credential.
+    const effectiveApiKey = apiKey ?? (profile.allowNoApiKey === true ? 'keyless-route' : undefined)
 
     const consumer = new AbortController()
     const upstream = options.signal === undefined
@@ -432,7 +476,7 @@ export class PiAiAdapter extends LlmAdapter {
           },
         }, onReplayDegrade)
       const events = snapshot.models.streamSimple(model, context, {
-        ...profileOptions(profile, reasoning, apiKey),
+        ...profileOptions(profile, reasoning, effectiveApiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
@@ -443,6 +487,8 @@ export class PiAiAdapter extends LlmAdapter {
         // parentSessionHeader).
         headers: {
           ...requestHeaders(profile.headers),
+          ...deviceHeaders(),
+          ...sessionStampHeader(options),
           ...parentSessionHeader(model, options),
         },
       })
@@ -470,6 +516,20 @@ export class PiAiAdapter extends LlmAdapter {
         }
       }
     } catch (error: unknown) {
+      // A failing turn is retried by the loop, so the operator sees only
+      // "retrying" on screen. Record the real cause — the message, the coded
+      // kind, and the endpoint the request was aimed at — once per failure.
+      console.error('[llm-pi-ai] stream failed', {
+        provider: options.provider,
+        model: options.model,
+        baseUrl: (model as unknown as { baseUrl?: string }).baseUrl,
+        code: (error as { code?: string } | null)?.code,
+        name: (error as { name?: string } | null)?.name,
+        message: error instanceof Error ? error.message : String(error),
+        cause: (error as { cause?: unknown } | null)?.cause instanceof Error
+          ? (error as { cause: Error }).cause.message
+          : undefined,
+      })
       if (timeoutOf(watchdog.signal, 'LLM_STREAM_IDLE_TIMEOUT') !== undefined) {
         throw new LlmError(`pi-ai stream idle timeout after ${streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error })
       }

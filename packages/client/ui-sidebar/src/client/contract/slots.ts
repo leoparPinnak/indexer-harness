@@ -118,6 +118,12 @@ export type SidebarRootInjected = {
    * recent Workspace, or clear into the New Session pure view when none exist.
    */
   startSession: (workspaceId?: WorkspaceId) => void
+  /**
+   * Start a Fast Session: a Session the Host creates in its own folder under
+   * the deployment's Fast Session root, opened on arrival.
+   * @param workspaceTitle - display title for the Workspace that Session owns.
+   */
+  startFastSession: (workspaceTitle?: string) => void
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
   /** Select the global panel addressed by a sidebar row. */

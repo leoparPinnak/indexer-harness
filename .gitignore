@@ -55,3 +55,9 @@ baslat-gizli.vbs
 .dsh/
 logs/
 screenshots/
+
+# Yerel artefaktlar (depoya ait degil)
+shots/
+belgenet-gelen-evrak-secili.jpg
+probe-patch.yml
+gateway-secret.txt

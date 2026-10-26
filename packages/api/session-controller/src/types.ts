@@ -282,6 +282,31 @@ export interface SessionCreateValue {
   readonly agentPreset?: string
 }
 
+/**
+ * Fast Session creation request. The caller supplies the Workspace title
+ * because UI copy is locale-owned: the Host stores it as data and never
+ * invents a translated label of its own.
+ */
+export interface SessionCreateFastRequest {
+  /** Display title for the Workspace the Fast Session owns; omitted falls back to the folder name. */
+  readonly workspaceTitle?: string
+}
+
+/**
+ * Fast Session creation response value. The working directory is always the
+ * Workspace the Session owns, which is a folder named by the Session id under
+ * the Fast Session root.
+ */
+export interface SessionCreateFastValue {
+  readonly sessionId: SessionId
+  readonly cwd: string
+}
+
+/** Fast Session root response value: the directory holding one folder per Fast Session. */
+export interface SessionFastRootValue {
+  readonly root: string
+}
+
 /** Session model-selection request. */
 export interface SessionSelectModelRequest extends ModelSelection {
   readonly sessionId: SessionId

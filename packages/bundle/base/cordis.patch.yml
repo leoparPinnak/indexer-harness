@@ -104,8 +104,32 @@
     # Supplying those profiles is exactly what the web Models page does. Which
     # adapters exist is composition; which providers run is the user's settings
     # document.
+    #
+    # This deployment embeds its own gateway instead of configuring one in
+    # settings: the Indexer route speaks OpenAI Chat Completions at a fixed
+    # endpoint, authenticates with nothing, and takes its model list from the
+    # endpoint's own `/v1/models` listing at boot (`discoverModels`), so no
+    # credential and no model entries are declared here.
+    #
+    # Loopback, because the gateway normally runs on this machine beside the
+    # Harness; the public tunnel address reaches the same gateway and can be
+    # substituted where the two are not colocated.
+    #
+    # This deployment points at the PUBLIC endpoint: the Harness is deployed
+    # behind the tunnel, so every model request leaves through
+    # indexer.berelinsaat.com and the gateway sees it there.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          indexer:
+            displayName: Indexer
+            api: openai-completions
+            baseURL: https://indexer.berelinsaat.com/v1
+            discoverModels: true
+            # The gateway authenticates by network position, not by key: pi-ai
+            # otherwise refuses the request before it leaves the process.
+            allowNoApiKey: true
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -246,6 +270,12 @@
           danger-full-access:
             sandbox: danger-full-access
             approval: never
+
+    # Per-session MCP server visibility: the durable disable list a session
+    # owns, applied as an Agent-scope tool restriction. Mounted surface-wide;
+    # a Host with no MCP bridge lists no servers and restricts nothing.
+    - id: mcp-session
+      name: '@deepseek-ai/dsh-mcp-session'
 
     - id: shell-env
       name: '@deepseek-ai/dsh-shell-env'

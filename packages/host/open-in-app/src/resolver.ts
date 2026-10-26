@@ -110,6 +110,8 @@ export interface OpenInAppInternals {
   launch?: OpenInAppLauncher
   /** In-process PATH-name resolution; null when the name is not on PATH. */
   resolveExecutable?: (name: string) => Promise<string | null>
+  /** Directory probe the Windows shell open consults; defaults to a real `stat`. */
+  isDirectory?: (path: string) => Promise<boolean>
 }
 
 /** Platform facts after the one explicit defaulting step at each public entry. */
@@ -122,6 +124,7 @@ export interface ResolvedInternals {
   run: NativeCommandRunner
   launch: OpenInAppLauncher
   resolveExecutable: (name: string) => Promise<string | null>
+  isDirectory?: ((path: string) => Promise<boolean>) | undefined
 }
 
 /**
@@ -147,6 +150,7 @@ export function resolveInternals(internals: OpenInAppInternals): ResolvedInterna
     run: internals.run ?? runNativeCommand,
     launch: internals.launch ?? launchDetachedApp,
     resolveExecutable,
+    ...(internals.isDirectory === undefined ? {} : { isDirectory: internals.isDirectory }),
   }
 }
 
@@ -701,7 +705,10 @@ function runShellOpen(
   path: string, watchMs: number, internals: ResolvedInternals,
 ): Promise<OpenInAppLaunchOutcome> {
   const opening = openNativePath(path, new AbortController().signal, {
-    platform: internals.platform, run: internals.run, env: internals.env,
+    platform: internals.platform,
+    run: internals.run,
+    env: internals.env,
+    ...(internals.isDirectory === undefined ? {} : { isDirectory: internals.isDirectory }),
   })
   return new Promise((resolve) => {
     const watch = setTimeout(() => {

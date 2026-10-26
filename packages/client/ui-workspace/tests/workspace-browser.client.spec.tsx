@@ -39,6 +39,11 @@ const wid = (id: string) => id as WorkspaceId
 const summary = (id: string, updatedAt: number, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
   id: sid(id), displayTitle: id, running: false, blank: false, updatedAt, ...overrides,
 })
+/** Deployment Fast Session root these specs classify against. */
+const fastRoot = '/tmp/dsh_fast_sessions'
+/** A Session owning its own folder under {@link fastRoot}. */
+const fastSummary = (id: string, updatedAt: number): SessionSummary =>
+  summary(id, updatedAt, { cwd: `${fastRoot}/session-${id}` })
 const sessionState = (items: readonly SessionSummary[], overrides: Partial<SessionListState> = {}): SessionListState => ({
   ids: items.map(item => item.id),
   byId: Object.fromEntries(items.map(item => [item.id, item])),
@@ -88,6 +93,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
     startSession: vi.fn(),
+    startFastSession: vi.fn(),
     open: vi.fn(),
     searchSessions: vi.fn(async () => ({ items: [], hasMore: false })),
     searchResultLimit: 20,
@@ -102,6 +108,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
+    useFastSessionRoot: selector => selector(''),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
     ...overrides,
@@ -323,6 +330,61 @@ describe('WorkspaceBrowser', () => {
       useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
     })
     expect(screen.queryByText('收藏')).toBeNull()
+  })
+
+  it('lists Fast Sessions under their own section, out of the Workspace groups', () => {
+    const open = vi.fn()
+    mount({
+      useSessions: hook(sessionState([
+        fastSummary('quick', 2),
+        summary('owned', 1, { cwd: '/projects/alpha' }),
+      ])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['owned'])])),
+      useFastSessionRoot: selector => selector(fastRoot),
+      open,
+    })
+    // The header names the root itself: one area for every scratch chat.
+    expect(screen.getByTitle(fastRoot).textContent).toBe(fastRoot)
+    const rows = screen.getAllByRole('treeitem')
+    expect(rows[0]?.textContent).toContain('quick')
+    // One row per Fast Session: the groups never repeat it.
+    expect(rows.filter(row => row.textContent?.includes('quick'))).toHaveLength(1)
+
+    fireEvent.click(screen.getByText('quick'))
+    expect(open).toHaveBeenCalledWith(sid('quick'))
+  })
+
+  it('starts another Fast Session from the section header', () => {
+    const startFastSession = vi.fn()
+    mount({
+      useSessions: hook(sessionState([fastSummary('quick', 2)])),
+      useWorkspaces: hook(workspaceState([])),
+      useFastSessionRoot: selector => selector(fastRoot),
+      startFastSession,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '新建快速会话' }))
+    // The new Workspace carries this surface's own copy for the area it joins.
+    expect(startFastSession).toHaveBeenCalledExactlyOnceWith('快速会话')
+  })
+
+  it('hides the Fast Sessions section while the root holds no Session', () => {
+    mount({
+      useSessions: hook(sessionState([summary('owned', 1, { cwd: '/projects/alpha' })])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['owned'])])),
+      useFastSessionRoot: selector => selector(fastRoot),
+    })
+    expect(screen.queryByTitle(fastRoot)).toBeNull()
+  })
+
+  it('pins Fast Sessions above the flat list as well', () => {
+    const b = mount({
+      useSessions: hook(sessionState([fastSummary('quick', 2), summary('plain', 1, { cwd: '/projects/p' })])),
+      useWorkspaces: hook(workspaceState([])),
+      useFastSessionRoot: selector => selector(fastRoot),
+    })
+    act(() => { b.store.actions.setGroupBy('flat') })
+    expect(screen.getByTitle(fastRoot).textContent).toBe(fastRoot)
+    expect(screen.getAllByRole('treeitem')[0]?.textContent).toContain('quick')
   })
 
   it('skips a star whose Session is no longer listed or is archived', () => {

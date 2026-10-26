@@ -30,7 +30,7 @@ export const tr = {
   'collapse': 'Daralt',
   'expand': 'Genişlet',
   'back': 'Geri',
-  'brand.localBuild': 'DSH Yerel Derleme',
+  'brand.localBuild': 'Indexer Harness',
   'unknown': 'Bilinmiyor',
   'none': 'Yok',
   'truncated': 'Kısaltıldı',

@@ -575,16 +575,36 @@ describe('launchResolved', () => {
       bare({
         platform: 'win32',
         launch: launcher(spawns),
+        isDirectory: async () => true,
         run: async (command, args) => {
           commands.push([command, ...args])
           return { stdout: '', stderr: '' }
         },
       }),
     )).resolves.toBe('launched')
-    // The opener is the shipped Invoke-Item channel; the detached spawner never runs.
+    // A directory goes straight to the file manager; the detached spawner never runs.
     expect(spawns).toEqual([])
+    expect(commands.map(([command]) => command)).toEqual(['explorer.exe', 'powershell.exe'])
+    expect(commands[0]).toEqual(['explorer.exe', 'C:\\w\\dir'])
+    // The opened window belongs to another process, so the foreground hand-off runs too.
+    expect(String(commands[1]?.at(-1))).toContain("$target = 'C:\\w\\dir'")
+  })
+
+  it('keeps the association hop for a shell-open path that is not a directory', async () => {
+    const commands: string[][] = []
+    await expect(launchResolved(
+      { launch: { kind: 'shell-open' } }, 'C:\\w\\file.txt', TIMEOUT_MS,
+      bare({
+        platform: 'win32',
+        isDirectory: async () => false,
+        run: async (command, args) => {
+          commands.push([command, ...args])
+          return { stdout: '', stderr: '' }
+        },
+      }),
+    )).resolves.toBe('launched')
     expect(commands).toEqual([
-      ['powershell.exe', '-NoProfile', '-Command', "Invoke-Item -LiteralPath 'C:\\w\\dir'"],
+      ['powershell.exe', '-NoProfile', '-Command', "Invoke-Item -LiteralPath 'C:\\w\\file.txt'"],
     ])
   })
 

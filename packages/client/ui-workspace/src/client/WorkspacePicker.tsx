@@ -19,6 +19,7 @@ import type {
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/slots.ts'
+import { isFastSessionWorkspace } from './tree.ts'
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
@@ -52,6 +53,8 @@ export interface WorkspacePickFlowProps {
   side?: 'bottom' | 'top' | 'right'
   /** Currently active workspace (trailing check in the picker list). */
   selectedId?: WorkspaceId | undefined
+  /** Deployment Fast Session root; the Workspaces under it are never offered here. */
+  fastRoot?: string
 }
 
 /**
@@ -73,9 +76,12 @@ export function WorkspacePickFlow({
   allowDesktopCreate = !addOnly,
   side = 'bottom',
   selectedId,
+  fastRoot = '',
 }: WorkspacePickFlowProps) {
   const workspaceSnapshot = useWorkspaces(state => state)
-  const workspaces = workspaceSnapshot.items
+  // A Fast Session owns a Workspace over its scratch folder. Those are not
+  // project directories an operator picks, so they never appear as choices.
+  const workspaces = workspaceSnapshot.items.filter(item => !isFastSessionWorkspace(item, fastRoot))
   const getAnchorRect = useCallback(
     () => anchorRef?.current?.getBoundingClientRect() ?? null,
     [anchorRef],
@@ -348,9 +354,11 @@ export function WorkspacePicker({
   onClose,
   createWorkspace,
   useDirectoryFlow,
+  useFastSessionRoot,
   renderSlot,
   t,
 }: WorkspacePickerProps) {
+  const fastRoot = useFastSessionRoot(root => root)
   return (
     <WorkspacePickFlow
       t={t}
@@ -361,6 +369,7 @@ export function WorkspacePicker({
       useDirectoryFlow={useDirectoryFlow}
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
       selectedId={selectedId}
+      fastRoot={fastRoot}
       onPick={onPick}
       onClose={onClose}
     />

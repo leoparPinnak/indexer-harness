@@ -1,5 +1,5 @@
 ---
-description: "Scope-grouped read-only plugin inventory tab in Web Plugins settings for the dsh web client: agent-preset compositions first, the global plane behind a disclosure, search across both."
+description: "Scope-grouped plugin inventory tab in Web Plugins settings for the dsh web client: agent-preset compositions first, the global plane behind a disclosure, search across both, plus the MCP-server tab that lists, toggles, and adds servers."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The **Plugin list** tab lets Web users inspect plugins without changing their configuration. It presents agent presets first and collapses the global inventory until needed. Cards retain the package name as the primary title, identify instances by stable entry id, and expose enablement, provenance, runtime status, disabled conditions, and discovery failures; preset-provided global entries name their presets. Search covers both groups and points to matches in other presets. The tab handles loading, empty, no-match, failure, and retry states without exposing transport details, and still shows the global inventory without a preset roster.
+The **Plugin list** tab lets Web users inspect plugins without changing their configuration. It presents agent presets first and collapses the global inventory until needed. Cards retain the package name as the primary title, identify instances by stable entry id, and expose enablement, provenance, runtime status, disabled conditions, and discovery failures; preset-provided global entries name their presets. Search covers both groups and points to matches in other presets. The tab handles loading, empty, no-match, failure, and retry states without exposing transport details, and still shows the global inventory without a preset roster. A second tab, **MCP servers**, lists the Host's configured MCP servers with their connection status and tool counts, toggles each one, and adds new servers through a form.
 
 ## Table of Contents
 
@@ -38,6 +38,10 @@ The switcher is the same selector-pill-plus-menu control the General settings ro
 ### Retrying a failed read
 
 A failed read renders a generic failure state inside the tab; retrying re-runs the lazy `list()` call without exposing transport details.
+
+### The MCP servers tab
+
+The second tab lists one row per configured `@deepseek-ai/dsh-mcp-client` Loader entry: its server name, the entry id a patch list addresses, its live connection status (the mcp-client supervisor's latest transition) with tool count and recorded error, and an enablement switch. The switch drives `pluginInventory/setMcpServerEnabled`; the Host rewrites the managed patch block and the live reload recomposes, so the next read reflects the new row state. The **Add MCP server** button opens a form — server name, transport choice, and the transport's fields (stdio: command, per-line arguments, per-line `NAME=VALUE` environment, optional cwd; streamable HTTP: endpoint URL and per-line `NAME: VALUE` headers) — that submits `pluginInventory/addMcpServer` and adopts the rows the Host reports back. Syntactic field curation happens in the form (assignments and header pairs parse as plain strings); every validity decision beyond that belongs to the Host.
 
 -----
 
@@ -90,7 +94,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define the freshness and reach of the inventory view; they are current package constraints.
 
 - **One snapshot per Settings mount or retry** — the tab does not subscribe to Loader changes or automatically refetch after reconnect; switching tabs preserves the current snapshot, while reopening Settings obtains a new one.
-- **Read-only in both planes** — the tab shows global and preset enablement but mutates neither; enable/disable controls that write a custom preset's own composition file are deliberate follow-up work.
+- **Toggle and add, not remove** — the MCP plane writes managed disable rows and server `insert` rows; deleting a configured server stays hand-edit territory, and the plugin list itself still mutates nothing.
 
 <a id="dev-note"></a>
 ### Dev Note

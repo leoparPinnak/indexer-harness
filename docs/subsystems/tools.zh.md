@@ -475,6 +475,32 @@ type ObjectJsonSchema = JsonSchemaNode & { type: 'object' }
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxmcpsession--mcpsessionservice"></a>
+
+### `ctx.mcpSession` — `McpSessionService`
+
+Remote face of the per-session MCP plane. The read side is this service, the write side is McpSessionService.setServerEnabled; the Agent scope carries the effect.
+
+```ts cordis-catalog
+/**
+ * Read one session's MCP server visibility.
+ * @param request - the session to read.
+ * @returns every known server with this session's effective visibility.
+ */
+@Remote('list') list(request: McpSessionListRequest): McpSessionSnapshot
+
+/**
+ * Switch one MCP server for one session. The appended event is the durable
+ * decision; the Agent-scope restriction applied here is what the next model
+ * request sees.
+ * @param request - the session, the server, and the desired visibility.
+ * @returns the session's visibility after the write.
+ */
+@Remote('setServerEnabled') setServerEnabled(request: McpSessionSetRequest): McpSessionSnapshot
+```
+
+Source: [`packages/mcp/mcp-session/src/index.ts`](../../packages/mcp/mcp-session/src/index.ts)
+
 <a id="ctxtools--toolruntime"></a>
 
 ### `ctx.tools` — `ToolRuntime`

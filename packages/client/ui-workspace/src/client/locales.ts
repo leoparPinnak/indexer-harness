@@ -8,6 +8,8 @@
 export const zh = {
   'group.ungrouped': '未分组',
   'session.new': '新会话',
+  'fastSession.new': '新建快速会话',
+  'fastSession.title': '快速会话',
   'section.workspaces': '工作区',
   'section.sessions': '会话',
   'section.favorites': '收藏',
@@ -90,6 +92,8 @@ export type WorkspaceKey = keyof typeof zh
 export const en = {
   'group.ungrouped': 'Ungrouped',
   'session.new': 'New Session',
+  'fastSession.new': 'New quick session',
+  'fastSession.title': 'Quick session',
   'section.workspaces': 'Workspaces',
   'section.sessions': 'Sessions',
   'section.favorites': 'Favorites',
@@ -169,6 +173,8 @@ export const en = {
 export const tr = {
   'group.ungrouped': 'Gruplanmamış',
   'session.new': 'Yeni Oturum',
+  'fastSession.new': 'Yeni hızlı oturum',
+  'fastSession.title': 'Hızlı Oturum',
   'section.workspaces': 'Çalışma Alanları',
   'section.sessions': 'Oturumlar',
   'section.favorites': 'Favoriler',

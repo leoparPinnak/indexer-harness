@@ -9,6 +9,7 @@
  * packages/client/AGENTS.md.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -95,6 +96,40 @@ export function apply(ctx: Context): void {
     getSnapshot: () => ctx.remote.$host,
     subscribe: listener => ctx.on('connection/reset', listener),
   }
+  // The Fast Session root is one deployment fact read once per registration.
+  // The Remote namespace's methods are installed by the Remote assembly's own
+  // apply, so a call made from this apply can race that installation and be
+  // refused. The Session list reaching `ready` proves one completed round trip,
+  // and a connection reset re-reads after a reconnection; an unanswered read
+  // keeps the empty string, which classifies no Session.
+  const fastSessionRoot = createSnapshotStore('')
+  ctx.effect(() => {
+    const read = (): void => {
+      if (fastSessionRoot.getSnapshot() !== '') return
+      void sessions.fastSessionRoot().then(
+        (root) => { fastSessionRoot.set(root) },
+        (reason: unknown) => { console.warn('fast session root unavailable:', reason) },
+      )
+    }
+    const sync = (): void => {
+      if (sessions.list.getSnapshot().phase !== 'ready') return
+      read()
+    }
+    const disposeReset = ctx.on('connection/reset', () => {
+      fastSessionRoot.set('')
+      sync()
+    })
+    const disposeList = sessions.list.subscribe(sync)
+    sync()
+    return () => {
+      disposeList()
+      disposeReset()
+    }
+  }, 'ui-workspace: Fast Session root')
+  const fastSessionRootSource: HostObservable<string> = {
+    getSnapshot: () => fastSessionRoot.getSnapshot(),
+    subscribe: listener => fastSessionRoot.subscribe(listener),
+  }
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
   const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
     uiWorkspace.openSession(sessionId)
@@ -103,6 +138,7 @@ export function apply(ctx: Context): void {
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
+    startFastSession: (workspaceTitle) => { uiWorkspace.startFastSession(workspaceTitle) },
     open: openSession,
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
@@ -137,11 +173,15 @@ export function apply(ctx: Context): void {
       await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource, hostInfo },
+    hooks: {
+      directoryFlow: browserFlowSource,
+      hostInfo,
+      fastSessionRoot: fastSessionRootSource,
+    },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: pickerFlowSource },
+    hooks: { directoryFlow: pickerFlowSource, fastSessionRoot: fastSessionRootSource },
   })
   // Each registration declares its directory-flow child in the same call;
   // slot injection follows both the owner and declaration HMR lifetimes.

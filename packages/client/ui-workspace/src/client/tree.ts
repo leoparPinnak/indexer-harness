@@ -137,6 +137,48 @@ function byRecency(a: SessionSummary, b: SessionSummary): number {
 }
 
 /**
+ * One directory spelling for comparison: both Windows and POSIX separators
+ * become `/`, so a root and a Session cwd reported with different separators
+ * still match.
+ */
+function normalizedPath(path: string): string {
+  return path.replaceAll('\\', '/')
+}
+
+/**
+ * Whether a directory is the deployment's Fast Session root or sits inside it.
+ *
+ * Both sides compare spelled paths, never resolved ones: the root and every
+ * Session cwd come from the same Host, so they already carry the same
+ * canonical spelling and a filesystem round trip would only add latency to a
+ * render-path derivation. An unknown root (the read has not answered yet, or
+ * the deployment serves none) classifies nothing, which leaves the browsing
+ * region in its ordinary shape.
+ * @param path - directory to classify, or undefined when the Session reports none.
+ * @param fastRoot - deployment Fast Session root; an empty string means unknown.
+ * @returns true when the path is the root itself or a descendant of it.
+ */
+export function isFastSessionPath(path: string | undefined, fastRoot: string): boolean {
+  if (path === undefined || path === '') return false
+  const root = normalizedPath(fastRoot).replace(/\/+$/, '')
+  if (root === '') return false
+  const candidate = normalizedPath(path)
+  return candidate === root || candidate.startsWith(`${root}/`)
+}
+
+/**
+ * Whether a Workspace is a Fast Session account: its directory is the root or
+ * sits inside it. Such an account is a Fast Session's own folder, so it is
+ * listed by the Fast Sessions section instead of the Workspace groups.
+ * @param workspace - Workspace projection to classify.
+ * @param fastRoot - deployment Fast Session root; an empty string means unknown.
+ * @returns true when the Workspace directory belongs to the Fast Session root.
+ */
+export function isFastSessionWorkspace(workspace: WorkspaceView, fastRoot: string): boolean {
+  return isFastSessionPath(workspace.path, fastRoot)
+}
+
+/**
  * Ordinary sessions are visible; among blank sessions, only the current one
  * is visible. Subagent children use their parent header catalog; archived
  * sessions are visible nowhere, while their accounting slots remain so
@@ -201,23 +243,28 @@ function orderedUngrouped(members: readonly SessionSummary[], stored: readonly s
  * Group Sessions by Host Workspace: one group per entity in stable Host
  * order, with members resolved from sessionIds in their stored order. Sessions
  * outside every Workspace trail in the browser-local Ungrouped order, which
- * falls back to recency before that order is initialized.
+ * falls back to recency before that order is initialized. Fast Session
+ * accounts and their members are skipped here — the Fast Sessions section owns
+ * those rows, and rendering them twice would give one Session two positions.
  */
 function groupByWorkspace(
   list: SessionListState,
   workspaces: readonly WorkspaceView[],
   archived: ReadonlySet<SessionId>,
   ungroupedOrder: readonly string[] | undefined,
+  fastRoot: string,
 ): Group[] {
   const groups: Group[] = []
   const accounted = new Set<SessionId>()
   for (const workspace of workspaces) {
+    if (isFastSessionWorkspace(workspace, fastRoot)) continue
     const members: SessionSummary[] = []
     for (const id of workspace.sessionIds) {
       const summary = list.byId[id]
       if (summary === undefined) continue // account may lead the list pull; the row appears when the summary lands
       accounted.add(id)
       if (!sessionVisible(summary, list.current, archived)) continue
+      if (isFastSessionPath(summary.cwd, fastRoot)) continue
       members.push(summary)
     }
     groups.push(buildGroup(
@@ -228,7 +275,8 @@ function groupByWorkspace(
   const stray = list.ids
     .map(id => list.byId[id])
     .filter((s): s is SessionSummary =>
-      s !== undefined && !accounted.has(s.id) && sessionVisible(s, list.current, archived))
+      s !== undefined && !accounted.has(s.id) && sessionVisible(s, list.current, archived)
+      && !isFastSessionPath(s.cwd, fastRoot))
   if (stray.length > 0) {
     groups.push(buildGroup(
       UNGROUPED_KEY,
@@ -288,6 +336,8 @@ function sessionNode(
  * @param archivedSessionIds - registry-global archive set.
  * @param pendingInteractions - pending UI interactions by Session.
  * @param view - local expansion arrays.
+ * @param fastRoot - deployment Fast Session root; defaults to the empty string,
+ *   which classifies no Session and leaves the groups in their ordinary shape.
  * @returns group sections in render order.
  */
 export function deriveGroups(
@@ -296,6 +346,7 @@ export function deriveGroups(
   archivedSessionIds: readonly SessionId[],
   pendingInteractions: SessionPendingInteractions,
   view: TreeView,
+  fastRoot = '',
 ): GroupNode[] {
   const archived = new Set(archivedSessionIds)
   const expandedGroups = new Set(view.expandedGroups)
@@ -304,7 +355,7 @@ export function deriveGroups(
     ? undefined
     : owningGroupKey(workspaces, list.current)
   const groups: GroupNode[] = []
-  for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder)) {
+  for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder, fastRoot)) {
     const expanded = expandedGroups.has(g.key)
     groups.push({
       key: g.key,
@@ -377,6 +428,39 @@ export function deriveFavorites(
     if (summary === undefined || archived.has(id)) continue
     rows.push(summary)
   }
+  return rows.map(session => sessionNode(session, descendants, pendingInteractions))
+}
+
+/**
+ * Derive the Fast Sessions section: every non-archived Session whose working
+ * directory sits under the deployment's Fast Session root, newest first.
+ *
+ * The section is the one home for those rows — {@link deriveGroups} drops them
+ * from the Workspace groups. A blank provisional Session still shows while it
+ * is the current selection, and an unknown root renders nothing.
+ * @param list - sessions list metadata authority.
+ * @param fastRoot - deployment Fast Session root; an empty string means unknown.
+ * @param archivedSessionIds - registry-global archive set.
+ * @param pendingInteractions - pending UI interactions by Session.
+ * @returns Fast Session rows, newest first.
+ */
+export function deriveFastSessions(
+  list: SessionListState,
+  fastRoot: string,
+  archivedSessionIds: readonly SessionId[],
+  pendingInteractions: SessionPendingInteractions,
+): SessionNode[] {
+  if (fastRoot === '') return []
+  const archived = new Set(archivedSessionIds)
+  const descendants = indexSubagentDescendants(list.byId)
+  const rows: SessionSummary[] = []
+  for (const id of list.ids) {
+    const summary = list.byId[id]
+    if (summary === undefined || !sessionVisible(summary, list.current, archived)) continue
+    if (!isFastSessionPath(summary.cwd, fastRoot)) continue
+    rows.push(summary)
+  }
+  rows.sort(byRecency)
   return rows.map(session => sessionNode(session, descendants, pendingInteractions))
 }
 

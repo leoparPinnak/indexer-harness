@@ -1,6 +1,8 @@
 /** Session commands whose activation policy is explicit at each Remote method. */
 
 import { randomUUID } from 'node:crypto'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
@@ -39,6 +41,8 @@ import type {
   SessionAttachmentValue,
   SessionCancelRequest,
   SessionCancelValue,
+  SessionCreateFastRequest,
+  SessionCreateFastValue,
   SessionCreateRequest,
   SessionCreateValue,
   SessionForkRequest,
@@ -131,6 +135,49 @@ export class SessionCommandController {
     }
     const agentPreset = this.agents.presetForSession(adopted.session)
     return { sessionId, ...(agentPreset === undefined ? {} : { agentPreset }) }
+  }
+
+  /**
+   * Create one Fast Session: a Session whose working directory is a folder this
+   * call creates under the deployment's fast-session root, named by the Session
+   * id, and which owns that folder as its Workspace.
+   *
+   * The Workspace is what makes the Session an ordinary, usable Web Session —
+   * every Web surface (composer, file tree, open-in-app) reads the owning
+   * Workspace rather than the session header's cwd. Nothing else distinguishes
+   * it from an ordinary Session: same log, same Agent, same persistence.
+   * @param request - caller-supplied Workspace title (locale-owned by the caller).
+   * @param fastSessionRoot - hosting directory, resolved by the deployment policy.
+   * @returns the created Session identity and its working directory.
+   */
+  async createFast(request: SessionCreateFastRequest, fastSessionRoot: string): Promise<SessionCreateFastValue> {
+    const sessionId = brandString<SessionId>(`session-${randomUUID()}`)
+    const directory = join(fastSessionRoot, sessionId)
+    try {
+      await mkdir(directory, { recursive: true })
+    } catch (error) {
+      throw new RemoteError(
+        'gateway/internal',
+        `fast session directory "${directory}" could not be created: ${String(error)}`,
+        {},
+      )
+    }
+    const workspace = await this.ctx.workspaceRegistry.create(directory, request.workspaceTitle)
+    try {
+      await this.agents.ensureSession(sessionId, workspace.path, false, undefined)
+    } catch (error) {
+      this.rejectCreation(sessionId, error)
+    }
+    try {
+      await workspace.attachSession(sessionId)
+    } catch (error) {
+      throw new RemoteError(
+        'session/workspace-attach-failed',
+        `fast session "${sessionId}" was created but could not attach to workspace "${workspace.id}": ${String(error)}`,
+        { sessionId, workspaceId: workspace.id },
+      )
+    }
+    return { sessionId, cwd: workspace.path }
   }
 
   /**

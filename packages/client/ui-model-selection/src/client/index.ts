@@ -186,7 +186,13 @@ export function apply(ctx: ClientContext): void {
           available,
           directory: directory.store,
           load: () => {
-            if (available) directory.load().catch(() => { /* surfaced on the store */ })
+            // Opening the picker re-reads the Host catalogue: a provider whose
+            // published models changed (a gateway pool edit) must be visible on
+            // the next open, not only after pressing the refresh row.
+            if (available) directory.refresh().catch(() => { /* surfaced on the store */ })
+          },
+          refresh: () => {
+            if (available) directory.refresh().catch(() => { /* surfaced on the store */ })
           },
           select: (selection: ModelSelection) => available
             ? directory.select(selection).then(() => true, () => false)

@@ -105,6 +105,7 @@ function mount(
       onClose={onClose}
       createWorkspace={createWorkspace}
       useDirectoryFlow={occupancy.useDirectoryFlow}
+      useFastSessionRoot={selector => selector('')}
       renderSlot={renderSlot}
       t={t}
     />
@@ -129,6 +130,29 @@ describe('WorkspacePicker', () => {
     expect(entries).toHaveLength(2)
     fireEvent.click(entries[1]!)
     expect(b.onPick).toHaveBeenCalledWith(wid('beta'))
+  })
+
+  it('never offers a Fast Session folder as a pick target', () => {
+    const fastRoot = '/tmp/dsh_fast_sessions'
+    const quick = { ...workspace('quick', 'Quick session'), path: `${fastRoot}/session-1` }
+    const { renderSlot } = flowProbe()
+    render(
+      <WorkspacePicker
+        open
+        anchorRef={anchor()}
+        useSessions={hook(sessions)}
+        useSessionPendingInteraction={hook(noPendingInteraction)}
+        usePanelInfo={usePanelInfo} useResource={useResource}
+        useWorkspaces={hook(workspaceState([workspace('alpha', 'Alpha'), quick]))}
+        onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
+        useDirectoryFlow={occupancySource().useDirectoryFlow}
+        useFastSessionRoot={selector => selector(fastRoot)}
+        renderSlot={renderSlot}
+        t={t}
+      />,
+    )
+    expect(screen.getAllByRole('menuitem').map(entry => entry.textContent))
+      .toEqual(['Alpha', '在桌面上创建工作文件夹…', '添加工作区…'])
   })
 
   it('opens the composed directory flow, adopts its picked path, and selects the returned Workspace', async () => {
@@ -258,7 +282,7 @@ describe('WorkspacePicker', () => {
         useSessionPendingInteraction={hook(noPendingInteraction)}
         usePanelInfo={usePanelInfo} useResource={useResource}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow} useFastSessionRoot={selector => selector('')} renderSlot={renderSlot} t={t}
       />,
     )
     expect(screen.queryByRole('menu')).toBeNull()
@@ -275,7 +299,7 @@ describe('WorkspacePicker', () => {
         useSessionPendingInteraction={hook(noPendingInteraction)}
         usePanelInfo={usePanelInfo} useResource={useResource}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow} useFastSessionRoot={selector => selector('')} renderSlot={renderSlot} t={t}
       />,
     )
     // An empty list is not final yet: jumping into the directory flow here

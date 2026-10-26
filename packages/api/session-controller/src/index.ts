@@ -1,6 +1,7 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
-import { hostname } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { errorChain } from '@deepseek-ai/dsh-llm'
@@ -31,8 +32,11 @@ import type {
   SessionCancelRequest,
   SessionCancelValue,
   SessionControlFrame,
+  SessionCreateFastRequest,
+  SessionCreateFastValue,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionFastRootValue,
   SessionFollowFrame,
   SessionCancelCompactionRequest,
   SessionCancelCompactionValue,
@@ -75,10 +79,23 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/**
+ * Default Fast Session root: `dsh_fast_sessions` inside the OS temporary
+ * directory, so a scratch chat's folder follows the machine's own temp policy
+ * instead of landing inside a directory the operator owns.
+ */
+const DEFAULT_FAST_SESSION_ROOT = join(tmpdir(), 'dsh_fast_sessions')
+
 /** Session Controller deployment policy. */
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /**
+   * Absolute directory owning one folder per Fast Session, each named by the
+   * Session id. Defaults to `dsh_fast_sessions` inside the OS temporary
+   * directory.
+   */
+  readonly fastSessionRoot?: string
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -108,10 +125,12 @@ export class SessionController extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     nativeOpen: z.boolean(),
+    fastSessionRoot: z.string(),
   })
 
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
+  private readonly fastRoot: string
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
   private readonly listState: ApiSessionList
@@ -122,13 +141,14 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
-   * @param config - native-opener deployment policy.
+   * @param config - native-opener and Fast Session deployment policy.
    * @param internals - host integrations replaceable by direct unit tests.
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
     this.agents = new ApiSessionAgentController(ctx)
+    this.fastRoot = config.fastSessionRoot ?? DEFAULT_FAST_SESSION_ROOT
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
       const result = await this.agents.resolveAgent(sessionId)
@@ -255,6 +275,27 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
+   * Create one Fast Session: a Session owning a fresh folder under the Fast
+   * Session root, named by the Session id.
+   * @param request - caller-supplied Workspace title.
+   * @returns the Session identity and the working directory created for it.
+   */
+  @Remote('createFast')
+  createFast(request: SessionCreateFastRequest): Promise<SessionCreateFastValue> {
+    return this.commands.createFast(request, this.fastRoot)
+  }
+
+  /**
+   * Read the Fast Session root, so a caller can recognize the Sessions and
+   * Workspaces that live under it without a second Host round trip.
+   * @returns the resolved absolute Fast Session root.
+   */
+  @Remote('fastSessionRoot')
+  fastSessionRoot(): SessionFastRootValue {
+    return { root: this.fastRoot }
+  }
+
+  /**
    * Select one Session-local model after explicitly resuming the Session.
    * @param request - Session identity and requested model selection.
    * @returns the normalized selection installed for the Session.
@@ -318,10 +359,28 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * Describe every currently routable model for Host-generation selectors.
+   *
+   * Adapter catalogues are re-read first: a provider whose published models
+   * changed (a gateway pool edit, an upstream that added a model) must reach
+   * the picker on the next read instead of the list learned at boot. The read
+   * is a local HTTP call for a discovering route and is not cached here.
    * @returns provider-grouped models, the deployment default, and isolated provider failures.
    */
   @Remote('modelCatalog')
-  modelCatalog(): Promise<ModelCatalog> {
+  async modelCatalog(): Promise<ModelCatalog> {
+    await this.ctx.llm.refreshCatalogs()
+    return buildModelCatalog(this.ctx)
+  }
+
+  /**
+   * Re-read every adapter's provider catalogue, then describe the routable
+   * models. A selector calls this when the operator asks for a refresh, so a
+   * provider that changed what it publishes appears without a restart.
+   * @returns the fresh provider-grouped catalog.
+   */
+  @Remote('refreshModelCatalog')
+  async refreshModelCatalog(): Promise<ModelCatalog> {
+    await this.ctx.llm.refreshCatalogs()
     return buildModelCatalog(this.ctx)
   }
 

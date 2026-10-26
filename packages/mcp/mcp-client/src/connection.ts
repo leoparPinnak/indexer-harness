@@ -21,6 +21,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { createTransport } from './transport.ts'
 import { syncTools } from './tools.ts'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
+import { appendStatusLog, mcpStatusRegistry, resolveStatusLogPath } from './status.ts'
+import type { McpConnectionState } from './status.ts'
 import type { ToolBridgeOptions, ToolDisposers } from './tools.ts'
 import type { Config } from './index.ts'
 
@@ -149,6 +152,25 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   /** The real error from the first connection attempt, for startup-await diagnostics. */
   let firstAttemptError: unknown
 
+  /** Registration plane label shared with the Settings MCP view. */
+  const scopeLabel = scopeOf(ctx) === undefined ? 'global' : 'preset'
+  const statusLogPath = resolveStatusLogPath(config.statusLogPath)
+
+  /** Records one lifecycle transition on the shared registry and the JSONL history. */
+  function recordStatus(state: McpConnectionState, extra?: { attempt?: number; lastError?: string }): void {
+    const status = {
+      serverName: config.serverName,
+      scope: scopeLabel,
+      state,
+      at: Date.now(),
+      toolCount: state === 'connected' ? disposers.size : 0,
+      toolNames: state === 'connected' ? [...disposers.keys()].sort() : [],
+      ...extra,
+    }
+    mcpStatusRegistry.record(status)
+    if (statusLogPath !== undefined) appendStatusLog(statusLogPath, status)
+  }
+
   /** A generation may act only while it is the current one on a live plugin. */
   const isCurrent = (generation: Client): boolean => !disposed && client === generation
 
@@ -196,6 +218,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         ? 'connection lost and reconnect is disabled — registered tools will fail until an HMR reload or Host restart'
         : 'connection failed and reconnect is disabled — no tools were registered; reload the plugin or restart the Host to connect'
       ctx.logger.error(`${label}: ${message}`)
+      recordStatus('failed', { lastError: message })
       return
     }
     // A connection that stayed up past the stability window (= maxDelayMs, the
@@ -211,11 +234,15 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         disposers = new Map()
       })
       ctx.logger.error(`${label}: giving up after ${policy.maxAttempts} consecutive failed reconnect attempts — tools unregistered; reload the plugin or restart the Host to reconnect`)
+      recordStatus('failed', {
+        lastError: `gave up after ${policy.maxAttempts} consecutive failed reconnect attempts`,
+      })
       return
     }
     const delayMs = Math.min(policy.maxDelayMs, policy.initialDelayMs * 2 ** (failedAttempts - 1))
     const action = lostEstablishedConnection ? 'connection lost; reconnecting' : 'connection failed; retrying'
     ctx.logger.warn(`${label}: ${action} in ${delayMs}ms (attempt ${failedAttempts}/${policy.maxAttempts})`)
+    recordStatus('reconnecting', { attempt: failedAttempts, lastError: action })
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined
       settling = connectGeneration(false)
@@ -261,6 +288,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         ctx.logger.info(`${label}: tool list changed, re-syncing`)
         try {
           await enqueueSync(generation)
+          recordStatus('connected')
         } catch (error) {
           // Fetch-phase failure: the previous generation is still registered
           // and `disposers` still owns it — keep serving the last good list.
@@ -288,7 +316,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       if (!quiesced) {
         client = undefined
         clientClosed = undefined
-        ctx.logger.error(`${label}: failed generation did not close within ${GENERATION_CLOSE_TIMEOUT_MS}ms — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
+        const message = `failed generation did not close within ${GENERATION_CLOSE_TIMEOUT_MS}ms — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`
+        ctx.logger.error(`${label}: ${message}`)
+        recordStatus('failed', { lastError: message })
         return
       }
       generationDown(generation)
@@ -301,10 +331,12 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     }
     if (!isCurrent(generation)) return
     connectedAt = Date.now()
+    recordStatus('connected')
     if (failedAttempts > 0) ctx.logger.info(`${label}: reconnected and re-synced tools (attempt ${failedAttempts}/${policy.maxAttempts})`)
   }
 
   /** The in-flight (or last settled) connection attempt; dispose awaits it for quiescence. */
+  recordStatus('connecting')
   let settling = connectGeneration(true)
 
   // The ready promise settles when the first attempt finishes (regardless of
@@ -346,6 +378,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       await syncChain
       for (const dispose of disposers.values()) dispose()
       disposers = new Map()
+      recordStatus('stopped')
     },
   }
 }

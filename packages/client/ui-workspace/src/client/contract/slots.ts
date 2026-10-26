@@ -96,6 +96,13 @@ export type WorkspaceBrowserInjected = {
      * saw. Select the field the surface needs (`info => info.home`).
      */
     hostInfo: HostObservable<RemoteHostFacts>
+    /**
+     * The deployment's Fast Session root: every Fast Session working directory
+     * sits under it. It answers asynchronously once per registration, so the
+     * surface selects it as a value (`root => root`) and an unanswered read
+     * yields the empty string, which classifies no Session.
+     */
+    fastSessionRoot: HostObservable<string>
   }
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
@@ -103,6 +110,12 @@ export type WorkspaceBrowserInjected = {
    * Workspace, then the recent Workspace, or clear into the New Session view.
    */
   startSession: (workspaceId?: WorkspaceId) => void
+  /**
+   * Start a Fast Session: a Session owning a fresh folder under the Fast
+   * Session root, opened on arrival.
+   * @param workspaceTitle - display title for the Workspace that Session owns.
+   */
+  startFastSession: (workspaceTitle?: string) => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
   /**
@@ -163,7 +176,11 @@ export type WorkspaceBrowserProps =
  * callback; this callback creates only the real Host Workspace. A type alias
  * supplies the implicit index signature required by the registry.
  */
-export type WorkspacePickerInjected = DirectoryPickingInjected & {
+export type WorkspacePickerInjected = {
+  hooks: DirectoryPickingInjected['hooks'] & {
+    /** Deployment Fast Session root; the Workspaces under it are never pick targets. */
+    fastSessionRoot: HostObservable<string>
+  }
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: WorkspaceCreateRequest) => Promise<WorkspaceView>
 }
@@ -177,5 +194,5 @@ export type WorkspacePickerProps =
   PropsRuntime<'conversation.hero.workspace'>
   & PropsRenderSlots<'conversation.hero.workspace.directoryFlow'>
   & Omit<WorkspacePickerInjected, 'hooks'>
-  & DirectoryPickingHooks
+  & PropsHooks<WorkspacePickerInjected['hooks']>
   & PropsLocale<'workspace'>

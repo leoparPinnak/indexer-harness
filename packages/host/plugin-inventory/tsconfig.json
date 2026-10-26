@@ -15,6 +15,9 @@
       "path": "../../../vendor/loader"
     },
     {
+      "path": "../../mcp/mcp-client"
+    },
+    {
       "path": "../../preset/agent-presets"
     },
     {

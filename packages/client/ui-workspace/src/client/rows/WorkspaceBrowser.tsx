@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconCloseFill14, IconPersonalizationOutline16,
+  Button, IconCloseFill14, IconPersonalizationOutline16, IconPlusOutline16,
   IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -20,10 +20,12 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
-  deriveFavorites, deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
+  deriveFastSessions, deriveFavorites, deriveFlat, deriveGroups, deriveSearchResults,
+  owningGroupKey, UNGROUPED_KEY,
 } from '../tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
@@ -280,13 +282,74 @@ function FavoritesSection({
   )
 }
 
+/**
+ * Fast Sessions: the deployment's scratch chats, whose working directory is a
+ * folder under the Fast Session root, newest first. The header IS that root, so
+ * every scratch chat lands in one stable area instead of one area per folder,
+ * and the section's trailing separator keeps the Workspace accounts below it a
+ * separate region. Absent while the root is unknown or holds no Session.
+ */
+function FastSessionsSection({
+  rows, currentId, now, onOpen, onRename, onFork, onArchive, setFavorite, favoriteSessionIds,
+  fastRoot, home, onCreate, t,
+}: {
+  rows: readonly SessionNode[]
+  currentId: SessionId | undefined
+  now: number
+  onOpen: (id: SessionNode['id']) => void
+  onRename: (id: SessionNode['id'], currentTitle: string) => void
+  onFork: (id: SessionNode['id']) => void
+  onArchive: (id: SessionNode['id']) => void
+  setFavorite: (id: SessionId, favorite: boolean) => void
+  favoriteSessionIds: readonly SessionId[]
+  fastRoot: string
+  home: string | undefined
+  /** Start one more Fast Session in the same area. */
+  onCreate: () => void
+  t: WorkspaceBrowserProps['t']
+}) {
+  if (rows.length === 0) return null
+  return (
+    <div className={clsx(css.groupSection, css.fastSection)}>
+      <div className={clsx(css.favoritesHeader, css.fastHeader)}>
+        <span className={css.fastHeaderLabel} title={fastRoot}>{abbreviateHomePath(fastRoot, home)}</span>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-label={t('fastSession.new')}
+          onClick={onCreate}
+        >
+          <IconPlusOutline16 />
+        </button>
+      </div>
+      {rows.map(node => (
+        <SessionNodeItem
+          key={node.id}
+          node={node}
+          currentId={currentId}
+          now={now}
+          onOpen={onOpen}
+          onRename={onRename}
+          onFork={onFork}
+          onArchive={onArchive}
+          isFavorite={favoriteSessionIds.includes(node.id)}
+          setFavorite={setFavorite}
+          t={t}
+        />
+      ))}
+    </div>
+  )
+}
+
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
-  'useSessions' | 'useSessionPendingInteraction' | 'startSession' | 'open' | 'forkSession'
+  'useSessions' | 'useSessionPendingInteraction' | 'startSession' | 'startFastSession' | 'open' | 'forkSession'
   | 'insertWorkspaceBefore' | 'insertSessionBefore' | 'setFavorite' | 't' | 'usePanelInfo'
 > & {
   /** Host account home for POSIX hover-path abbreviation. */
   home?: string | undefined
+  /** Deployment Fast Session root; an empty string means the read has not answered. */
+  fastRoot: string
   workspaces: readonly WorkspaceView[]
   /** Starred Session ids in the order the favorites document records them. */
   favoriteSessionIds: readonly SessionId[]
@@ -324,13 +387,14 @@ type SessionTreeProps = Pick<
 
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
 function SessionTree({
-  useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds,
+  useSessions, useSessionPendingInteraction, startSession, startFastSession, open, forkSession, workspaces,
+  archivedSessionIds,
   favoriteSessionIds, setFavorite, workspaceReady, usePanelInfo,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
-  revealSessionId, onSessionRevealed,
+  revealSessionId, onSessionRevealed, fastRoot,
 }: SessionTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const list = useSessions(s => s)
@@ -407,12 +471,16 @@ function SessionTree({
       ...(sessionOrderByAccount[UNGROUPED_KEY] === undefined
         ? {}
         : { ungroupedOrder: sessionOrderByAccount[UNGROUPED_KEY] }),
-    }),
-    [list, orderedWorkspaces, archivedSessionIds, pendingInteractions, expandedGroups, sessionOrderByAccount],
+    }, fastRoot),
+    [list, orderedWorkspaces, archivedSessionIds, pendingInteractions, expandedGroups, sessionOrderByAccount, fastRoot],
   )
   const favorites = useMemo(
     () => deriveFavorites(list, favoriteSessionIds, archivedSessionIds, pendingInteractions),
     [list, favoriteSessionIds, archivedSessionIds, pendingInteractions],
+  )
+  const fastSessions = useMemo(
+    () => deriveFastSessions(list, fastRoot, archivedSessionIds, pendingInteractions),
+    [list, fastRoot, archivedSessionIds, pendingInteractions],
   )
   useEffect(() => {
     if (revealGroup === undefined || groupExpansion[revealGroup] === true) return
@@ -521,6 +589,21 @@ function SessionTree({
           onArchive={onSessionArchive}
           setFavorite={setFavorite}
           workspaces={workspaces}
+          t={t}
+        />
+        <FastSessionsSection
+          rows={fastSessions}
+          currentId={current}
+          now={now}
+          onOpen={open}
+          onRename={onSessionRename}
+          onFork={forkSession}
+          onArchive={onSessionArchive}
+          setFavorite={setFavorite}
+          favoriteSessionIds={favoriteSessionIds}
+          fastRoot={fastRoot}
+          home={home}
+          onCreate={() => { startFastSession(t('fastSession.title')) }}
           t={t}
         />
         {groups.length === 0 && (
@@ -687,15 +770,16 @@ function SessionTree({
 
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
-  useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
+  useSessions, useSessionPendingInteraction, startFastSession, open, forkSession, onSessionRename, onSessionArchive,
   archivedSessionIds, favoriteSessionIds, setFavorite, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
-  revealSessionId, onSessionRevealed, workspaces, t,
+  revealSessionId, onSessionRevealed, workspaces, fastRoot, home, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessions'
   | 'useSessionPendingInteraction'
   | 'open'
+  | 'startFastSession'
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
@@ -711,6 +795,8 @@ function FlatList({
   | 'revealSessionId'
   | 'onSessionRevealed'
   | 'workspaces'
+  | 'fastRoot'
+  | 'home'
   | 't'
 >) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
@@ -723,6 +809,10 @@ function FlatList({
   const favorites = useMemo(
     () => deriveFavorites(list, favoriteSessionIds, archivedSessionIds, pendingInteractions),
     [list, favoriteSessionIds, archivedSessionIds, pendingInteractions],
+  )
+  const fastSessions = useMemo(
+    () => deriveFastSessions(list, fastRoot, archivedSessionIds, pendingInteractions),
+    [list, fastRoot, archivedSessionIds, pendingInteractions],
   )
   const sessionIds = useMemo(() => baseRows.map(row => row.id), [baseRows])
   const previousOrderBy = useRef(orderBy)
@@ -785,6 +875,21 @@ function FlatList({
           onArchive={onSessionArchive}
           setFavorite={setFavorite}
           workspaces={workspaces}
+          t={t}
+        />
+        <FastSessionsSection
+          rows={fastSessions}
+          currentId={panelActive ? undefined : list.current}
+          now={now}
+          onOpen={open}
+          onRename={onSessionRename}
+          onFork={forkSession}
+          onArchive={onSessionArchive}
+          setFavorite={setFavorite}
+          favoriteSessionIds={favoriteSessionIds}
+          fastRoot={fastRoot}
+          home={home}
+          onCreate={() => { startFastSession(t('fastSession.title')) }}
           t={t}
         />
         {rows.length === 0 && (
@@ -935,6 +1040,7 @@ export function WorkspaceBrowser({
   useStore,
   actions,
   startSession,
+  startFastSession,
   open,
   renameSession,
   forkSession,
@@ -949,10 +1055,12 @@ export function WorkspaceBrowser({
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  useFastSessionRoot,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
   const home = useHostInfo(info => info.home)
+  const fastRoot = useFastSessionRoot(root => root)
   const workspaces = useWorkspaces(state => state.items)
   const workspacePhase = useWorkspaces(state => state.phase)
   const workspaceStreamState = useWorkspaces(state => state.state)
@@ -1366,6 +1474,7 @@ export function WorkspaceBrowser({
                 usePanelInfo={usePanelInfo}
                 useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
                 open={open} forkSession={forkSession}
+                startFastSession={startFastSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                 archivedSessionIds={archivedSessionIds}
                 favoriteSessionIds={favoriteSessionIds}
@@ -1378,6 +1487,8 @@ export function WorkspaceBrowser({
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
                 workspaces={workspaces}
+                fastRoot={fastRoot}
+                home={home}
                 t={t}
               />
             )
@@ -1401,6 +1512,7 @@ export function WorkspaceBrowser({
                 favoriteSessionIds={favoriteSessionIds}
                 setFavorite={setFavorite}
                 startSession={startSession}
+                startFastSession={startFastSession}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 insertSessionBefore={insertSessionBefore}
@@ -1408,6 +1520,7 @@ export function WorkspaceBrowser({
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
                 home={home}
+                fastRoot={fastRoot}
                 t={t}
                 onRenameRequest={(workspaceId, currentTitle) => {
                   setRenameTarget({ workspaceId, currentTitle })

@@ -104,7 +104,7 @@ export const WELCOME_NOTICE_VERSION = '2026-08-13.1'
 export const WELCOME_NOTICE_COPY = {
   zh: {
     title: '内测声明',
-    body: 'DeepSeek Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 DeepSeek Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。',
+    body: 'Indexer Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 Indexer Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。',
     continueLabel: '继续',
   },
 } as const
@@ -782,17 +782,21 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     baseUrl = `http://${browserHost}:${String(port)}`
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
-    const authorization = `Basic ${Buffer.from(
-      `${process.env.DSH_WEB_USER ?? 'dsh'}:${process.env.DSH_WEB_PASSWORD ?? 'dsh'}`, 'utf8',
-    ).toString('base64')}`
-    const login = await fetch(authenticatedUrl, { redirect: 'manual', headers: { authorization } })
-    const setCookie = login.headers.get('set-cookie')
-    if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
-      throw new Error('web e2e scaffold: username/password answer did not return its session cookie')
+    // Token abolition (cd64385): every request enters without tokens, so the
+    // root answers the application directly and no session cookie is minted.
+    const login = await fetch(authenticatedUrl, { redirect: 'manual' })
+    const reachedApplication = login.status === 200
+      || (login.status === 303 && login.headers.get('location') === '/')
+    if (!reachedApplication) {
+      throw new Error(
+        `web e2e scaffold: the application root did not answer (status ${String(login.status)})`,
+      )
     }
-    cookieHeader = setCookie.split(';', 1)[0] ?? ''
-    if (cookieHeader.length === 0) {
-      throw new Error('web e2e scaffold: username/password answer returned an empty session cookie')
+    await login.body?.cancel()
+    const setCookie = login.headers.get('set-cookie')
+    cookieHeader = setCookie === null ? '' : setCookie.split(';', 1)[0] ?? ''
+    if (cookieHeader.length === 0 && setCookie !== null) {
+      throw new Error('web e2e scaffold: the application root returned an empty session cookie')
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)

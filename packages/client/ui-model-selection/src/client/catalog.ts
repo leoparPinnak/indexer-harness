@@ -31,18 +31,28 @@ export class ModelCatalogDirectory {
 
   /**
    * Return the current generation's catalog, sharing its one in-flight load.
+   * @param fromHost - ask the adapters to re-read their provider catalogues first.
    * @returns the loaded global catalog.
    */
-  load(): Promise<ModelCatalog> {
+  load(fromHost = false): Promise<ModelCatalog> {
     const state = this.store.getSnapshot()
-    if (state.status === 'ready' && state.value !== null) return Promise.resolve(state.value)
+    if (!fromHost && state.status === 'ready' && state.value !== null) return Promise.resolve(state.value)
     if (this.inflight !== undefined) return this.inflight
     const generation = this.generation
     this.store.update((draft) => {
       draft.status = 'loading'
       draft.error = null
     })
-    const operation = this.ctx.remote.session.modelCatalog().then((response) => {
+    // `refreshModelCatalog` is the Host verb that makes adapters re-read their
+    // provider catalogues before answering; a Host that does not expose it
+    // (older build) still answers the plain read.
+    const remote = this.ctx.remote.session as unknown as {
+      refreshModelCatalog?: () => ReturnType<ClientContext['remote']['session']['modelCatalog']>
+    }
+    const call = fromHost && typeof remote.refreshModelCatalog === 'function'
+      ? remote.refreshModelCatalog()
+      : this.ctx.remote.session.modelCatalog()
+    const operation = call.then((response) => {
       if (!response.ok) {
         throw new Error(`${response.error.code}: ${response.error.message}`)
       }
@@ -79,7 +89,7 @@ export class ModelCatalogDirectory {
   /** Invalidate and reload the catalog after a Host-side model input changes. */
   refresh(): void {
     this.invalidate()
-    void this.load().catch(() => { /* the selector exposes the shared error */ })
+    void this.load(true).catch(() => { /* the selector exposes the shared error */ })
   }
 
   /** Clear Host-specific values and load the replacement Host generation. */

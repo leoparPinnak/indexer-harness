@@ -4,7 +4,9 @@
  */
 
 export { runNativeCommand } from './runner.ts'
-export type { NativeCommandRunner } from './runner.ts'
+export type { NativeCommandOptions, NativeCommandRunner } from './runner.ts'
+export { activateWindowsExplorerWindow, windowsForegroundScript } from './windows-foreground.ts'
+export type { WindowsForegroundOutcome, WindowsForegroundResult } from './windows-foreground.ts'
 export {
   canOpenNativePath,
   nativeFileManager,

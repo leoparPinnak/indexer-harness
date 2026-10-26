@@ -80,6 +80,25 @@ export class ModelDirectory {
   }
 
   /**
+   * Re-read the Host model catalog, so models a provider started publishing
+   * after this session's first read appear without a page reload. The
+   * discovery a provider runs at boot lands asynchronously, so an empty first
+   * catalog is a normal state rather than a broken one.
+   * @returns the directory value once the refreshed catalog settles.
+   */
+  async refresh(): Promise<ModelDirectoryState> {
+    this.assertAvailable()
+    this.store.update((state) => {
+      state.status = 'loading'
+      state.error = null
+    })
+    this.catalog.refresh()
+    await this.catalog.load()
+    this.syncInputs()
+    return this.store.getSnapshot()
+  }
+
+  /**
    * Select the complete provider/model/reasoning selection. The durable
    * projection frame updates the shared current; failures surface on the store
    * and throw so each entry's own retry surface engages.

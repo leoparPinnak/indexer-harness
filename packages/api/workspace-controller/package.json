@@ -67,6 +67,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-atomic-write": "workspace:^",
     "@deepseek-ai/dsh-deque": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

@@ -9,7 +9,7 @@ import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 import { apply as hostApply } from '../src/index.ts'
 
-async function bench() {
+async function bench(options: { fastSessionRoot?: () => Promise<string> } = {}) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   const create = vi.fn(async (input: { name: string } | { path: string }) => ({
@@ -56,6 +56,8 @@ async function bench() {
       subscribe,
     },
     create: vi.fn(async () => 'created' as never),
+    createFast: vi.fn(async () => 'created' as never),
+    fastSessionRoot: vi.fn(options.fastSessionRoot ?? (async () => '/tmp/dsh_fast_sessions')),
     open,
     clear,
     search,
@@ -189,6 +191,8 @@ describe('ui-workspace apply', () => {
     const picker = (b.slots.entries('conversation.hero.workspace')[0]!.inject as () => WorkspacePickerInjected)()
     expect(browser.hooks.directoryFlow.getSnapshot()).toBe(false)
     expect(browser.hooks.hostInfo.getSnapshot()).toMatchObject({ home: undefined })
+    // The Fast Session root arrives from the Host, so the source starts empty.
+    expect(browser.hooks.fastSessionRoot.getSnapshot()).toBe('/tmp/dsh_fast_sessions')
     expect(picker.hooks.directoryFlow.getSnapshot()).toBe(false)
     // A flow occupant flips exactly its own surface, and the source notifies.
     const notified = vi.fn()
@@ -201,6 +205,29 @@ describe('ui-workspace apply', () => {
     dispose()
     expect(browser.hooks.directoryFlow.getSnapshot()).toBe(false)
     unsubscribe()
+  })
+
+  it('publishes the Fast Session root and reports a refused read once', async () => {
+    const reading = await bench()
+    declare(reading.slots, 'sidebar.workspaces')
+    await reading.ctx.plugin({ inject: [...inject], apply }).await()
+    const browser = (reading.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
+    await Promise.resolve()
+    expect(browser.hooks.fastSessionRoot.getSnapshot()).toBe('/tmp/dsh_fast_sessions')
+
+    const refused = await bench({ fastSessionRoot: () => Promise.reject(new Error('no root')) })
+    declare(refused.slots, 'sidebar.workspaces')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await refused.ctx.plugin({ inject: [...inject], apply }).await()
+      const empty = (refused.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
+      await Promise.resolve()
+      // An unanswered read classifies nothing, so the region keeps its usual shape.
+      expect(empty.hooks.fastSessionRoot.getSnapshot()).toBe('')
+      expect(warn).toHaveBeenCalledWith('fast session root unavailable:', expect.any(Error))
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('rejects the browser search callback on a Session Controller business error', async () => {

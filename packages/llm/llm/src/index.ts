@@ -344,6 +344,14 @@ export class LlmRuntime extends TypertRemoteService {
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   >()
+  /**
+   * Adapter-owned catalogue refreshers, keyed by the settings namespace that
+   * registers them. A configuration surface reads the model catalogue through
+   * the Host, so an adapter whose route discovers its models over the network
+   * needs a way to say "ask again" — otherwise the surface keeps serving the
+   * list it learned at boot.
+   */
+  private catalogRefreshers = new Map<string, () => Promise<void>>()
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
@@ -579,6 +587,45 @@ export class LlmRuntime extends TypertRemoteService {
       }
     }.bind(this), 'llm.registerModelDiscovery()')
     return () => void dispose()
+  }
+
+  /**
+   * Offer to re-read this adapter's provider catalogues. A configuration
+   * surface calls {@link refreshCatalogs} before it renders a model list, so a
+   * provider that publishes fewer or more models than it did at boot is
+   * reflected without restarting the Harness. Disposed with the fiber.
+   * @param settingsNs - the namespace whose routes this refresher re-reads.
+   * @param refresh - re-reads every discovering route; must settle, never hang.
+   * @returns the disposer that withdraws the offer.
+   */
+  registerCatalogRefresher(settingsNs: string, refresh: () => Promise<void>): () => void {
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      if (settingsNs.length === 0) {
+        throw new LlmError('catalog refresh needs a non-empty settings namespace', 'INVALID_DISCOVERY')
+      }
+      this.catalogRefreshers.set(settingsNs, refresh)
+      yield () => {
+        this.catalogRefreshers.delete(settingsNs)
+      }
+    }.bind(this), 'llm.registerCatalogRefresher()')
+    return () => void dispose()
+  }
+
+  /**
+   * Ask every registered adapter to re-read its catalogues.
+   *
+   * A failing adapter is contained: one unreachable provider must not stop the
+   * others from refreshing, and the caller still renders whatever the adapters
+   * currently know.
+   */
+  async refreshCatalogs(): Promise<void> {
+    for (const refresh of [...this.catalogRefreshers.values()]) {
+      try {
+        await refresh()
+      } catch {
+        // The adapter logged its own reason; the surface keeps the last list.
+      }
+    }
   }
 
   /**

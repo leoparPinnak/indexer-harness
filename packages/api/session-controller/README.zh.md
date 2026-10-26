@@ -37,6 +37,8 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 
 面向用户调用的 `skills/list` 元数据包含胜出提供方可选的指令文件 `path`。输入框可据此预览文件，无需加载每个 skill 的正文或激活冷态 Agent。
 
+`createFast` 开启一个快速会话：生成会话 id，创建 `<fastSessionRoot>/<sessionId>`，在该文件夹上创建工作区，用工作区的规范路径创建会话并挂载它。工作区标题由调用方提供，因为 UI 文案归语言字典所有；省略时回退到文件夹名。该会话在其他方面都是普通会话——同一个 Agent、同一份日志、同一套持久化——并且拥有一个工作区，因此每个 Web 表面都能按通常方式解析其目录。`fastSessionRoot` 报告解析后的根目录，使调用方能够识别位于其下的会话与工作区。
+
 <a id="session-media-references"></a>
 ## 会话媒体引用
 
@@ -50,6 +52,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `nativeOpen` | 平台探测 | 是否能把 Session 工作区路径交给原生桌面打开器 |
+| `fastSessionRoot` | 操作系统临时目录下的 `dsh_fast_sessions` | 存放快速会话的目录，每个会话一个以会话 id 命名的文件夹 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-api-session-controller)是所有受支持字段及其 JSDoc 的完整来源。
 

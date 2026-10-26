@@ -5,13 +5,15 @@ import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-s
 import type { ScheduleId, ScheduleRecord } from '@deepseek-ai/dsh-schedule/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, workspaceLabel,
+  deriveFastSessions, deriveFlat, deriveGroups, deriveSearchResults, isFastSessionPath,
+  isFastSessionWorkspace, owningGroupKey, workspaceLabel,
   UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 
 const sid = (id: string) => id as SessionId
 const wid = (id: string) => id as WorkspaceId
+const noFastRoot = ''
 const summary = (id: string, updatedAt: number, cwd?: string): SessionSummary => ({
   id: sid(id), displayTitle: id, running: false, blank: false,
   updatedAt, ...(cwd === undefined ? {} : { cwd }),
@@ -52,7 +54,7 @@ describe('deriveGroups', () => {
   it('keeps Host Workspace and sessionIds order without Client recency sorting', () => {
     const sessions = list(summary('newer', 20), summary('older', 10))
     const workspaces = [workspace('first', ['older', 'newer']), workspace('empty', [])]
-    const groups = deriveGroups(sessions, workspaces, noArchive, noAttention, view(['first']))
+    const groups = deriveGroups(sessions, workspaces, noArchive, noAttention, view(['first']), noFastRoot)
     expect(groups.map(group => group.key)).toEqual(['first', 'empty'])
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('older'), sid('newer')])
   })
@@ -65,7 +67,7 @@ describe('deriveGroups', () => {
       { key: 'question:1', kind: 'plan-review', sessionId: awaiting.id },
     ]])
     const grouped = deriveGroups(
-      sessions, [workspace('project', ['awaiting'])], noArchive, attention, view(['project']),
+      sessions, [workspace('project', ['awaiting'])], noArchive, attention, view(['project']), noFastRoot,
     )
     expect(grouped[0]!.sessions[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
     expect(deriveFlat(sessions, noArchive, attention)[0])
@@ -88,7 +90,7 @@ describe('deriveGroups', () => {
   it('puts only real unaccounted Sessions in the trailing Ungrouped group', () => {
     const sessions = list(summary('owned', 1, '/projects/first'), summary('loose', 9, '/other'))
     const groups = deriveGroups(
-      sessions, [workspace('first', ['owned'])], noArchive, noAttention, view([UNGROUPED_KEY]),
+      sessions, [workspace('first', ['owned'])], noArchive, noAttention, view([UNGROUPED_KEY]), noFastRoot,
     )
     expect(groups.map(group => group.key)).toEqual(['first', UNGROUPED_KEY])
     expect(groups[1]!.sessions.map(session => session.id)).toEqual([sid('loose')])
@@ -534,3 +536,98 @@ describe('workspaceLabel', () => {
     expect(workspaceLabel('/')).toBe('/')
   })
 })
+
+const fastRoot = 'C:\\Temp\\dsh_fast_sessions'
+
+describe('isFastSessionPath', () => {
+  it('classifies the root itself and its descendants under either separator', () => {
+    expect(isFastSessionPath(fastRoot, fastRoot)).toBe(true)
+    expect(isFastSessionPath('C:/Temp/dsh_fast_sessions/session-1', fastRoot)).toBe(true)
+    expect(isFastSessionPath('C:\\Temp\\dsh_fast_sessions\\session-1\\notes', 'C:/Temp/dsh_fast_sessions/')).toBe(true)
+  })
+
+  it('leaves siblings, a missing cwd, and an unknown root unclassified', () => {
+    expect(isFastSessionPath('C:/Temp/dsh_fast_sessions_old/session-1', fastRoot)).toBe(false)
+    expect(isFastSessionPath(undefined, fastRoot)).toBe(false)
+    expect(isFastSessionPath('', fastRoot)).toBe(false)
+    expect(isFastSessionPath('C:/Temp/dsh_fast_sessions/session-1', noFastRoot)).toBe(false)
+    expect(isFastSessionPath('C:/Temp/dsh_fast_sessions/session-1', '/')).toBe(false)
+  })
+})
+
+describe('isFastSessionWorkspace', () => {
+  it('classifies only Workspaces over the root or inside it', () => {
+    const inside: WorkspaceView = { ...workspace('fast', []), path: 'C:/Temp/dsh_fast_sessions/session-1' }
+    expect(isFastSessionWorkspace(inside, fastRoot)).toBe(true)
+    expect(isFastSessionWorkspace(workspace('project', []), fastRoot)).toBe(false)
+  })
+})
+
+describe('deriveFastSessions', () => {
+  const fastSession = (id: string, updatedAt: number, overrides: Partial<SessionSummary> = {}) => ({
+    ...summary(id, updatedAt, 'C:/Temp/dsh_fast_sessions/session-1'),
+    ...overrides,
+  })
+
+  it('lists only Sessions under the root, newest first', () => {
+    const sessions = list(
+      fastSession('fast-old', 10),
+      summary('normal', 30, '/projects/project'),
+      fastSession('fast-new', 20),
+    )
+    expect(deriveFastSessions(sessions, fastRoot, noArchive, noAttention).map(row => row.id))
+      .toEqual([sid('fast-new'), sid('fast-old')])
+  })
+
+  it('renders nothing for an unknown root and hides archived Fast Sessions', () => {
+    const sessions = list(fastSession('fast', 10))
+    expect(deriveFastSessions(sessions, noFastRoot, noArchive, noAttention)).toEqual([])
+    expect(deriveFastSessions(sessions, fastRoot, archived('fast'), noAttention)).toEqual([])
+  })
+
+  it('keeps a blank Fast Session only while it is the current selection', () => {
+    const sessions = list(fastSession('fast-blank', 10, { blank: true }))
+    expect(deriveFastSessions(sessions, fastRoot, noArchive, noAttention)).toEqual([])
+    expect(deriveFastSessions({ ...sessions, current: sid('fast-blank') }, fastRoot, noArchive, noAttention))
+      .toHaveLength(1)
+  })
+})
+
+describe('deriveGroups against the Fast Session root', () => {
+  const fastWorkspace = (id: string): WorkspaceView => ({
+    ...workspace(id, ['fast-1']),
+    path: 'C:/Temp/dsh_fast_sessions/session-1',
+  })
+
+  it('skips Fast Session Workspaces and Fast Session members of ordinary groups', () => {
+    const sessions = list(
+      fastSessionSummary('fast-1', 'C:/Temp/dsh_fast_sessions/session-1'),
+      fastSessionSummary('fast-member', 'C:/Temp/dsh_fast_sessions/session-2'),
+      summary('owned', 20, '/projects/project'),
+    )
+    const groups = deriveGroups(
+      sessions,
+      [workspace('project', ['owned', 'fast-member']), fastWorkspace('fast')],
+      noArchive,
+      noAttention,
+      view(['project', 'fast']),
+      fastRoot,
+    )
+    expect(groups.map(group => group.key)).toEqual(['project'])
+    expect(groups[0]!.sessions.map(row => row.id)).toEqual([sid('owned')])
+  })
+
+  it('leaves a Fast Session out of the Ungrouped bucket', () => {
+    const sessions = list(
+      fastSessionSummary('fast', 'C:/Temp/dsh_fast_sessions/session-1'),
+      summary('loose', 20, '/projects/loose'),
+    )
+    const groups = deriveGroups(sessions, [], noArchive, noAttention, view([UNGROUPED_KEY]), fastRoot)
+    expect(groups[0]!.sessions.map(row => row.id)).toEqual([sid('loose')])
+  })
+})
+
+/** A Session whose working directory sits under {@link fastRoot}. */
+function fastSessionSummary(id: string, cwd: string): SessionSummary {
+  return summary(id, 10, cwd)
+}

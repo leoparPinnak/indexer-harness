@@ -8,6 +8,8 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type {
   SessionControlBaseline,
   SessionControlFrame,
+  SessionCreateFastValue,
+  SessionFastRootValue,
   SessionQueuedItem,
   SessionSummary,
   SessionJob as JobView,
@@ -582,6 +584,38 @@ export class SessionManager {
       }
     }
     return result
+  }
+
+  /**
+   * Contract session.createFast; on success merge into summaries immediately
+   * with the working directory the Host created and returned, so a surface can
+   * classify the row as a Fast Session before the next list refresh.
+   * @param workspaceTitle - display title for the Workspace the Session owns.
+   * @returns the create result.
+   */
+  async createFast(workspaceTitle?: string): Promise<RemoteResult<SessionCreateFastValue>> {
+    const result = await this.remote.session.createFast(
+      workspaceTitle === undefined ? {} : { workspaceTitle },
+    )
+    if (result.ok) {
+      this.recordMutation({ kind: 'upsert', summary: {
+        sessionId: result.value.sessionId,
+        updatedAt: Date.now(),
+        running: false,
+        blank: true,
+        cwd: result.value.cwd,
+      } })
+    }
+    return result
+  }
+
+  /**
+   * Contract session.fastSessionRoot: the one deployment fact a surface needs
+   * to recognize Fast Sessions without a second Host round trip.
+   * @returns the Fast Session root, or a business/transport error.
+   */
+  async fastSessionRoot(): Promise<RemoteResult<SessionFastRootValue>> {
+    return await this.remote.session.fastSessionRoot()
   }
 
   /**

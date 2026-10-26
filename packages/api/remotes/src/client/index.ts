@@ -8,6 +8,7 @@ import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import llmRemote from '@deepseek-ai/dsh-llm/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import pluginInventoryRemote from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+import mcpSessionRemote from '@deepseek-ai/dsh-mcp-session/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
 import sessionFeedbackRemote from '@deepseek-ai/dsh-command-feedback/remote'
 import fileUploadsRemote from '@deepseek-ai/dsh-client-file-upload/remote'
@@ -20,12 +21,24 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 
 export type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 export type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
+// The MCP server plane's vocabulary: the Loader-row projection a Client
+// contribution toggles, named without importing the Host package.
+export type {
+  AddMcpServerRequest,
+  McpServerConnectionState, McpServersSnapshot, McpServerView,
+} from '@deepseek-ai/dsh-host-plugin-inventory/types'
+// The per-session MCP visibility vocabulary: what the composer control reads
+// and switches, named without importing the Host package.
+export type {
+  McpSessionListRequest, McpSessionServerView, McpSessionSetRequest, McpSessionSnapshot,
+} from '@deepseek-ai/dsh-mcp-session/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/remote'
 export type {} from '@deepseek-ai/dsh-commands/remote'
 export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-llm/remote'
 export type {} from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+export type {} from '@deepseek-ai/dsh-mcp-session/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
 export type {} from '@deepseek-ai/dsh-command-feedback/remote'
 export type {} from '@deepseek-ai/dsh-client-file-upload/remote'
@@ -152,7 +165,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, goalsRemote, llmRemote, dynamicRemote,
-      pluginInventoryRemote, messageFeedbackRemote, sessionFeedbackRemote, fileUploadsRemote, sessionReferencesRemote,
+      pluginInventoryRemote, mcpSessionRemote, messageFeedbackRemote, sessionFeedbackRemote, fileUploadsRemote, sessionReferencesRemote,
       subagentsRemote, sessionRemote, workspaceRemote, workspaceFilesRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))

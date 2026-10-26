@@ -90,7 +90,9 @@ describe('native path opener', () => {
 
   it('opens with Windows Invoke-Item and escapes single quotes', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
-    await openNativePath("C:\\work\\o'reilly.txt", signal(), { platform: 'win32', run })
+    await openNativePath("C:\\work\\o'reilly.txt", signal(), {
+      platform: 'win32', run, isDirectory: async () => false,
+    })
     expect(run).toHaveBeenCalledWith(
       'powershell.exe',
       ['-NoProfile', '-Command', "Invoke-Item -LiteralPath 'C:\\work\\o''reilly.txt'"],
@@ -98,9 +100,55 @@ describe('native path opener', () => {
     )
   })
 
+  it('opens a Windows directory in Explorer instead of the association hop', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await openNativePath('C:\\work\\my project', signal(), {
+      platform: 'win32', run, isDirectory: async () => true,
+    })
+    expect(run.mock.calls[0]).toEqual([
+      'explorer.exe', ['C:\\work\\my project'], expect.any(AbortSignal), { windowsHide: false },
+    ])
+    // Explorer is not allowed to raise its own window, so the open takes the
+    // foreground for that exact folder window and verifies it.
+    const [command, args, calledSignal, options] = run.mock.calls[1] ?? []
+    expect(command).toBe('powershell.exe')
+    expect(String(args?.[3])).toContain("$target = 'C:\\work\\my project'")
+    expect(calledSignal).toBeInstanceOf(AbortSignal)
+    expect(options).toEqual({ windowsHide: true })
+  })
+
+  it('accepts Explorer exit 1 as a delegated open and rethrows other failures', async () => {
+    const delegated = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('explorer exited 1'), { code: 1 })
+    })
+    await expect(openNativePath('C:\\work\\project', signal(), {
+      platform: 'win32', run: delegated, isDirectory: async () => true,
+    })).resolves.toBeUndefined()
+
+    const failed = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('explorer exited 2'), { code: 2 })
+    })
+    await expect(openNativePath('C:\\work\\project', signal(), {
+      platform: 'win32', run: failed, isDirectory: async () => true,
+    })).rejects.toThrow('explorer exited 2')
+  })
+
+  it('reports an aborted Windows directory open as the abort reason', async () => {
+    const abort = new AbortController()
+    abort.abort(new Error('window closed'))
+    const run = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('explorer exited 1'), { code: 1 })
+    })
+    await expect(openNativePath('C:\\work\\project', abort.signal, {
+      platform: 'win32', run, isDirectory: async () => true,
+    })).rejects.toThrow('window closed')
+  })
+
   it('uses the Windows desktop association for text documents', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
-    await openNativeTextFile('C:\\work\\settings.yaml', signal(), { platform: 'win32', run })
+    await openNativeTextFile('C:\\work\\settings.yaml', signal(), {
+      platform: 'win32', run, isDirectory: async () => false,
+    })
     expect(run).toHaveBeenCalledWith(
       'powershell.exe',
       ['-NoProfile', '-Command', "Invoke-Item -LiteralPath 'C:\\work\\settings.yaml'"],
@@ -338,7 +386,11 @@ describe('native file manager', () => {
     const internals = { platform, env: {}, osRelease: 'generic', run }
     expect(nativeFileManager(internals)).toBe(manager)
     await revealNativePath(path, signal(), internals)
-    expect(run).toHaveBeenCalledExactlyOnceWith(command, args, expect.any(AbortSignal))
+    const [calledCommand, calledArgs, calledSignal, calledOptions] = run.mock.calls[0] ?? []
+    expect([calledCommand, calledArgs]).toEqual([command, args])
+    expect(calledSignal).toBeInstanceOf(AbortSignal)
+    // Explorer shows its own window, so its reveal must not hide that window.
+    expect(calledOptions).toEqual(platform === 'win32' ? { windowsHide: false } : undefined)
   })
 
   it('selects a translated WSL path in Explorer and never starts a Linux file manager', async () => {
@@ -411,5 +463,7 @@ it.each([
 ])('preserves special characters in the Explorer target %s', async (path, target) => {
   const run = vi.fn<PathOpenerRunner>().mockResolvedValue({ stdout: '', stderr: '' })
   await revealNativePath(path, signal(), { platform: 'win32', run })
-  expect(run).toHaveBeenCalledWith('explorer.exe', ['/select,', target], expect.any(AbortSignal))
+  expect(run).toHaveBeenCalledWith(
+    'explorer.exe', ['/select,', target], expect.any(AbortSignal), { windowsHide: false },
+  )
 })

@@ -60,6 +60,20 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
         xmlns="http://www.w3.org/2000/svg"
       />
     </button>
+    <button
+      aria-label="New quick session in a temporary folder"
+      class="newSession fastSession"
+      type="button"
+    >
+      <svg
+        data-content="163bba65"
+        fill="none"
+        height="18"
+        viewBox="0 0 16 16"
+        width="18"
+        xmlns="http://www.w3.org/2000/svg"
+      />
+    </button>
     <div
       class="regionArea"
     >
@@ -190,6 +204,25 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
         New Session
       </span>
     </button>
+    <button
+      aria-label="New quick session in a temporary folder"
+      class="newSession fastSession"
+      type="button"
+    >
+      <svg
+        data-content="163bba65"
+        fill="none"
+        height="14"
+        viewBox="0 0 16 16"
+        width="14"
+        xmlns="http://www.w3.org/2000/svg"
+      />
+      <span
+        class="newSessionLabel wide"
+      >
+        Quick session
+      </span>
+    </button>
     <div
       class="regionArea"
     >
@@ -318,6 +351,25 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
         class="newSessionLabel wide"
       >
         新会话
+      </span>
+    </button>
+    <button
+      aria-label="在临时目录中新建快速会话"
+      class="newSession fastSession"
+      type="button"
+    >
+      <svg
+        data-content="163bba65"
+        fill="none"
+        height="14"
+        viewBox="0 0 16 16"
+        width="14"
+        xmlns="http://www.w3.org/2000/svg"
+      />
+      <span
+        class="newSessionLabel wide"
+      >
+        快速会话
       </span>
     </button>
     <div

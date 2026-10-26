@@ -394,6 +394,35 @@
   border-bottom: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08));
 }
 
+/* Fast Sessions: the deployment's scratch chats under the same label-row and
+   closing rule as the pinned favorites, so the Workspace accounts below read as
+   a separate region. */
+.fastSection {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08));
+}
+
+/* The Fast Session header names the root directory, which is longer than a
+   section name: wrap it onto a second line and break inside segments so the
+   whole path stays readable in a narrow column. */
+.fastHeader {
+  height: auto;
+  min-height: 34px;
+  padding: 7px 8px;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  gap: 4px;
+}
+
+/* The label takes the room the create button leaves, so a long path wraps
+   beside that button instead of pushing it out of the row. */
+.fastHeaderLabel {
+  flex: 1;
+  min-width: 0;
+}
+
 .listTopDropIndicator,
 .workspaceDropBefore::before,
 .workspaceDropAfter::after {

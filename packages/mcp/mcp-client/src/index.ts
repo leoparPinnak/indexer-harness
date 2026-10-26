@@ -24,6 +24,9 @@ import type {} from '@deepseek-ai/dsh-tools'
 
 export type { McpResult } from './tools.ts'
 export type { ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
+export type { McpConnectionState, McpStatus, McpStatusListener } from './status.ts'
+export { McpStatusRegistry, appendStatusLog, mcpStatusRegistry, resolveStatusLogPath } from './status.ts'
+export { MCP_CLIENT_MODULE_SUFFIX, SERVER_NAME_PATTERN, serverNameOfLoaderEntry } from './server-name.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client'
@@ -70,6 +73,8 @@ export interface StdioConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** JSONL connection-status log path; omission resolves to the harness home `logs/mcp-status.jsonl`. */
+  statusLogPath?: string
 }
 
 /** Config for connecting to an MCP server over Streamable HTTP (SSE). */
@@ -92,6 +97,8 @@ export interface StreamableHttpConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** JSONL connection-status log path; omission resolves to the harness home `logs/mcp-status.jsonl`. */
+  statusLogPath?: string
 }
 
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -121,6 +128,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
+    statusLogPath: z.string().default(''),
   }),
   z.object({
     transport: z.const('streamable-http'),
@@ -130,6 +138,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
+    statusLogPath: z.string().default(''),
   }),
 ]) as unknown as z<ConfigInput, Config>
 

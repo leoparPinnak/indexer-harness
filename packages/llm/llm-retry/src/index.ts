@@ -195,6 +195,18 @@ export function apply(ctx: Context, config: Config = {}, internals: RetryInterna
     { agent, turn, step, provider, failure, retryPolicy: policy, signal }: Parameters<Events['agent/request-error']>[0],
     next: () => Promise<RequestErrorAction>,
   ): Promise<RequestErrorAction> {
+    // The operator only ever sees "retrying" in the UI, so the failing kind and
+    // message are recorded once per attempt: without this line an endlessly
+    // retried request has no diagnosable cause anywhere in the process.
+    console.error('[llm-retry] request error', {
+      provider,
+      turn,
+      step,
+      session: agent.session?.id,
+      code: (failure as { code?: string } | undefined)?.code,
+      message: (failure as { message?: string } | undefined)?.message,
+      policy: policy === undefined ? 'none' : policy.mode,
+    })
     if (policy === undefined) return next()
     if (policy.mode === 'always') {
       if (signal.aborted || lifetime.signal.aborted) return

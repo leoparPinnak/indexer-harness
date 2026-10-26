@@ -49,6 +49,14 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 
 `revealNativePath(path, signal)` 在 Finder 或文件资源管理器中选中文件，包含 WSL 路径转换；在桌面 Linux 上通过 `xdg-open` 打开上层目录。`nativeFileManager()` 标识该操作，供 UI 根据 Host 选择文案；桌面是否可用仍由独立的 `canOpenNativePath()` 检查决定。调用方必须先授权绝对文件路径，再执行操作。平台分派由注入运行器的测试覆盖；原生桌面验证由对应平台负责。 Explorer 接收独立参数中的编码文件 URI。退出码 1 按已转交请求处理；取消、找不到可执行文件和其他退出码仍然报错。该确认不能证明桌面窗口已选中文件。
 
+### Windows 文件夹窗口
+
+在 Windows 上打开目录会直接调用 `explorer.exe`，而不是经由 shell 的 `Invoke-Item` 动词，因此窗口不必等待 PowerShell 冷启动。Explorer 在把请求转交给正在运行的桌面进程后会以退出码 1 结束，打开器将其视为成功转交。
+
+被打开的窗口属于 Explorer 而不是本进程，因此 Windows 会拒绝它自身的激活请求，窗口就会落在操作者当前窗口的后面。转交之后，打开器显式夺取前台：它通过 shell 自己记录的已开窗口定位该文件夹对应的那个窗口（按文件夹路径匹配，绝不按显示的标题），然后执行一条逐步验证的阶梯——与当前前台线程共享输入状态并抬起窗口、再使用 shell 自身的切换、一次解锁前台锁的合成 ALT 按键、最后做一次短暂的 z 序闪动——每一步之后都重新检查 `GetForegroundWindow()`，直到窗口确实拥有前台。已经打开的同一文件夹会定位到那个既有窗口。该辅助程序以退出码报告结果（0 前台、2 无窗口、3 被拒绝）。
+
+前台夺取在整个进程内串行执行并带重试：两个辅助程序同时争抢会互相夺走前台，因此第二次打开会排队等待；而窗口仍在创建中的文件夹会把它的夺取流程继续寻找最多五秒，之后由下一轮重新抬起找到的窗口。路径打开器把最终的拒绝视为“窗口已在后面打开”，而不是手势失败。启动 Explorer 时必须保持 `windowsHide` 为 `false`，而辅助程序必须为 `true`：隐藏的启动状态会被 GUI 子进程创建的窗口继承，从而让文件夹以不可见的方式打开。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -66,6 +74,7 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 | [`src/index.ts`](src/index.ts) | 命令运行器与路径打开器的公共导出 |
 | [`src/runner.ts`](src/runner.ts) | 无 shell 的 `execFile` 适配器 |
 | [`src/path-opener.ts`](src/path-opener.ts) | 桌面探测、打开意图、浏览器偏好与 WSL 转换 |
+| [`src/windows-foreground.ts`](src/windows-foreground.ts) | 为托管打开所创建的文件夹窗口夺取 Windows 前台 |
 | — | 不发布运行时不变式伴生入口；每次运行都是一次无状态的子进程往返，不拥有事件流或可变运行时数据；相关行为由单元测试保障。 |
 
 ### execFile 给了运行器什么

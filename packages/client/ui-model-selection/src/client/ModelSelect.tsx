@@ -46,7 +46,7 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, load, select, t }:
+  { locked, available, directory, load, refresh, select, t }:
   ModelSelectInjected & { locked: boolean } & PropsLocale<'model'>,
 ) {
   const state = useSyncExternalStore(
@@ -332,8 +332,7 @@ export function ModelSelect(
                 </div>
               ))}
               <div className={clsx(css.groups, 'scrollable')}>
-                {state.groups.map((group) => {
-                  const headingId = `${id}-${group.id}`
+                {state.groups.map((group) => {                  const headingId = `${id}-${group.id}`
                   return (
                     <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
                       <div className={css.groupTitle} id={headingId}>{group.name}</div>
@@ -365,6 +364,22 @@ export function ModelSelect(
                   )
                 })}
               </div>
+              {/* Re-reads the Host catalog: a provider that finished its own
+                  model discovery after this menu was first opened shows its
+                  models here without a page reload. */}
+              <button
+                ref={itemRef()}
+                type="button"
+                role="menuitem"
+                className={css.refresh}
+                disabled={state.status === 'loading' || busy}
+                onClick={() => {
+                  lastActionRef.current = 'load'
+                  refresh()
+                }}
+              >
+                {state.status === 'loading' ? t('action.refreshing') : t('action.refresh')}
+              </button>
               {state.status === 'ready' && choices.length === 0 && (
                 <div className={css.empty}>{t('empty.models')}</div>
               )}

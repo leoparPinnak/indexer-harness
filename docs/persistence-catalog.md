@@ -83,7 +83,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-Sources: [`packages/core/session/src/types.ts:404`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:412`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:434`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:465`](../packages/core/session/src/types.ts)
+Sources: [`packages/core/session/src/types.ts:413`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:421`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:443`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:474`](../packages/core/session/src/types.ts)
 
 ## Events
 
@@ -210,7 +210,7 @@ Source: [`packages/interaction/user-approval/src/index.ts:33`](../packages/inter
 'assistant/attempt': { turn: number; step: number; stream: AssistantStreamRecord[] }
 ```
 
-Source: [`packages/core/session/src/types.ts:335`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:344`](../packages/core/session/src/types.ts)
 
 <a id="assistantmessage--surface"></a>
 
@@ -240,7 +240,7 @@ Source: [`packages/core/session/src/types.ts:335`](../packages/core/session/src/
 
 Types: [TokenUsage](subsystems/llm-streaming.md)
 
-Source: [`packages/core/session/src/types.ts:321`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:330`](../packages/core/session/src/types.ts)
 
 ### `autopush/*`
 
@@ -342,7 +342,7 @@ Source: [`packages/interaction/commands/src/types.ts:105`](../packages/interacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:240`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:247`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionmode--log-only"></a>
 
@@ -358,7 +358,7 @@ Source: [`packages/compaction/compaction/src/types.ts:240`](../packages/compacti
 'compaction/mode': CompactionSessionMode
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:271`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:278`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionprune--log-only"></a>
 
@@ -384,7 +384,7 @@ Source: [`packages/compaction/compaction/src/types.ts:271`](../packages/compacti
 }
 ```
 
-Source: [`packages/compaction/compaction/src/types.ts:257`](../packages/compaction/compaction/src/types.ts)
+Source: [`packages/compaction/compaction/src/types.ts:264`](../packages/compaction/compaction/src/types.ts)
 
 <a id="compactionstart--log-only"></a>
 
@@ -471,6 +471,13 @@ Source: [`packages/compaction/compaction/src/types.ts:140`](../packages/compacti
    * single-call arm below.
    */
   intermediateCalls?: CompactionSummaryCall[]
+  /**
+   * Media accounting for the shadowed span: how many images entered the
+   * compacted context, how many the replay withheld behind placeholders,
+   * the payload characters recovered, and per-image preview identities.
+   * Absent when the backend predates the figures.
+   */
+  media?: CompactionMediaReport
 } & (
   | {
     /** Complete provider output before the backend's safe summary projection. */
@@ -654,6 +661,23 @@ Source: [`packages/llm/llm-retry/src/types.ts:9`](../packages/llm/llm-retry/src/
 
 Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src/types.ts)
 
+### `mcp/*`
+
+<a id="mcpsession-servers--log-only"></a>
+
+#### `mcp/session-servers` — log-only
+
+```ts persistence-catalog
+/**
+ * Durable per-session MCP server visibility. Log-only user intent: the
+ * last event wins, the fold is the projection below, and the event never
+ * enters the model transcript.
+ */
+'mcp/session-servers': { disabled: readonly string[] }
+```
+
+Source: [`packages/mcp/mcp-session/src/index.ts:53`](../packages/mcp/mcp-session/src/index.ts)
+
 ### `model/*`
 
 <a id="modelselection--log-only"></a>
@@ -721,7 +745,7 @@ Source: [`packages/plan/plan-mode/src/index.ts:47`](../packages/plan/plan-mode/s
 'request/context': RequestContext
 ```
 
-Source: [`packages/core/session/src/types.ts:377`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:386`](../packages/core/session/src/types.ts)
 
 <a id="requestheader--log-only"></a>
 
@@ -740,7 +764,7 @@ Source: [`packages/core/session/src/types.ts:377`](../packages/core/session/src/
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:365`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:374`](../packages/core/session/src/types.ts)
 
 ### `sandbox/*`
 
@@ -815,7 +839,7 @@ Source: [`packages/schedule/schedule/src/types.ts:219`](../packages/schedule/sch
 'session/end-seed': { inherited?: true }
 ```
 
-Source: [`packages/core/session/src/types.ts:400`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:409`](../packages/core/session/src/types.ts)
 
 <a id="sessiontitle--log-only"></a>
 
@@ -929,7 +953,7 @@ Source: [`packages/session/session-persistence/src/retained-log-vocabulary.ts:76
 'step/end': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:289`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:298`](../packages/core/session/src/types.ts)
 
 <a id="stepstart--log-only"></a>
 
@@ -940,7 +964,7 @@ Source: [`packages/core/session/src/types.ts:289`](../packages/core/session/src/
 'step/start': { turn: number; step: number }
 ```
 
-Source: [`packages/core/session/src/types.ts:287`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:296`](../packages/core/session/src/types.ts)
 
 ### `subagent/*`
 
@@ -1016,7 +1040,7 @@ Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:17`](../p
 'system/message': { turn: number; step: number; message: SystemMessage }
 ```
 
-Source: [`packages/core/session/src/types.ts:310`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:319`](../packages/core/session/src/types.ts)
 
 ### `team/*`
 
@@ -1109,7 +1133,7 @@ Source: [`packages/todo/tool-todo/src/types.ts:31`](../packages/todo/tool-todo/s
 
 Types: [ToolCallId](subsystems/core.md)
 
-Source: [`packages/core/session/src/types.ts:341`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:350`](../packages/core/session/src/types.ts)
 
 <a id="toolptc-dispatch--log-only"></a>
 
@@ -1185,7 +1209,7 @@ Source: [`packages/core/tools/src/types.ts:40`](../packages/core/tools/src/types
 }
 ```
 
-Source: [`packages/core/session/src/types.ts:353`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:362`](../packages/core/session/src/types.ts)
 
 ### `tool-workflow/*`
 
@@ -1265,7 +1289,7 @@ Source: [`packages/workflow/tool-workflow/src/types.ts:47`](../packages/workflow
 
 Types: [TurnEndReason](subsystems/session.md)
 
-Source: [`packages/core/session/src/types.ts:285`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:294`](../packages/core/session/src/types.ts)
 
 <a id="turnstart--log-only"></a>
 
@@ -1277,11 +1301,16 @@ Source: [`packages/core/session/src/types.ts:285`](../packages/core/session/src/
  * Rejection, empty input, cancellation, or failure may close it with no
  * step; otherwise the following identified `user/message` event or batch
  * records the messages entering the step.
+ *
+ * `continuation` is the optional operator-RESUME marker: present only on the
+ * turn an operator reopened after a cut turn, naming the cut turn
+ * (`ofTurn`) whose checkpoint request the flow continues. Absent on every
+ * ordinary turn — old logs without it read unchanged.
  */
-'turn/start': { turn: number }
+'turn/start': { turn: number; continuation?: { ofTurn: number } }
 ```
 
-Source: [`packages/core/session/src/types.ts:276`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:285`](../packages/core/session/src/types.ts)
 
 ### `user/*`
 
@@ -1300,7 +1329,7 @@ Source: [`packages/core/session/src/types.ts:276`](../packages/core/session/src/
 'user/message': UserMessage
 ```
 
-Source: [`packages/core/session/src/types.ts:297`](../packages/core/session/src/types.ts)
+Source: [`packages/core/session/src/types.ts:306`](../packages/core/session/src/types.ts)
 
 ### `web/*`
 

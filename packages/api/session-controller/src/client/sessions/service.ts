@@ -411,6 +411,32 @@ export class ClientSessions implements ISessions {
   }
 
   /**
+   * Create a Fast Session on the host: a Session owning a fresh folder under
+   * the Fast Session root, named by the Session id. Same resolution guarantee
+   * as {@link ClientSessions.create}.
+   * @param workspaceTitle - display title for the Workspace the Session owns.
+   * @returns the new session id.
+   * @throws {SessionCreateError} with the requested id.
+   */
+  async createFast(workspaceTitle?: string): Promise<SessionId> {
+    const result = await this.manager.createFast(workspaceTitle)
+    // The Host mints a Fast Session id, so a failed create has none to reconcile.
+    if (!result.ok) throw new SessionCreateError(result.error, undefined)
+    this.projectList()
+    return result.value.sessionId
+  }
+
+  /**
+   * Read the host's Fast Session root.
+   * @returns the resolved absolute root, or a transport failure.
+   */
+  async fastSessionRoot(): Promise<string> {
+    const result = await this.manager.fastSessionRoot()
+    if (!result.ok) throw new Error(`fast session root unavailable: ${result.error.message}`)
+    return result.value.root
+  }
+
+  /**
    * Fork a session from a completed-turn prefix of the source (same
    * synchronous-addressability guarantee as {@link ClientSessions.create}:
    * on resolution the child is in the list store and open() can target it).

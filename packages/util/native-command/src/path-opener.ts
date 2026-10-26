@@ -10,9 +10,11 @@
  */
 
 import { release as osRelease } from 'node:os'
+import { stat } from 'node:fs/promises'
 import { dirname, extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runNativeCommand, type NativeCommandRunner } from './runner.ts'
+import { activateWindowsExplorerWindow } from './windows-foreground.ts'
 
 /** Testable command boundary; native implementations never invoke a shell. */
 export type PathOpenerRunner = NativeCommandRunner
@@ -25,6 +27,8 @@ export interface PathOpenerInternals {
   /** Environment used for WSL markers and the desktop Linux browser convention. */
   env?: NodeJS.ProcessEnv
   run?: PathOpenerRunner
+  /** Directory probe deciding the Windows open route; defaults to a real `stat`. */
+  isDirectory?: (path: string) => Promise<boolean>
 }
 
 /** Documents a browser renders, as opposed to ones an editor merely edits. */
@@ -108,6 +112,47 @@ async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpene
   ], signal)
 }
 
+/**
+ * Open one directory in Windows Explorer.
+ *
+ * A directory's registered handler IS the file manager, so naming
+ * `explorer.exe` skips the `Invoke-Item` hop a document association needs. That
+ * hop is what makes this gesture unreliable: it costs a PowerShell cold start
+ * before the window can appear, and a window opened through a background
+ * process's child does not carry that process's foreground rights. Explorer
+ * activating its own window is both immediate and in front.
+ * @param path - Windows directory path.
+ * @param signal - caller lifetime; abort terminates the command.
+ * @param run - command runner.
+ * @returns after the handoff; Explorer exit 1 is accepted as a delegated open.
+ */
+async function openWindowsDirectory(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
+  try {
+    // Explorer draws the window itself, so the hidden startup state console
+    // helpers use would create a window nobody can see.
+    await run('explorer.exe', [path], signal, { windowsHide: false })
+  } catch (error) {
+    signal.throwIfAborted()
+    // Explorer exits 1 after handing the directory to the running desktop process.
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 1) throw error
+  }
+  // The window is not owned by this process, so its own activation request is
+  // refused and it lands behind the operator's window. Take the foreground
+  // explicitly and verify it; the folder is already open, so a refusal leaves
+  // the operator with today's behaviour instead of a failed gesture.
+  await activateWindowsExplorerWindow(path, signal, run).catch(() => undefined)
+}
+
+/** Default directory probe for the Windows open route. */
+async function statIsDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    // Swallows ENOENT/EACCES: a path that cannot be read is not a directory to open.
+    return false
+  }
+}
+
 /** Translate a WSL path before handing it to the Windows desktop. */
 async function openWslPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
   const translated = await run('wslpath', ['-w', path], signal)
@@ -138,7 +183,11 @@ async function openNativePathWithIntent(
   }
 
   if (platform === 'win32') {
-    await openWindowsPath(path, signal, run)
+    // A directory's handler is the file manager; only a document needs the
+    // association the PowerShell `Invoke-Item` hop resolves.
+    const directory = await (internals.isDirectory ?? statIsDirectory)(path)
+    if (directory) await openWindowsDirectory(path, signal, run)
+    else await openWindowsPath(path, signal, run)
     return
   }
 
@@ -247,7 +296,8 @@ export async function revealNativePath(
     // Explorer parses commas itself; a file URI preserves commas and whitespace in the path.
     const target = pathToFileURL(windowsPath, { windows: true }).href.replaceAll(',', '%2C')
     try {
-      await run('explorer.exe', ['/select,', target], signal)
+      // Same window-state rule as opening a directory: Explorer draws the window.
+      await run('explorer.exe', ['/select,', target], signal, { windowsHide: false })
     } catch (error) {
       signal.throwIfAborted()
       // Explorer can exit 1 after delegating to the existing desktop process.

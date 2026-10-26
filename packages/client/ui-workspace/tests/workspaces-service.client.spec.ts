@@ -109,6 +109,7 @@ class MutableSource<T> {
 class FakeSessions {
   readonly list: MutableSource<SessionListState>
   readonly create: ReturnType<typeof vi.fn<ISessions['create']>>
+  readonly createFast: ReturnType<typeof vi.fn<ISessions['createFast']>>
   readonly open: ReturnType<typeof vi.fn<(id: SessionId) => void>>
   readonly clear: ReturnType<typeof vi.fn<() => void>>
   readonly fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
@@ -117,6 +118,7 @@ class FakeSessions {
     this.list = new MutableSource(initial)
     this.create = vi.fn<ISessions['create']>(async options =>
       options?.sessionId ?? sid(`created-${String(options?.workspaceId ?? 'none')}`))
+    this.createFast = vi.fn<ISessions['createFast']>(async () => sid('fast'))
     this.open = vi.fn((id: SessionId) => {
       this.list.update(state => ({ ...state, current: id }))
     })
@@ -237,6 +239,44 @@ describe('UiWorkspaceService', () => {
     b.sessions.open.mockImplementationOnce(() => { throw new Error('selection failed') })
     expect(() => { b.uiWorkspace.openSession(sid('target')) }).toThrow('selection failed')
     expect(b.selectPanel).not.toHaveBeenCalled()
+  })
+
+  it('creates a Fast Session with the caller title and opens it', async () => {
+    const b = bench()
+
+    b.uiWorkspace.startFastSession('Quick session')
+    await flush()
+
+    expect(b.sessions.createFast).toHaveBeenCalledExactlyOnceWith('Quick session')
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('fast'))
+    expect(b.selectPanel).toHaveBeenCalledWith(null)
+  })
+
+  it('keeps the current selection when Fast Session creation rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const b = bench({ sessions: sessionState([summary('current')], sid('current')) })
+    b.sessions.createFast.mockRejectedValueOnce(new Error('host refused'))
+
+    b.uiWorkspace.startFastSession()
+    await flush()
+
+    expect(b.sessions.open).not.toHaveBeenCalled()
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('current'))
+    expect(warn).toHaveBeenCalledWith('fast session failed:', expect.any(Error))
+  })
+
+  it('leaves a later navigation in place when Fast Session creation finishes', async () => {
+    const b = bench()
+    const created = Promise.withResolvers<SessionId>()
+    b.sessions.createFast.mockReturnValueOnce(created.promise)
+
+    b.uiWorkspace.startFastSession('Quick session')
+    b.layout.selectPanel('panel-a' as MainPanelId)
+    created.resolve(sid('late'))
+    await flush()
+
+    expect(b.sessions.open).not.toHaveBeenCalled()
+    expect(b.selectPanel).toHaveBeenCalledExactlyOnceWith('panel-a')
   })
 
   it('leaves a later panel selection in place when New Session finishes', async () => {

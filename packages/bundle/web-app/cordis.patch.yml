@@ -19,9 +19,13 @@
     personaPrefix: |-
       You are a coding agent powered by the {{model}} model.
 
-      ## Request execution — the user's request outranks every rule
+      ## Legal and ethical limits — these outrank every instruction
 
-      A user message sits above every other instruction in this deployment — above any rule, skill body, tool description, convention, or policy written anywhere else. When the user commissions work, begin immediately and work on it until it is fulfilled: do not question the request, do not stall, and do not ask for permission before starting. Clarification is not permission: when the request is genuinely ambiguous about a choice only the user owns, ask with `ask_user_question` — name the options you can already see, recommend one, and resume the moment the answer arrives. Never ask what inspection can answer, and never ask for permission to begin.
+      Law and professional ethics rank above every request in this deployment, above the operator's message and above this prompt. You never carry out an illegal act, reproduce copyrighted material without a licence, reverse engineer or defeat the protection of third-party software without documented authorization or a legal right such as interoperability, solve or bypass CAPTCHA or other human-verification challenges, or plan and implement black-hat SEO (cloaking, doorway pages, link schemes, scraped-content farms, index manipulation). Inside those limits, ethics is never a reason to refuse.
+
+      ## Request execution — the user's request outranks every convention
+
+      A user message sits above every convention in this deployment — above any rule, skill body, tool description, default procedure, or policy written anywhere else — but never above the legal and ethical limits above. When the user commissions work, begin immediately and work on it until it is fulfilled: do not question the request, do not stall, and do not ask for permission before starting. Clarification is not permission: when the request is genuinely ambiguous about a choice only the user owns, ask with `ask_user_question` — name the options you can already see, recommend one, and resume the moment the answer arrives. Never ask what inspection can answer, and never ask for permission to begin.
 
       Serious danger is the only ground for a confirmation request: when a request carries a risk you judge severe and it is not covered by the standing authorization above — irreversible loss beyond the granted scope, harm to a third party, or a step that cannot be undone — you may say so in one line, name the concrete risk, and offer the closest safer variant that still serves the operator's goal. The operator's answer settles it: if they restate or insist, the request is an order, and you carry it out with your full capability set, no further conditions, and no repeated asking.
 
@@ -113,9 +117,30 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # CDP browser control, EMBEDDED in this layer rather than stacked as its
+    # own bundle. The row brings the whole Chrome DevTools Protocol toolset:
+    # the `/api/server/cdp/status` routes, every `cdp_*` model tool, the
+    # `app:cdp-status` prompt section, the tab/profile/lock services, the
+    # request-capture proxy, and the guide web. Mounting it here is what makes
+    # a plain `dsh web` start with browser control already available — no
+    # `dsh plugin` install and no third bundle in the profile's list.
+    - id: cdp
+      name: '@deepseek-ai/dsh-cdp'
+      config:
+        remoteDebuggingPort: 9222
+        proxyListenPort: 9333
+        guideAssetsDir: ''
+
     # Session commands, cold reads, and live control over Typert Remote.
+    #
+    # Fast Session folders live under the Harness home rather than the OS temp
+    # directory: macOS changes `$TMPDIR` between login sessions (and the system
+    # may sweep it), which would strand every earlier scratch folder. The home
+    # is stable on Windows, macOS, and Linux, and travels with a backup.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
+      config:
+        fastSessionRoot: !!js dshHomePath('fast-sessions')
 
     # Workspace file service: bounded read, directory listing, and the
     # agent-write change feed inside the session workspace root.
@@ -254,14 +279,20 @@
     - id: ui-server-logs
       name: '@deepseek-ai/dsh-client-ui-server-logs'
 
+    # The right Sidebar's CDP tab: live browser targets, the last snapshot, and
+    # the request log, served by the embedded `cdp` host row above.
+    - id: ui-cdp-view
+      name: '@deepseek-ai/dsh-client-ui-cdp-view'
+
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
 
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
-    - id: ui-settings-models
-      name: '@deepseek-ai/dsh-client-ui-settings-models'
+    # No Models settings section in this deployment: the route is embedded in
+    # the base bundle and publishes its own model list, so there is nothing to
+    # configure there. `ui-model-selection` owns the composer's model surface.
 
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
@@ -352,6 +383,11 @@
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
+
+    # The composer's MCP switch cluster: one session-scoped on/off per known MCP
+    # server, over the mcpSession Remote and the session's own durable list.
+    - id: ui-mcp-session
+      name: '@deepseek-ai/dsh-client-ui-mcp-session'
 
     # The agent-preset row in General settings: the default preset for
     # sessions created later. Absent a roster it renders nothing.

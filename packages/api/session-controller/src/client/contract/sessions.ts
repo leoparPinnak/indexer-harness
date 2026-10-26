@@ -38,6 +38,19 @@ export interface ISessions {
     sessionId?: SessionId
   }): Promise<SessionId>
   /**
+   * Create a Fast Session on the Host: a Session owning a fresh folder under
+   * the Fast Session root, named by the Session id.
+   * @param workspaceTitle - display title for the Workspace the Session owns.
+   * @returns the Session identity after its local binding is addressable.
+   */
+  createFast(workspaceTitle?: string): Promise<SessionId>
+  /**
+   * Read the Host's Fast Session root, the directory every Fast Session
+   * working directory sits under.
+   * @returns the resolved absolute root.
+   */
+  fastSessionRoot(): Promise<string>
+  /**
    * Select a session as current.
    * @param id - session id (must exist in the list; unknown ids fail loud).
    */

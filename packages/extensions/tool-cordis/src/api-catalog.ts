@@ -1348,6 +1348,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'mcpSession',
+    summary: 'Remote face of the per-session MCP plane.',
+    description: 'Remote face of the per-session MCP plane. The read side is this service, the write side is McpSessionService.setServerEnabled; the Agent scope carries the effect.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') list(request: McpSessionListRequest): McpSessionSnapshot',
+        description: 'Read one session\'s MCP server visibility.',
+        parameters: [{ name: 'request', description: 'the session to read.' }],
+        returns: 'every known server with this session\'s effective visibility.',
+      },
+      {
+        signature: '@Remote(\'setServerEnabled\') setServerEnabled(request: McpSessionSetRequest): McpSessionSnapshot',
+        description: 'Switch one MCP server for one session. The appended event is the durable decision; the Agent-scope restriction applied here is what the next model request sees.',
+        parameters: [{ name: 'request', description: 'the session, the server, and the desired visibility.' }],
+        returns: 'the session\'s visibility after the write.',
+      },
+    ],
+  },
+  {
     key: 'messageFeedback',
     summary: 'Session-log service; cold operations never construct a Session or Agent.',
     description: 'Session-log service; cold operations never construct a Session or Agent.',
@@ -4720,6 +4739,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'McpSessionListRequest',
+    declaration: 'export interface McpSessionListRequest {\n    readonly sessionId: string;\n}',
+  },
+  {
+    name: 'McpSessionServerView',
+    declaration: 'export interface McpSessionServerView {\n    readonly serverName: string;\n    readonly toolCount: number;\n    readonly hostEnabled: boolean;\n    readonly enabled: boolean;\n}',
+  },
+  {
+    name: 'McpSessionSetRequest',
+    declaration: 'export interface McpSessionSetRequest {\n    readonly sessionId: string;\n    readonly serverName: string;\n    readonly enabled: boolean;\n}',
+  },
+  {
+    name: 'McpSessionSnapshot',
+    declaration: 'export interface McpSessionSnapshot {\n    readonly servers: readonly McpSessionServerView[];\n}',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -4821,7 +4856,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelCatalogModel',
-    declaration: 'export interface ModelCatalogModel {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n    readonly reasoning?: ModelReasoning;\n}',
+    declaration: 'export interface ModelCatalogModel {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n    readonly reasoning?: ModelReasoning;\n    readonly contextWindow?: number;\n}',
   },
   {
     name: 'ModelMessageSource',

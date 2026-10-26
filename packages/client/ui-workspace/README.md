@@ -43,6 +43,10 @@ The Session row's Rename action opens a dialog prefilled with the row's display 
 
 A star on every Session row pins that Session into a **Favorites** section above the groups and the flat list, in the order the stars were set; the section is absent while nothing is starred. Toggling a star writes the Host favorites document, so the section and the row star both republish from the Workspace snapshot rather than from local state. A star whose Session left the list or was archived is skipped.
 
+### Fast Sessions
+
+Sessions whose working directory sits under the deployment's Fast Session root are pinned into a **Quick sessions** section under Favorites, newest first, and closed by a rule that separates it from the Workspace groups below; those Sessions and the Workspaces that own their folders are removed from the groups, so each row appears once. The root arrives through the `fastSessionRoot` injected source, read once per registration from `session.fastSessionRoot`. An unanswered read keeps the empty string, which classifies no Session and leaves the region in its ordinary shape.
+
 ### Pending interactions
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, planning offers report **Planning offer awaiting answer**, and ordinary questions report **Waiting for answer**. Every pending interaction uses an amber warning dot that takes precedence over the running indicator.

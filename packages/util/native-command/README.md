@@ -49,6 +49,14 @@ The `NativeCommandRunner` type is the injectable command boundary for host integ
 
 `revealNativePath(path, signal)` selects the file in Finder or Explorer, including WSL path translation, and opens its parent directory through `xdg-open` on desktop Linux. `nativeFileManager()` identifies that action for Host-derived UI labels; desktop availability remains a separate `canOpenNativePath()` check. Callers must authorize the absolute file path before invoking either operation. Platform dispatch is covered by injected-runner tests; native desktop verification belongs to the corresponding platform. Explorer receives an encoded file URI as a separate argument. Its exit code 1 is accepted as a delegated handoff; cancellation, missing executables, and other exit codes still reject. This acknowledgement does not prove that a desktop window selected the file.
 
+### Windows folder windows
+
+Opening a directory on Windows names `explorer.exe` directly rather than routing through the shell's `Invoke-Item` verb, so the window appears without a PowerShell cold start. Explorer exits 1 after delegating to the running desktop process, which the opener accepts as a successful handoff.
+
+The opened window belongs to Explorer, not to this process, so Windows refuses its own activation request and it would otherwise land behind the operator's window. After the handoff the opener takes the foreground explicitly: it locates that exact folder's window through the shell's own record of open windows (matching the folder path, never a display title), then runs a verified ladder — share input state with the current foreground thread and raise the window, then the shell's own switch, a synthetic ALT press that unlocks the foreground lock, and finally a brief z-order flash — and re-checks `GetForegroundWindow()` after every step until the window provably owns the foreground. A folder already open in an existing window resolves to that window. The helper reports its result as an exit code (0 foreground, 2 no window, 3 refused).
+
+Hand-offs are serialized process-wide and retried: two helpers racing would each steal the foreground from the other, so a second open waits its turn, and a folder whose window is still being created keeps its hand-off looking for up to five seconds before the next pass re-raises the window it finds. The path opener treats a final refusal as "already open behind you" rather than a failed gesture. `windowsHide` must stay `false` for the Explorer launch and `true` for the helper: the hidden startup state is inherited by the window a GUI child creates, which would open the folder invisibly.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -66,6 +74,7 @@ The command runner is a thin wrapper over Node's `execFile`. The path opener sel
 | [`src/index.ts`](src/index.ts) | Public command-runner and path-opener exports |
 | [`src/runner.ts`](src/runner.ts) | Shell-free `execFile` adapter |
 | [`src/path-opener.ts`](src/path-opener.ts) | Desktop detection, open intents, browser preference, and WSL translation |
+| [`src/windows-foreground.ts`](src/windows-foreground.ts) | Windows foreground hand-off for the folder window a hosted open creates |
 | — | No runtime invariant companion is published; each run is one stateless child-process round trip with no owned event stream or mutable runtime data; behavior is enforced by unit tests. |
 
 ### What execFile gives the runner

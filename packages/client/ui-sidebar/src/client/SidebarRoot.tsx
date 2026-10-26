@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
+  IconNewChatOutline16, IconPanelLeftOutline16, IconSparkle16, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -89,6 +89,7 @@ export function SidebarRoot({
   collapsed,
   width,
   startSession,
+  startFastSession,
   toggleSidebar,
   selectPanel,
   usePanels,
@@ -189,7 +190,7 @@ export function SidebarRoot({
           >
             <span className={css.brandIdentity} aria-hidden="true">
               <span className={css.brandMark}>
-                {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
+                {renderSlot('sidebar.brand.mark', { size: 24 })}
               </span>
               <span className={css.brandName}>
                 {renderSlot('sidebar.brand.name', {}, {
@@ -217,7 +218,7 @@ export function SidebarRoot({
           >
             {!wide && (
               <span className={css.railMark} aria-hidden="true">
-                {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
+                {renderSlot('sidebar.brand.mark', { size: 24 })}
               </span>
             )}
             {/* Rail icons render at 18 (figma rail spec); expanded keeps the glyph-native sizes. */}
@@ -236,6 +237,21 @@ export function SidebarRoot({
         >
           <IconNewChatOutline16 size={wide ? 14 : 18} />
           {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
+        </button>
+      </Tooltip>
+
+      {/* Quick Session sits under New Session: same geometry, ghost weight, so
+          the primary action keeps the emphasis. It opens a scratch chat in its
+          own folder under the Host's Fast Session root. */}
+      <Tooltip label={t('session.fast.label')} delayMs={500} disabled={wide}>
+        <button
+          type="button"
+          className={clsx(css.newSession, css.fastSession)}
+          aria-label={t('session.fast.label')}
+          onClick={() => { startFastSession(t('session.fast')) }}
+        >
+          <IconSparkle16 size={wide ? 14 : 18} />
+          {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.fast')}</span>}
         </button>
       </Tooltip>
 

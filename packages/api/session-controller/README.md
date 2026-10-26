@@ -37,6 +37,8 @@ The Session object also carries local submission echoes: `session.beginSubmissio
 
 The user-invocable `skills/list` metadata includes the winning provider’s optional instruction-file `path`. The composer can preview that file without loading every skill body or activating a cold Agent.
 
+`createFast` starts a Fast Session: it mints the Session id, creates `<fastSessionRoot>/<sessionId>`, creates a Workspace over that folder, creates the Session with the Workspace's canonical path, and attaches it. The caller supplies the Workspace title because UI copy is locale-owned; omitting it falls back to the folder name. The Session is otherwise ordinary — same Agent, same log, same persistence — and owns a Workspace so every Web surface resolves its directory the usual way. `fastSessionRoot` reports the resolved root so a caller can recognize the Sessions and Workspaces that live under it.
+
 <a id="session-media-references"></a>
 ## Session media references
 
@@ -50,6 +52,7 @@ The user-invocable `skills/list` metadata includes the winning provider’s opti
 | Field | Default | Meaning |
 |---|---:|---|
 | `nativeOpen` | platform-detected | Whether Session workspace paths can be handed to a native desktop opener |
+| `fastSessionRoot` | `dsh_fast_sessions` under the OS temp directory | Directory holding one folder per Fast Session, each named by the Session id |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-api-session-controller) is the exhaustive source for accepted fields and their JSDoc.
 

@@ -10,6 +10,7 @@
   "include": [
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/scaffold-generation.spec.ts",
+    "apps/web/tests/mcp-session-visibility-shipped.e2e.ts",
     "apps/web/tests/default-model.e2e.ts",
     "apps/web/tests/github-ready-review.e2e.ts",
     "apps/web/tests/streaming-fence-highlight.e2e.ts",
@@ -351,6 +352,7 @@
     { "path": "./packages/hooks/hooks-claude-code" },
     { "path": "./packages/hooks/hooks-codex" },
     { "path": "./packages/mcp/mcp-client" },
+    { "path": "./packages/mcp/mcp-session" },
     { "path": "./packages/host/command-restart" },
     { "path": "./packages/host/directory-picker" },
     { "path": "./packages/host/directory-picker-auto" },

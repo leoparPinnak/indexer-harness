@@ -47,6 +47,12 @@ export interface UiWorkspace {
    */
   startSession(workspaceId?: WorkspaceId): void
   /**
+   * Create a Fast Session — a Session owning a fresh folder under the Host's
+   * Fast Session root — and open it.
+   * @param workspaceTitle - display title for the Workspace the Session owns.
+   */
+  startFastSession(workspaceTitle?: string): void
+  /**
    * Archive a Session and clear it when it is the current selection.
    * @param sessionId - Session to archive.
    */
@@ -174,6 +180,20 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         this.resolveNewSession(workspaceId)
       },
       (reason: unknown) => { console.warn('new session failed:', reason) },
+    )
+  }
+
+  /**
+   * Create a Fast Session and open it. The Host mints the folder name and the
+   * working directory, so this path takes no target Workspace; the caller
+   * supplies only the title the resulting Workspace displays.
+   * @param workspaceTitle - display title for the Workspace the Session owns.
+   */
+  startFastSession(workspaceTitle?: string): void {
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+    void this.sessions.createFast(workspaceTitle).then(
+      (sessionId) => { if (!navigation.aborted) this.openSession(sessionId) },
+      (reason: unknown) => { console.warn('fast session failed:', reason) },
     )
   }
 

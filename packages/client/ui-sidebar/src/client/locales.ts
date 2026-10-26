@@ -4,6 +4,8 @@
 export const zh = {
   'session.new': '新会话',
   'session.new.label': '新建会话',
+  'session.fast': '快速会话',
+  'session.fast.label': '在临时目录中新建快速会话',
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',
@@ -16,6 +18,8 @@ export type SidebarKey = keyof typeof zh
 export const en = {
   'session.new': 'New Session',
   'session.new.label': 'New session',
+  'session.fast': 'Quick session',
+  'session.fast.label': 'New quick session in a temporary folder',
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',
@@ -25,6 +29,8 @@ export const en = {
 export const tr = {
   'session.new': 'Yeni Sohbet',
   'session.new.label': 'Yeni sohbet oluştur',
+  'session.fast': 'Hızlı Oturum',
+  'session.fast.label': 'Geçici klasörde hızlı oturum aç',
   'toggle.open': 'Kenar çubuğunu aç',
   'toggle.collapse': 'Kenar çubuğunu daralt',
   'panels.label': 'Genel paneller',
